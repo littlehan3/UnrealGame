@@ -3,12 +3,12 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "InputActionValue.h"
-#include "Rifle.h"  // ARifle 클래스 포함
+#include "Rifle.h" 
 #include "Knife.h"
 #include "Animation/AnimMontage.h"
 #include "MainCharacter.generated.h"
 
-class ARifle;  // 전방 선언 추가
+class ARifle; 
 class AKnife;
 
 UCLASS()
@@ -20,7 +20,7 @@ public:
     AMainCharacter();
     virtual void Tick(float DeltaTime) override;
     virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-    virtual void Landed(const FHitResult& Hit) override;  // 착지 시 중력 복구 함수 추가
+    virtual void Landed(const FHitResult& Hit) override;
 
 protected:
     virtual void BeginPlay() override;

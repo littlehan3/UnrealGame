@@ -1,5 +1,28 @@
-### README.md
+## 2025-02-13 업데이트 내용
 
--2025년 1월 1일 부터 2월 11일까지의 문제해결 및 개선 기록 노트입니다.
+### 1. 레이캐스트 발사 위치 변경
+- 기존: 총구(Muzzle)에서 발사  
+- 변경: 카메라 중앙(ViewPoint)에서 발사되도록 수정
+- 플레이어 조준 방향과 총알 궤적이 일치하도록 개선
 
-https://drive.google.com/file/d/1RFKRTb3lq0Ar7vT-4p2fAWsxuOvCUs_L/view
+### 2. 레이캐스트 적중 문제 해결
+- 적(Enemy)이 레이캐스트에 맞지 않는 문제 해결
+- `CapsuleComponent`와 `Mesh`의 Collision 설정 수정
+ - `Visibility` 채널에서 `Block` 설정하여 레이캐스트가 적을 감지할 수 있도록 변경  
+
+### 3. Enemy 시스템 구현
+- `AEnemy` 클래스 추가  
+- `TakeDamage()`를 통해 적이 총을 맞으면 체력이 차감됨  
+- 체력이 0 이하가 되면 `Die()` 함수 실행하여 사망 처리 (Destroy 없이 사망 상태 유지)  
+
+### 4. Rifle 사격 및 데미지 적용 구현
+- `ARifle::Fire()`에서 적이 맞으면 데미지 적용  
+- `ProcessHit()`에서 적중 대상이 Enemy인지 판별 후 데미지 적용
+- 사망 시 사망 상태(`bIsDead`)를 설정하여 후속 데미지 적용 방지
+
+---
+
+### TODOLIST
+- 적 히트, 사망 애니메이션 추가 및 연동
+- 총기 탄 퍼짐 기능
+- 헤드샷 판정 추가 

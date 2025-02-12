@@ -97,7 +97,7 @@ void AMainCharacter::AttachRifleToBack()
         Rifle->SetActorRelativeLocation(FVector(5.0f, 15.0f, -9.0f));
         Rifle->SetActorRelativeRotation(FRotator(0.0f, -45.0f, 0.0f));
 
-        // 총기의 소유자를 캐릭터로 설정 (중요!)
+        // 총기의 소유자를 캐릭터로 설정 
         Rifle->SetOwner(this);
         UE_LOG(LogTemp, Warning, TEXT("Rifle Owner Set to: %s"), *GetName());
     }
@@ -148,7 +148,7 @@ void AMainCharacter::AttachKnifeToBack()
 
         UE_LOG(LogTemp, Warning, TEXT("RightKnife moved to BackKnifeSocket_R!"));
 
-        if (RightKnife->IsAttachedTo(GetMesh()->GetOwner()))  // 💡 수정된 부분
+        if (RightKnife->IsAttachedTo(GetMesh()->GetOwner())) 
         {
             UE_LOG(LogTemp, Warning, TEXT("RightKnife is successfully attached to BackKnifeSocket_R!"));
         }
@@ -171,7 +171,7 @@ void AMainCharacter::AttachKnifeToHand()
         // 🔽 칼을 보이도록 설정
         LeftKnife->SetActorHiddenInGame(false);
 
-        UE_LOG(LogTemp, Warning, TEXT("✅ LeftKnife moved to hand and visible!"));
+        UE_LOG(LogTemp, Warning, TEXT("LeftKnife moved to hand and visible!"));
     }
 
     if (RightKnife)
@@ -181,10 +181,10 @@ void AMainCharacter::AttachKnifeToHand()
         RightKnife->SetActorRelativeLocation(FVector::ZeroVector);
         RightKnife->SetActorRelativeRotation(FRotator::ZeroRotator);
 
-        // 🔽 칼을 보이도록 설정
+        // 칼을 보이도록 설정
         RightKnife->SetActorHiddenInGame(false);
 
-        UE_LOG(LogTemp, Warning, TEXT("✅ RightKnife moved to hand and visible!"));
+        UE_LOG(LogTemp, Warning, TEXT("RightKnife moved to hand and visible!"));
     }
 }
 
@@ -292,10 +292,10 @@ void AMainCharacter::HandleDoubleJump()
     bCanDoubleJump = false;
     bIsInDoubleJump = true;
 
-    // 🚀 더블 점프 후 중력 강화 (빠르게 착지)
+    // 더블 점프 후 중력 강화 (빠르게 착지)
     GetCharacterMovement()->GravityScale = 2.3f;
 
-    // 🔽 착지 속도 증가 (낙하 중 마찰력 감소)
+    // 착지 속도 증가 (낙하 중 마찰력 감소)
     GetCharacterMovement()->FallingLateralFriction = 0.1f;  // 기본값은 0.5~1.0, 낮출수록 빨리 떨어짐
 
     if (UCustomAnimInstance* AnimInstance = Cast<UCustomAnimInstance>(GetMesh()->GetAnimInstance()))
@@ -308,10 +308,10 @@ void AMainCharacter::Landed(const FHitResult& Hit)
 {
     Super::Landed(Hit);
 
-    // ✅ 착지 시 중력을 원래대로 복구
+    // 착지 시 중력을 원래대로 복구
     GetCharacterMovement()->GravityScale = 1.0f;
 
-    // ✅ 낙하 속도 원래대로 복구
+    // 낙하 속도 원래대로 복구
     GetCharacterMovement()->FallingLateralFriction = 0.5f;  // 기본값 복구
 
     UE_LOG(LogTemp, Warning, TEXT("✅ Landed! Gravity & Falling Speed Reset"));
@@ -370,7 +370,7 @@ void AMainCharacter::EnterAimMode()
     if (!bIsAiming)
     {
         bIsAiming = true;
-        AttachRifleToHand(); // 🔹 손으로 이동
+        AttachRifleToHand(); // 손으로 이동
         AttachKnifeToBack();
         CameraBoom->TargetArmLength = 100.0f;
         CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
@@ -382,7 +382,7 @@ void AMainCharacter::ExitAimMode()
     if (bIsAiming)
     {
         bIsAiming = false;
-        AttachRifleToBack(); // 🔹 다시 등에 이동
+        AttachRifleToBack(); // 다시 등에 이동
         AttachKnifeToHand();
         CameraBoom->TargetArmLength = 250.0f;
         CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
@@ -396,7 +396,7 @@ void AMainCharacter::ComboAttack()
 
     bIsAttacking = true; // 공격 상태 변경
 
-    // ✅ 콤보 중 자동 회전 비활성화 (카메라 영향을 막음)
+    // 콤보 중 자동 회전 비활성화 (카메라 영향을 막음)
     GetCharacterMovement()->bOrientRotationToMovement = false;
 
     FVector InputDirection = FVector::ZeroVector;
@@ -415,16 +415,16 @@ void AMainCharacter::ComboAttack()
         }
     }
 
-    // ✅ 이동 입력이 있다면 방향 업데이트
+    // 이동 입력이 있다면 방향 업데이트
     if (!InputDirection.IsNearlyZero())
     {
         LastAttackDirection = InputDirection;
     }
 
-    // ✅ 캐릭터가 바라보는 방향 설정
+    // 캐릭터가 바라보는 방향 설정
     FVector AttackDirection = GetActorForwardVector();
 
-    // ✅ 이동 입력이 있었다면 방향 업데이트
+    // 이동 입력이 있었다면 방향 업데이트
     if (!LastAttackDirection.IsNearlyZero())
     {
         FRotator NewRotation = LastAttackDirection.Rotation();
@@ -434,7 +434,7 @@ void AMainCharacter::ComboAttack()
         AttackDirection = LastAttackDirection;
     }
 
-    // ✅ 콤보 공격 애니메이션 적용
+    // 콤보 공격 애니메이션 적용
     switch (ComboIndex)
     {
     case 0:
@@ -461,7 +461,7 @@ void AMainCharacter::ComboAttack()
         break;
     }
 
-    // ✅ 콤보 인덱스 업데이트
+    // 콤보 인덱스 업데이트
     ComboIndex = (ComboIndex + 1) % 5;
 }
 
@@ -476,10 +476,10 @@ void AMainCharacter::OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupte
 {
     bIsAttacking = false; // 공격 상태 초기화
 
-    // ✅ 콤보 종료 후 자동 회전 다시 활성화
+    // 콤보 종료 후 자동 회전 다시 활성화
     GetCharacterMovement()->bOrientRotationToMovement = true;
 
-    // ✅ 마지막 공격 방향을 유지 (이전 방향을 덮어쓰지 않도록)
+    // 마지막 공격 방향을 유지 (이전 방향을 덮어쓰지 않도록)
     if (!LastAttackDirection.IsNearlyZero())
     {
         LastAttackDirection = GetActorForwardVector();
@@ -494,10 +494,10 @@ void AMainCharacter::ApplyComboMovement(float MoveDistance, FVector MoveDirectio
         MoveDirection.Z = 0; // 수직 이동 방지
         MoveDirection.Normalize();
 
-        // ✅ 캐릭터를 입력 방향으로 즉시 이동
+        // 캐릭터를 입력 방향으로 즉시 이동
         LaunchCharacter(MoveDirection * MoveDistance, false, false);
 
-        UE_LOG(LogTemp, Warning, TEXT("✅ Character launched towards: %s"), *MoveDirection.ToString());
+        UE_LOG(LogTemp, Warning, TEXT("Character launched towards: %s"), *MoveDirection.ToString());
     }
 }
 
