@@ -25,14 +25,39 @@ protected:
 public:
     virtual void Tick(float DeltaTime) override;
 
-    // 🔹 나이프 메시 추가
+    // 나이프 메시
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UStaticMeshComponent* KnifeMesh;
 
-    // 🔹 나이프 타입 (왼손 / 오른손)
+    // 히트박스 (블루프린트에서 수정 가능하도록 설정)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Components")
+    class UBoxComponent* HitBox;
+
+    // 나이프 타입 (왼손 / 오른손)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knife")
     EKnifeType KnifeType;
 
-    // 🔹 나이프 초기화 함수
+    // 콤보별 데미지 설정
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knife")
+    TArray<float> ComboDamages;
+
     void InitializeKnife(EKnifeType NewType);
+
+    // 콤보 인덱스를 전달받아 해당 공격의 데미지를 설정
+    void EnableHitBox(int32 ComboIndex);
+    void DisableHitBox();
+
+private:
+    float CurrentDamage;
+
+    // 히트 판정 함수 (충돌 감지)
+    UFUNCTION()
+    void OnHitBoxOverlap(
+        UPrimitiveComponent* OverlappedComponent,
+        AActor* OtherActor,
+        UPrimitiveComponent* OtherComp,
+        int32 OtherBodyIndex,
+        bool bFromSweep,
+        const FHitResult& SweepResult
+    );
 };

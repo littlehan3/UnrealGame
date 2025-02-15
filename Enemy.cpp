@@ -1,6 +1,8 @@
 #include "Enemy.h"
+#include "EnemyKatana.h"
 #include "GameFramework/Actor.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/SkeletalMeshComponent.h"
 
 AEnemy::AEnemy()
 {
@@ -10,8 +12,22 @@ AEnemy::AEnemy()
 void AEnemy::BeginPlay()
 {
     Super::BeginPlay();
+    SetCanBeDamaged(true);
 
-	SetCanBeDamaged(true);
+    // KatanaClass가 설정되어 있다면 Katana 스폰 및 부착
+    if (KatanaClass)
+    {
+        EquippedKatana = GetWorld()->SpawnActor<AEnemyKatana>(KatanaClass);
+        if (EquippedKatana)
+        {
+            USkeletalMeshComponent* MeshComp = GetMesh();
+            if (MeshComp)
+            {
+                FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
+                EquippedKatana->AttachToComponent(MeshComp, AttachmentRules, FName("EnemyKatanaSocket"));
+            }
+        }
+    }
 }
 
 float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -27,10 +43,10 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
 
     UE_LOG(LogTemp, Warning, TEXT("Enemy took %f damage, Health remaining: %f"), DamageAmount, Health);
 
-	if (HitSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation());
-	}
+    if (HitSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation());
+    }
 
     if (Health <= 0.0f)
     {
@@ -47,10 +63,8 @@ void AEnemy::Die()
     bIsDead = true;  // 사망 상태 변경
     UE_LOG(LogTemp, Warning, TEXT("Enemy Died! Now in dead state."));
 
-	if (DieSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, DieSound, GetActorLocation());
-	}
+    if (DieSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, DieSound, GetActorLocation());
+    }
 }
-
-

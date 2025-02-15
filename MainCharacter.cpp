@@ -9,6 +9,8 @@
 #include "Engine/Engine.h" // 디버깅 메시지 출력용
 #include "Rifle.h"
 #include "Knife.h"
+#include "Kismet/GameplayStatics.h"
+
 
 AMainCharacter::AMainCharacter()
 {
@@ -42,11 +44,24 @@ AMainCharacter::AMainCharacter()
     bIsAiming = false;
     ComboIndex = 0;
 
+    // 발차기 히트박스 초기화
+    KickHitBox = CreateDefaultSubobject<UBoxComponent>(TEXT("KickHitBox"));
+    KickHitBox->SetupAttachment(GetMesh(), TEXT("FootSocket_R")); // 발 위치에 부착
+    KickHitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    KickHitBox->SetGenerateOverlapEvents(true);
+    KickHitBox->SetCollisionObjectType(ECC_WorldDynamic);  // 충돌 오브젝트 타입 설정
+    KickHitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
+    KickHitBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // 캐릭터와만 충돌 감지
+
+
 }
 
 void AMainCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+    KickHitBox->OnComponentBeginOverlap.AddDynamic(this, &AMainCharacter::OnKickHitBoxOverlap);
+
 
     if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
     {
@@ -148,7 +163,7 @@ void AMainCharacter::AttachKnifeToBack()
 
         UE_LOG(LogTemp, Warning, TEXT("RightKnife moved to BackKnifeSocket_R!"));
 
-        if (RightKnife->IsAttachedTo(GetMesh()->GetOwner())) 
+        if (RightKnife->IsAttachedTo(GetMesh()->GetOwner()))
         {
             UE_LOG(LogTemp, Warning, TEXT("RightKnife is successfully attached to BackKnifeSocket_R!"));
         }
@@ -434,6 +449,21 @@ void AMainCharacter::ComboAttack()
         AttackDirection = LastAttackDirection;
     }
 
+    if (ComboIndex == 3)
+    {
+        EnableKickHitBox();
+    }
+    else
+    {
+        if (LeftKnife)
+        {
+            LeftKnife->EnableHitBox(ComboIndex);
+        }
+        if (RightKnife)
+        {
+            RightKnife->EnableHitBox(ComboIndex);
+        }
+    }
     // 콤보 공격 애니메이션 적용
     switch (ComboIndex)
     {
@@ -499,6 +529,49 @@ void AMainCharacter::ApplyComboMovement(float MoveDistance, FVector MoveDirectio
 
         UE_LOG(LogTemp, Warning, TEXT("Character launched towards: %s"), *MoveDirection.ToString());
     }
+}
+
+void AMainCharacter::EnableKickHitBox()
+{
+    if (KickHitBox)
+    {
+        KickHitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Enabled!"));
+    }
+}
+
+
+void AMainCharacter::DisableKickHitBox()
+{
+    if (KickHitBox)
+    {
+        KickHitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Disabled!"));
+    }
+}
+
+void AMainCharacter::OnKickHitBoxOverlap(
+    UPrimitiveComponent* OverlappedComponent,
+    AActor* OtherActor,
+    UPrimitiveComponent* OtherComp,
+    int32 OtherBodyIndex,
+    bool bFromSweep,
+    const FHitResult& SweepResult)
+{
+    // 자기 자신과 충돌한 경우 무시
+    if (!OtherActor || OtherActor == this || OtherComp == KickHitBox)
+    {
+        return;
+    }
+
+    float KickDamage = 35.0f;
+
+    // ApplyDamage 호출
+    UGameplayStatics::ApplyDamage(OtherActor, KickDamage, nullptr, this, nullptr);
+
+    UE_LOG(LogTemp, Warning, TEXT("Kick Hit! Applied %f Damage to %s"), KickDamage, *OtherActor->GetName());
+
+    DisableKickHitBox();
 }
 
 

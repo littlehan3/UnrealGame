@@ -5,10 +5,11 @@
 #include "InputActionValue.h"
 #include "Rifle.h" 
 #include "Knife.h"
+#include "Components/BoxComponent.h"  // BoxComponent 추가 (히트박스 용)
 #include "Animation/AnimMontage.h"
 #include "MainCharacter.generated.h"
 
-class ARifle; 
+class ARifle;
 class AKnife;
 
 UCLASS()
@@ -44,10 +45,21 @@ protected:
     void PlayComboAttackAnimation3();
     void PlayComboAttackAnimation4();
     void PlayComboAttackAnimation5();
-
     void ApplyComboMovement(float MoveDistance, FVector MoveDirection);
 
+    // 발차기 히트박스 관련 함수 추가
+    void EnableKickHitBox();
+    void DisableKickHitBox();
 
+    UFUNCTION()
+    void OnKickHitBoxOverlap(
+        UPrimitiveComponent* OverlappedComponent,
+        AActor* OtherActor,
+        UPrimitiveComponent* OtherComp,
+        int32 OtherBodyIndex,
+        bool bFromSweep,
+        const FHitResult& SweepResult
+    );
 
 
 private:
@@ -76,7 +88,7 @@ private:
     class UInputAction* FireAction;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-    class UInputAction* ReloadAction; 
+    class UInputAction* ReloadAction;
 
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
@@ -150,4 +162,8 @@ private:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Jump", meta = (AllowPrivateAccess = "true"))
     bool bCanDoubleJump;
+
+    // 발차기 히트박스 변수 추가
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
+    class UBoxComponent* KickHitBox;
 };
