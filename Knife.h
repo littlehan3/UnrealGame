@@ -4,6 +4,9 @@
 #include "GameFramework/Actor.h"
 #include "Knife.generated.h"
 
+// 전방 선언 (헤더 파일에서 직접 include하지 않음)
+class AMainCharacter;
+
 UENUM(BlueprintType)
 enum class EKnifeType : uint8
 {

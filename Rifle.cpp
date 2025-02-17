@@ -29,10 +29,6 @@ void ARifle::BeginPlay()
     {
         UE_LOG(LogTemp, Warning, TEXT("Rifle Owner: %s"), *GetOwner()->GetName());
     }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("Rifle has NO OWNER at BeginPlay! SetOwner() is missing."));
-    }
 }
 
 void ARifle::Fire()

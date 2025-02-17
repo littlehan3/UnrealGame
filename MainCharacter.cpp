@@ -76,6 +76,7 @@ void AMainCharacter::BeginPlay()
         Rifle = GetWorld()->SpawnActor<ARifle>(RifleClass);
         if (Rifle)
         {
+			Rifle->SetOwner(this);
             AttachRifleToBack();
         }
     }
@@ -87,7 +88,9 @@ void AMainCharacter::BeginPlay()
         {
             LeftKnife->InitializeKnife(EKnifeType::Left);
             LeftKnife->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("KnifeSocket_L"));
-            UE_LOG(LogTemp, Warning, TEXT("LeftKnife spawned and attached!"));
+
+			LeftKnife->SetOwner(this);
+            UE_LOG(LogTemp, Warning, TEXT("LeftKnife spawned,attached and owner set!"));
         }
     }
 
@@ -98,7 +101,9 @@ void AMainCharacter::BeginPlay()
         {
             RightKnife->InitializeKnife(EKnifeType::Right);
             RightKnife->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("KnifeSocket_R"));
-            UE_LOG(LogTemp, Warning, TEXT("RightKnife spawned and attached!"));
+
+            RightKnife->SetOwner(this);
+            UE_LOG(LogTemp, Warning, TEXT("RightKnife spawned,attached and owner set!"));
         }
     }
 
