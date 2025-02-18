@@ -1,28 +1,42 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "LockOnComponent.generated.h"
 
-
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class LOCOMOTION_API ULockOnComponent : public UActorComponent
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
+class LOCOMOTION_API ULockOnSystem : public UActorComponent
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
-public:	
-	// Sets default values for this component's properties
-	ULockOnComponent();
+public:
+    ULockOnSystem();
+
+    void UpdateLockOnCameraRotation(float DeltaTime); // 카메라 회전 보정 함수 추가
 
 protected:
-	// Called when the game starts
-	virtual void BeginPlay() override;
+    virtual void BeginPlay() override;
+    
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override; //TickComponent 함수 추가
 
-public:	
-	// Called every frame
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+public:
+    void FindAndLockTarget();
+    void UnlockTarget();
+    bool IsLockedOn() const;
+    AActor* GetLockedTarget() const;
 
-		
+    void UpdateLockOnRotation(float DeltaTime);  // 락온 유지용 회전 업데이트 추가
+
+private:
+    UPROPERTY()
+    AActor* LockedTarget;
+
+    UPROPERTY()
+    class AMainCharacter* OwnerCharacter;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Lock-On")
+    float LockOnRadius = 1000.0f;  // 락온 가능 거리
+
+    UPROPERTY(EditDefaultsOnly, Category = "Lock-On")
+    float RotationSpeed = 5.0f;  // 락온 중 회전 속도
 };

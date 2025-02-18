@@ -7,6 +7,7 @@
 AEnemy::AEnemy()
 {
     PrimaryActorTick.bCanEverTick = true;
+	bCanBeLockedOn = true;
 }
 
 void AEnemy::BeginPlay()
@@ -67,4 +68,13 @@ void AEnemy::Die()
     {
         UGameplayStatics::PlaySoundAtLocation(this, DieSound, GetActorLocation());
     }
+}
+
+// 특정 조건을 만족해야 락온 가능
+bool AEnemy::CanBeLockedOn() const
+{
+    // 특정 체력 이하일 때만 락온 등 확장  
+    // if (CurrentHealth < 50.0f) return false;
+
+    return bCanBeLockedOn; // 기본적으로 bCanBeLockedOn이 true인 경우 락온 가능
 }

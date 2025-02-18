@@ -24,7 +24,7 @@ AKnife::AKnife()
 
     KnifeType = EKnifeType::Left;
 
-    ComboDamages = { 20.0f, 25.0f, 30.0f, 0.0f, 50.0f }; // 4번째(발차기) 공격은 제거
+    ComboDamages = { 20.0f, 25.0f, 30.0f, 0.0f, 50.0f }; // 4번째(발차기) 공격은 캐릭터에서 독립적으로 데미지 처리
 
 }
 

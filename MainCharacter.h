@@ -5,6 +5,7 @@
 #include "InputActionValue.h"
 #include "Rifle.h" 
 #include "Knife.h"
+#include "LockOnComponent.h"
 #include "Components/BoxComponent.h"  // BoxComponent 추가 (히트박스 용)
 #include "Animation/AnimMontage.h"
 #include "MainCharacter.generated.h"
@@ -46,10 +47,10 @@ protected:
     void PlayComboAttackAnimation4();
     void PlayComboAttackAnimation5();
     void ApplyComboMovement(float MoveDistance, FVector MoveDirection);
-
-    // 발차기 히트박스 관련 함수 추가
     void EnableKickHitBox();
     void DisableKickHitBox();
+
+	void ToggleLockOn(); // 락온 토글 함수 추가
 
     UFUNCTION()
     void OnKickHitBoxOverlap(
@@ -90,6 +91,9 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     class UInputAction* ReloadAction;
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    class UInputAction* LockOnAction; // 락온 인풋액션 추가
+
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
     bool bIsAiming;
@@ -126,6 +130,12 @@ private:
     void OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
     FVector LastAttackDirection;
+
+    UPROPERTY()
+    class ULockOnSystem* LockOnComponent; //락온 컴포넌트 변수추가
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Lock-On", meta = (AllowPrivateAccess = "true"))
+    bool bIsLockedOn;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combo Animations", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* ComboAttackMontage1;

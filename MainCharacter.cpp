@@ -6,9 +6,10 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "CustomAnimInstance.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Engine/Engine.h" // 디버깅 메시지 출력용
+#include "Engine/Engine.h"
 #include "Rifle.h"
 #include "Knife.h"
+#include "LockOnComponent.h"
 #include "Kismet/GameplayStatics.h"
 
 
@@ -53,7 +54,7 @@ AMainCharacter::AMainCharacter()
     KickHitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
     KickHitBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // 캐릭터와만 충돌 감지
 
-
+    LockOnComponent = CreateDefaultSubobject<ULockOnSystem>(TEXT("LockOnComponent"));
 }
 
 void AMainCharacter::BeginPlay()
@@ -76,7 +77,7 @@ void AMainCharacter::BeginPlay()
         Rifle = GetWorld()->SpawnActor<ARifle>(RifleClass);
         if (Rifle)
         {
-			Rifle->SetOwner(this);
+            Rifle->SetOwner(this);
             AttachRifleToBack();
         }
     }
@@ -89,7 +90,7 @@ void AMainCharacter::BeginPlay()
             LeftKnife->InitializeKnife(EKnifeType::Left);
             LeftKnife->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("KnifeSocket_L"));
 
-			LeftKnife->SetOwner(this);
+            LeftKnife->SetOwner(this);
             UE_LOG(LogTemp, Warning, TEXT("LeftKnife spawned,attached and owner set!"));
         }
     }
@@ -105,6 +106,28 @@ void AMainCharacter::BeginPlay()
             RightKnife->SetOwner(this);
             UE_LOG(LogTemp, Warning, TEXT("RightKnife spawned,attached and owner set!"));
         }
+    }
+
+    // LockOnComponent가 nullptr이면 직접 추가
+    if (!LockOnComponent)
+    {
+        UE_LOG(LogTemp, Error, TEXT("LockOnComponent가 nullptr! Can not run Lock-On"));
+
+        // LockOnComponent가 없다면 새로 추가
+        LockOnComponent = NewObject<ULockOnSystem>(this, ULockOnSystem::StaticClass()); // 런타임에 락온컴포넌트 동적생성 및 현재캐릭터에 속하도록 설정
+        if (LockOnComponent)
+        {
+            LockOnComponent->RegisterComponent(); // 생성한 락온컴포넌트를 게임에서 사용할 수 있도록 등록
+            UE_LOG(LogTemp, Warning, TEXT("LockOnComponent Added to Runtime"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("LockOnComponent Generate Failed!"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("LockOnComponent Initialization Compelete!"));
     }
 
 }
@@ -188,7 +211,6 @@ void AMainCharacter::AttachKnifeToHand()
         LeftKnife->SetActorRelativeLocation(FVector::ZeroVector);
         LeftKnife->SetActorRelativeRotation(FRotator::ZeroRotator);
 
-        // 🔽 칼을 보이도록 설정
         LeftKnife->SetActorHiddenInGame(false);
 
         UE_LOG(LogTemp, Warning, TEXT("LeftKnife moved to hand and visible!"));
@@ -201,7 +223,6 @@ void AMainCharacter::AttachKnifeToHand()
         RightKnife->SetActorRelativeLocation(FVector::ZeroVector);
         RightKnife->SetActorRelativeRotation(FRotator::ZeroRotator);
 
-        // 칼을 보이도록 설정
         RightKnife->SetActorHiddenInGame(false);
 
         UE_LOG(LogTemp, Warning, TEXT("RightKnife moved to hand and visible!"));
@@ -291,6 +312,16 @@ void AMainCharacter::Tick(float DeltaTime)
         FRotator NewRotation(0.0f, ControlRotation.Yaw, 0.0f);
         SetActorRotation(NewRotation);
     }
+
+    if (bIsLockedOn && LockOnComponent->IsLockedOn())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Maintaing Lock-On % s"), *LockOnComponent->GetLockedTarget()->GetName());
+        LockOnComponent->UpdateLockOnRotation(DeltaTime);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Lock-On Released!"));
+    }
 }
 
 void AMainCharacter::HandleJump()
@@ -334,7 +365,7 @@ void AMainCharacter::Landed(const FHitResult& Hit)
     // 낙하 속도 원래대로 복구
     GetCharacterMovement()->FallingLateralFriction = 0.5f;  // 기본값 복구
 
-    UE_LOG(LogTemp, Warning, TEXT("✅ Landed! Gravity & Falling Speed Reset"));
+    UE_LOG(LogTemp, Warning, TEXT("Landed! Gravity & Falling Speed Reset"));
 }
 
 
@@ -390,10 +421,18 @@ void AMainCharacter::EnterAimMode()
     if (!bIsAiming)
     {
         bIsAiming = true;
+        UE_LOG(LogTemp, Warning, TEXT("Entered Aim Mode"));
         AttachRifleToHand(); // 손으로 이동
         AttachKnifeToBack();
         CameraBoom->TargetArmLength = 100.0f;
         CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
+
+        if (bIsLockedOn)  // 사격 모드 진입 시 락온 자동 해제
+        {
+            LockOnComponent->UnlockTarget();
+            bIsLockedOn = false;
+            UE_LOG(LogTemp, Warning, TEXT("Lock-On Automatically Released Due to Aiming"));
+        }
     }
 }
 
@@ -402,11 +441,52 @@ void AMainCharacter::ExitAimMode()
     if (bIsAiming)
     {
         bIsAiming = false;
+        UE_LOG(LogTemp, Warning, TEXT("Exited Aim Mode"));
         AttachRifleToBack(); // 다시 등에 이동
         AttachKnifeToHand();
         CameraBoom->TargetArmLength = 250.0f;
         CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
 
+    }
+}
+
+void AMainCharacter::ToggleLockOn()
+{
+    if (!LockOnComponent)
+    {
+        UE_LOG(LogTemp, Error, TEXT("LockOnComponent nullptr! Can not run Lock-On"));
+        return;
+    }
+
+    if (bIsAiming)
+    {
+        if (bIsLockedOn)
+        {
+            LockOnComponent->UnlockTarget();
+            bIsLockedOn = false;
+            UE_LOG(LogTemp, Warning, TEXT("Aim Mode Activated: Lock-On Automatically Released"));
+        }
+        return;
+    }
+
+    if (bIsLockedOn)
+    {
+        LockOnComponent->UnlockTarget();
+        bIsLockedOn = false;
+        UE_LOG(LogTemp, Warning, TEXT("Lock-On Released"));
+    }
+    else
+    {
+        LockOnComponent->FindAndLockTarget();
+        if (LockOnComponent->IsLockedOn())
+        {
+            bIsLockedOn = true;
+            UE_LOG(LogTemp, Warning, TEXT("Lock-On Activated"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Lock-On failed: There is no Target to Lock-On"));
+        }
     }
 }
 
@@ -682,5 +762,6 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AMainCharacter::ExitAimMode);
         EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &AMainCharacter::FireWeapon);
         EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Triggered, this, &AMainCharacter::ReloadWeapon);
+        EnhancedInputComponent->BindAction(LockOnAction, ETriggerEvent::Triggered, this, &AMainCharacter::ToggleLockOn);
     }
 }

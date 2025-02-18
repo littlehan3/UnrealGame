@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "EnemyKatana.h" 
+#include "LockOnComponent.h"
 #include "Enemy.generated.h"
 
 class AEnemyKatana; 
@@ -14,6 +15,13 @@ class LOCOMOTION_API AEnemy : public ACharacter
 
 public:
     AEnemy();
+
+    // 락온이 가능한 대상인지 확인하는 변수
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lock-On")
+    bool bCanBeLockedOn;
+
+    // 락온 가능 여부를 결정하는 함수 추가
+    bool CanBeLockedOn() const;
 
 protected:
     virtual void BeginPlay() override;
