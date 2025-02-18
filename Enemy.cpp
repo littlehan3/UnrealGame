@@ -3,17 +3,38 @@
 #include "GameFramework/Actor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "EnemyAIController.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 AEnemy::AEnemy()
 {
     PrimaryActorTick.bCanEverTick = true;
 	bCanBeLockedOn = true;
+
+    AIControllerClass = AEnemyAIController::StaticClass(); // AI 컨트롤러 설정
+
+    if (!AIControllerClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("AEnemy: AIControllerClass is NULL!"));
+    }
 }
 
 void AEnemy::BeginPlay()
 {
     Super::BeginPlay();
     SetCanBeDamaged(true);
+    
+	AAIController* AICon = Cast<AAIController>(GetController());
+	if (AICon)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned: %s"), *AICon->GetName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("AEnemy AIController is NULL!"));
+	}
+
+	SetUpAI();  // AI 설정 함수 호출
 
     // KatanaClass가 설정되어 있다면 Katana 스폰 및 부착
     if (KatanaClass)
@@ -77,4 +98,30 @@ bool AEnemy::CanBeLockedOn() const
     // if (CurrentHealth < 50.0f) return false;
 
     return bCanBeLockedOn; // 기본적으로 bCanBeLockedOn이 true인 경우 락온 가능
+}
+
+
+// AI가 NavMesh에서 이동할 수 있도록 설정
+void AEnemy::SetUpAI()
+{
+    GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_NavWalking);
+}
+
+// AI 이동
+void AEnemy::PostInitializeComponents()
+{
+    Super::PostInitializeComponents();
+
+    GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
+        {
+            AAIController* AICon = Cast<AAIController>(GetController());
+            if (AICon)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned Later: %s"), *AICon->GetName());
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("AEnemy AIController STILL NULL!"));
+            }
+        });
 }

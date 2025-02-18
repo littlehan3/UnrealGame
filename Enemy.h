@@ -23,6 +23,8 @@ public:
     // 락온 가능 여부를 결정하는 함수 추가
     bool CanBeLockedOn() const;
 
+	virtual void PostInitializeComponents() override; // AI 이동
+
 protected:
     virtual void BeginPlay() override;
 
@@ -47,6 +49,8 @@ private:
     bool bIsDead = false;
 
     void Die();
+
+	void SetUpAI(); // AI가 NavMesh에서 이동할 수 있도록 설정
 
     // 카타나 부착을 위한 변수 추가
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")
