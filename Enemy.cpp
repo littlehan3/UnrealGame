@@ -1,17 +1,21 @@
 #include "Enemy.h"
 #include "EnemyKatana.h"
+#include "EnemyAnimInstance.h"
 #include "GameFramework/Actor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "EnemyAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Animation/AnimInstance.h"
 
 AEnemy::AEnemy()
 {
     PrimaryActorTick.bCanEverTick = true;
-	bCanBeLockedOn = true;
+    bCanBeLockedOn = true;
 
     AIControllerClass = AEnemyAIController::StaticClass(); // AI 컨트롤러 설정
+
+    GetMesh()->SetAnimInstanceClass(UEnemyAnimInstance::StaticClass()); // 애님 인스턴스 설정
 
     if (!AIControllerClass)
     {
@@ -23,18 +27,20 @@ void AEnemy::BeginPlay()
 {
     Super::BeginPlay();
     SetCanBeDamaged(true);
-    
-	AAIController* AICon = Cast<AAIController>(GetController());
-	if (AICon)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned: %s"), *AICon->GetName());
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("AEnemy AIController is NULL!"));
-	}
 
-	SetUpAI();  // AI 설정 함수 호출
+    AAIController* AICon = Cast<AAIController>(GetController());
+    if (AICon)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned: %s"), *AICon->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("AEnemy AIController is NULL!"));
+    }
+
+    SetUpAI();  // AI 설정 함수 호출
+
+    EnemyAnimInstance = Cast<UEnemyAnimInstance>(GetMesh()->GetAnimInstance()); //  애님 인스턴스 설정
 
     // KatanaClass가 설정되어 있다면 Katana 스폰 및 부착
     if (KatanaClass)
@@ -124,4 +130,24 @@ void AEnemy::PostInitializeComponents()
                 UE_LOG(LogTemp, Error, TEXT("AEnemy AIController STILL NULL!"));
             }
         });
+}
+
+void AEnemy::PlayAttackAnimation()
+{
+    if (AttackMontages.Num() > 0)
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance && !AnimInstance->IsAnyMontagePlaying())
+        {
+            int32 RandomIndex = FMath::RandRange(0, AttackMontages.Num() - 1);
+            UAnimMontage* SelectedMontage = AttackMontages[RandomIndex];
+
+            if (SelectedMontage)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("Enemy is playing attack montage: %s"), *SelectedMontage->GetName());
+
+                AnimInstance->Montage_Play(SelectedMontage);
+            }
+        }
+    }
 }

@@ -2,6 +2,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "NavigationSystem.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/RotatingMovementComponent.h"
+#include "Enemy.h"
 
 void AEnemyAIController::BeginPlay()
 {
@@ -53,14 +55,13 @@ void AEnemyAIController::BeginPlay()
                 }
             });
     }
-
 }
 
 void AEnemyAIController::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (!PlayerPawn) return;
+    if (!PlayerPawn || !GetPawn()) return;
 
     float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
 
@@ -78,17 +79,52 @@ void AEnemyAIController::Tick(float DeltaTime)
     if (DistanceToPlayer <= DetectionRadius)
     {
         UE_LOG(LogTemp, Warning, TEXT("Chasing Player..."));
-        MoveToActor(PlayerPawn, 5.0f);
+
+        // AI가 플레이어를 바라보도록 설정 (회전 적용)
+        FRotator LookAtRotation = (PlayerPawn->GetActorLocation() - GetPawn()->GetActorLocation()).Rotation();
+        LookAtRotation.Pitch = 0.0f; // AI가 땅을 쳐다보지 않도록 Pitch 값 제거
+        LookAtRotation.Roll = 0.0f; // Roll 값 제거
+
+        GetPawn()->SetActorRotation(FMath::RInterpTo(GetPawn()->GetActorRotation(), LookAtRotation, DeltaTime, 5.0f));
+
+        if (DistanceToPlayer <= AttackRange && bCanAttack)
+        {
+            AttackPlayer();
+        }
+        else
+        {
+            MoveToActor(PlayerPawn, 5.0f);
+        }
     }
     else if (DistanceToPlayer > StopChasingRadius)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Stop Chasing"));
         StopMovement();
     }
 }
 
 AEnemyAIController::AEnemyAIController()
 {
-	PrimaryActorTick.bCanEverTick = true; // Tick 활성화
+    PrimaryActorTick.bCanEverTick = true; // Tick 활성화
 }
 
+void AEnemyAIController::AttackPlayer()
+{
+    AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
+    if (EnemyCharacter && bCanAttack)
+    {
+        bIsAttacking = true;
+        EnemyCharacter->PlayAttackAnimation();
+
+        UE_LOG(LogTemp, Warning, TEXT("Enemy is attacking!"));
+
+        bCanAttack = false;
+        GetWorld()->GetTimerManager().SetTimer(AttackTimerHandle, this, &AEnemyAIController::ResetAttack, AttackCooldown, false);
+    }
+}
+
+void AEnemyAIController::ResetAttack()
+{
+    bCanAttack = true;
+    bIsAttacking = false;
+    UE_LOG(LogTemp, Warning, TEXT("Enemy attack reset, can attack again!"));
+}
