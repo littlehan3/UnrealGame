@@ -15,7 +15,7 @@ AEnemy::AEnemy()
 
     AIControllerClass = AEnemyAIController::StaticClass(); // AI 컨트롤러 설정
 
-    GetMesh()->SetAnimInstanceClass(UEnemyAnimInstance::StaticClass()); // 애님 인스턴스 설정
+    GetMesh()->SetAnimInstanceClass(UEnemyAnimInstance::StaticClass()); // 애님 인스턴스 설정으로 보장
 
     if (!AIControllerClass)
     {
@@ -146,8 +146,45 @@ void AEnemy::PlayAttackAnimation()
             {
                 UE_LOG(LogTemp, Warning, TEXT("Enemy is playing attack montage: %s"), *SelectedMontage->GetName());
 
-                AnimInstance->Montage_Play(SelectedMontage);
+                // 공격 몽타주 실행
+                float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+                if (PlayResult == 0.0f)
+                {
+                    UE_LOG(LogTemp, Error, TEXT("Montage_Play failed! Check slot settings."));
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
+                }
+                //공격 시 사운드 재생
+                if (AttackSound)
+                {
+                    UGameplayStatics::PlaySoundAtLocation(this, AttackSound, GetActorLocation());
+                }
+
+                // AI 이동 멈춤
+                AAIController* AICon = Cast<AAIController>(GetController());
+                if (AICon)
+                {
+                    AICon->StopMovement();
+                    UE_LOG(LogTemp, Warning, TEXT("Enemy stopped moving to attack!"));
+                }
+
+                // 공격 가능 상태 리셋을 애니메이션 끝날 때까지 지연
+                bCanAttack = false;
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("Selected Montage is NULL!"));
             }
         }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Enemy is already playing an animation!"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("No attack montages available!"));
     }
 }

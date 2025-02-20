@@ -41,16 +41,21 @@ public:
     ) override;
 
 private:
-    UPROPERTY(EditAnywhere, Category = "Effects")
+    UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* HitSound;
 
-    UPROPERTY(EditAnywhere, Category = "Effects")
+    UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* DieSound;
+
+    UPROPERTY(EditAnywhere, Category = "SoundEffects")
+    USoundBase* AttackSound;
 
     UPROPERTY(EditAnywhere, Category = "Combat")
     float Health = 100.0f;
 
     bool bIsDead = false;
+
+    bool bCanAttack = false; // 공격가능 상태 추적을 위한 변수
 
     void Die();
 
