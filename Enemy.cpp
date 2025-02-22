@@ -132,15 +132,15 @@ void AEnemy::PostInitializeComponents()
         });
 }
 
-void AEnemy::PlayAttackAnimation()
+void AEnemy::PlayNormalAttackAnimation()
 {
-    if (AttackMontages.Num() > 0)
+    if (NormalAttackMontages.Num() > 0)
     {
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance && !AnimInstance->IsAnyMontagePlaying())
         {
-            int32 RandomIndex = FMath::RandRange(0, AttackMontages.Num() - 1);
-            UAnimMontage* SelectedMontage = AttackMontages[RandomIndex];
+            int32 RandomIndex = FMath::RandRange(0, NormalAttackMontages.Num() - 1);
+            UAnimMontage* SelectedMontage = NormalAttackMontages[RandomIndex];
 
             if (SelectedMontage)
             {
@@ -157,9 +157,9 @@ void AEnemy::PlayAttackAnimation()
                     UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
                 }
                 //공격 시 사운드 재생
-                if (AttackSound)
+                if (NormalAttackSound)
                 {
-                    UGameplayStatics::PlaySoundAtLocation(this, AttackSound, GetActorLocation());
+                    UGameplayStatics::PlaySoundAtLocation(this, NormalAttackSound, GetActorLocation());
                 }
 
                 // AI 이동 멈춤
@@ -187,4 +187,65 @@ void AEnemy::PlayAttackAnimation()
     {
         UE_LOG(LogTemp, Error, TEXT("No attack montages available!"));
     }
+}
+
+void AEnemy::PlayStrongAttackAnimation()
+{
+    if (StrongAttackMontage)
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Enemy is performing  StrongAttack!"));
+            AnimInstance->Montage_Play(StrongAttackMontage, 1.0f);
+        }
+        if (StrongAttackSound)
+        {
+            UGameplayStatics::PlaySoundAtLocation(this, StrongAttackSound, GetActorLocation());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("StrongAttack montage is NULL!"));
+        }
+    }
+}
+
+void AEnemy::PlayDodgeAnimation(bool bDodgeLeft)
+{
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (!AnimInstance) return;
+
+    UAnimMontage* SelectedMontage = (bDodgeLeft) ? DodgeLeftMontage : DodgeRightMontage;
+
+    if (SelectedMontage && AnimInstance)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Enemy is dodging with montage: %s"), *SelectedMontage->GetName());
+        AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("Selected dodge montage is NULL!"));
+    }
+}
+float AEnemy::GetDodgeLeftDuration() const
+{
+    return (DodgeLeftMontage) ? DodgeLeftMontage->GetPlayLength() : 1.0f;
+}
+
+float AEnemy::GetDodgeRightDuration() const
+{
+    return (DodgeRightMontage) ? DodgeRightMontage->GetPlayLength() : 1.0f;
+}
+
+void AEnemy::PlayJumpAttackAnimation()
+{
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (!AnimInstance || !JumpAttackMontage) return;
+
+    AnimInstance->Montage_Play(JumpAttackMontage, 1.0f);
+}
+
+float AEnemy::GetJumpAttackDuration() const
+{
+    return (JumpAttackMontage) ? JumpAttackMontage->GetPlayLength() : 1.0f;
 }
