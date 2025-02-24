@@ -45,6 +45,7 @@ private:
     bool bCanStrongAttack = true; // 강공격 가능 여부
     bool bIsStrongAttacking = false; // 강공격 여부
     bool bIsJumpAttacking = false; // 점프 공격 여부
+    bool bIsAttacking = false; // 공격 진행중 여부
 
     int32 NormalAttackCount = 0; // 일반 공격 횟수 카운트
 
@@ -59,4 +60,5 @@ private:
     FTimerHandle NormalAttackTimerHandle; // 일반공격 쿨타임 타이머
     FTimerHandle DodgeTimerHandle; // 닷지 쿨타임 타이머
     FTimerHandle DodgeCooldownTimerHandle; // 닷지 쿨다운 타이머
+    FTimerHandle JumpAttackTimerHandle; // 점프공격 타이머
 };

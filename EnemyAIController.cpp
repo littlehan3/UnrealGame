@@ -75,13 +75,14 @@ void AEnemyAIController::Tick(float DeltaTime)
         }
         else
         {
-            MoveToActor(PlayerPawn, 5.0f); // 공격 범위 박이면 플레이어를 향해 이동
+            MoveToActor(PlayerPawn, 5.0f); // 공격 범위 밖이면 플레이어를 향해 이동
         }
     }
     else if (DistanceToPlayer > StopChasingRadius)
     {
         StopMovement(); // 감지 반경을 벗어나면 이동 중지
         bIsJumpAttacking = false; // 감지범위 밖으로 나가면 점프공격 다시 사용 가능
+        NormalAttackCount = 0;
     }
 }
 
@@ -95,6 +96,7 @@ void AEnemyAIController::NormalAttack()
     AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
     if (EnemyCharacter)
     {
+        bIsAttacking = true; // 공격 진행중
         EnemyCharacter->PlayNormalAttackAnimation();
         NormalAttackCount++; // 일반 공격 횟수 카운트 증가
         bCanAttack = false; // 공격 후 쿨다운 적용
@@ -106,6 +108,7 @@ void AEnemyAIController::ResetAttack()
 {
     bCanAttack = true; // 공격 쿨다운 코기화
     bIsStrongAttacking = false; // 강 공격 종료
+    bIsAttacking = false; // 공격 상태 종료
 }
 
 void AEnemyAIController::StrongAttack()
@@ -113,6 +116,7 @@ void AEnemyAIController::StrongAttack()
     AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
     if (EnemyCharacter)
     {
+        bIsAttacking = true; // 공격 진행중
         bIsStrongAttacking = true; // 강 공격 시작
         EnemyCharacter->PlayStrongAttackAnimation();
         NormalAttackCount = 0; // 일반 공격 카운트 초기화
@@ -123,7 +127,7 @@ void AEnemyAIController::StrongAttack()
 
 void AEnemyAIController::TryDodge()
 {
-    if (bIsDodging || !bCanDodge || !bCanAttack || !bIsStrongAttacking) return; // 닷지 중,닷지 불가상태, 공격상태면 실행되지 않도록 설정
+    if (bIsDodging || !bCanDodge || !bCanAttack || bIsAttacking) return; // 공격 진행 중엔 닷지 불가
 
     AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
     if (!EnemyCharacter) return;
@@ -163,7 +167,7 @@ void AEnemyAIController::JumpAttack()
 
     StopMovement(); 
 
-    // 루트모션이 적용된 애니메이션
+    // 점프 공격 타이머 전용 핸들 사용
     float JumpAttackDuration = EnemyCharacter->GetJumpAttackDuration();
-    GetWorld()->GetTimerManager().SetTimer(NormalAttackTimerHandle, this, &AEnemyAIController::ResetAttack, JumpAttackDuration, false);
+    GetWorld()->GetTimerManager().SetTimer(JumpAttackTimerHandle, this, &AEnemyAIController::ResetAttack, JumpAttackDuration, false);
 }
