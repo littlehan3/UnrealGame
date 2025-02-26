@@ -7,6 +7,8 @@
 #include "EnemyAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
+#include "BrainComponent.h" // AI 컨트롤러의 BrainComponent 사용을 위해 추가
+
 
 AEnemy::AEnemy()
 {
@@ -76,6 +78,11 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
         UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation());
     }
 
+    if (EnemyAnimInstance && HitReactionMontage) // 히트 시 애니메이션 재생
+    {
+        EnemyAnimInstance->Montage_Play(HitReactionMontage, 1.0f);
+    }
+
     if (Health <= 0.0f)
     {
         Die();
@@ -84,18 +91,127 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
     return DamageApplied;
 }
 
+
 void AEnemy::Die()
 {
-    if (bIsDead) return;  // 중복 실행 방지
+    if (bIsDead) return;
 
-    bIsDead = true;  // 사망 상태 변경
-    UE_LOG(LogTemp, Warning, TEXT("Enemy Died! Now in dead state."));
+    bIsDead = true;
+    StopActions();
 
-    if (DieSound)
+    // 사망 애니메이션 재생
+    if (EnemyAnimInstance && DeadMontage)
     {
-        UGameplayStatics::PlaySoundAtLocation(this, DieSound, GetActorLocation());
+        EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
+
+        // 해당 사망 애니메이션이 끝나기 직전에 사망 포즈를 고정하기 위한 타이머 설정
+        float DeathAnimDuration = DeadMontage->GetPlayLength();
+        GetWorld()->GetTimerManager().SetTimer(
+            DeathTimerHandle,
+            this,
+            &AEnemy::FreezeDeadPose,
+            DeathAnimDuration - 0.35f, // 애니메이션이 끝나기 N초 전에 멈춤 (애니메이션에 따라 상이하게 설정해야함)
+            false);
     }
+    else
+    {
+        // 사망 몽타주가 없으면 즉시 고정
+        FreezeDeadPose();
+    }
+
+    // AI 컨트롤러 중지
+    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    if (AICon)
+    {
+        AICon->StopAI();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("AIController is NULL! Can not stop AI."));
+    }
+
+    // 이동 비활성화
+    GetCharacterMovement()->DisableMovement();
+    GetCharacterMovement()->StopMovementImmediately();
+    SetActorTickEnabled(false); // AI Tick 중지
 }
+
+
+void AEnemy::StopActions()
+{
+    AAIController* AICon = Cast<AAIController>(GetController());
+    if (AICon)
+    {
+        AICon->StopMovement();
+
+        // BrainComponent가 nullptr이 아닌지 확인 후 호출
+        if (AICon->BrainComponent)
+        {
+            AICon->BrainComponent->StopLogic(TEXT("Enemy Died"));
+            UE_LOG(LogTemp, Warning, TEXT("BrainComponent logic stopped."));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("BrainComponent is NULL! AI logic not stopped."));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("AIController is NULL! AI behavior not stopped."));
+    }
+
+    // 모든 입력 및 이동 차단
+    GetCharacterMovement()->DisableMovement();
+    GetCharacterMovement()->StopMovementImmediately();
+
+    // 모든 공격 중지
+    if (EnemyAnimInstance)
+    {
+        EnemyAnimInstance->Montage_Stop(0.1f);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("All actions stopped for dead enemy."));
+}
+
+
+
+void AEnemy::FreezeDeadPose()
+{
+    if (!GetMesh() || !bIsDead) return;
+
+    UE_LOG(LogTemp, Warning, TEXT("%s Freezing DeadPose"), *GetName());
+
+    // 모든 애니메이션을 중지하고 현재 포즈 고정
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (AnimInstance)
+    {
+        // 재생 중인 몽타주 모두 중지
+        AnimInstance->Montage_Stop(0.0f);
+
+        // 사망 애니메이션의 마지막 프레임을 유지하도록 강제 (Idle상태로 돌아가지않게)
+        GetMesh()->bPauseAnims = true; // 애니메이션 정지
+        GetMesh()->bNoSkeletonUpdate = true; // 스켈레톤 업데이트 중지 (Transform 변화 방지)
+    }
+
+    // 추가 AI 액션 방지
+    AAIController* AIController = Cast<AAIController>(GetController());
+    if (AIController)
+    {
+        AIController->UnPossess();
+    }
+
+    // 모든 이동 비활성화 
+    GetCharacterMovement()->DisableMovement();
+    GetCharacterMovement()->StopMovementImmediately();
+
+    // 틱 비활성화
+    SetActorTickEnabled(false); // AI 전체 Tick 비활성화
+    GetMesh()->SetComponentTickEnabled(false); // 매쉬 Tick 비활성화
+
+    UE_LOG(LogTemp, Warning, TEXT("DeadPose Freezed. Enemy %s Maintaining DeadPose."), *GetName());
+}
+
+
 
 // 특정 조건을 만족해야 락온 가능
 bool AEnemy::CanBeLockedOn() const
@@ -196,17 +312,22 @@ void AEnemy::PlayStrongAttackAnimation()
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
-            UE_LOG(LogTemp, Warning, TEXT("Enemy is performing  StrongAttack!"));
+            UE_LOG(LogTemp, Warning, TEXT("Enemy is performing StrongAttack: %s"), *StrongAttackMontage->GetName());
             AnimInstance->Montage_Play(StrongAttackMontage, 1.0f);
         }
-        if (StrongAttackSound)
-        {
-            UGameplayStatics::PlaySoundAtLocation(this, StrongAttackSound, GetActorLocation());
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("StrongAttack montage is NULL!"));
-        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("StrongAttack montage is NULL! Check BP_Enemy."));
+    }
+
+    if (StrongAttackSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, StrongAttackSound, GetActorLocation());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("StrongAttack sound is NULL! Check BP_Enemy."));
     }
 }
 

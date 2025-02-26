@@ -4,6 +4,9 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/RotatingMovementComponent.h"
 #include "Enemy.h"
+#include "EnemyAnimInstance.h"
+#include "BrainComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 void AEnemyAIController::BeginPlay()
 {
@@ -37,10 +40,17 @@ void AEnemyAIController::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    if (!PlayerPawn) // 플레이어 NULL 체크
+    {
+        PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+        if (!PlayerPawn) return;
+    }
+
+    if (!GetPawn()) return; // AI 캐릭터가 NULL이면 실행 중지
+    if (bIsDodging) return;
+
     // 플레이어와 AI의 거리 계산
     float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
-
-    if (!PlayerPawn || !GetPawn() || bIsDodging) return;
 
     // AI가 항상 플레이어를 바라보도록 설정
     FRotator LookAtRotation = (PlayerPawn->GetActorLocation() - GetPawn()->GetActorLocation()).Rotation();
@@ -48,43 +58,43 @@ void AEnemyAIController::Tick(float DeltaTime)
     LookAtRotation.Roll = 0.0f;
     GetPawn()->SetActorRotation(FMath::RInterpTo(GetPawn()->GetActorRotation(), LookAtRotation, DeltaTime, 5.0f));
 
-
     if (DistanceToPlayer <= DetectionRadius)
     {
-        if (!bIsJumpAttacking) // 공격 범위 내에 플레이어가 진입시
+        if (!bIsJumpAttacking)
         {
-            JumpAttack(); // 점프공격
+            JumpAttack();
         }
-        else if (DistanceToPlayer <= AttackRange && bCanAttack) // 공격 범위 내에 플레이어가 있고 공격 가능상태라면
+        else if (DistanceToPlayer <= AttackRange && bCanAttack)
         {
-            if (NormalAttackCount == 3) // 일반 공격을 3번 했다면
+            if (NormalAttackCount == 3)
             {
-                StrongAttack(); // 강 공격
+                StrongAttack();
             }
             else
             {
-                if (FMath::FRand() <= DodgeChance && bCanDodge) // 지정된 닷지 확률과 닷지가능 상태라면 
+                if (FMath::FRand() <= DodgeChance && bCanDodge)
                 {
-                    TryDodge(); // 닷지
+                    TryDodge();
                 }
                 else
                 {
-                    NormalAttack(); // 일반 공격
+                    NormalAttack();
                 }
             }
         }
         else
         {
-            MoveToActor(PlayerPawn, 5.0f); // 공격 범위 밖이면 플레이어를 향해 이동
+            MoveToActor(PlayerPawn, 5.0f);
         }
     }
     else if (DistanceToPlayer > StopChasingRadius)
     {
-        StopMovement(); // 감지 반경을 벗어나면 이동 중지
-        bIsJumpAttacking = false; // 감지범위 밖으로 나가면 점프공격 다시 사용 가능
+        StopMovement();
+        bIsJumpAttacking = false;
         NormalAttackCount = 0;
     }
 }
+
 
 AEnemyAIController::AEnemyAIController()
 {
@@ -171,3 +181,44 @@ void AEnemyAIController::JumpAttack()
     float JumpAttackDuration = EnemyCharacter->GetJumpAttackDuration();
     GetWorld()->GetTimerManager().SetTimer(JumpAttackTimerHandle, this, &AEnemyAIController::ResetAttack, JumpAttackDuration, false);
 }
+
+void AEnemyAIController::StopAI()
+{
+    AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
+    if (!EnemyCharacter) return;
+
+    // 먼저 모든 이동 중지
+    StopMovement();
+    UE_LOG(LogTemp, Warning, TEXT("%s AI Movement Stopped"), *GetPawn()->GetName());
+
+    // BrainComponent가 존재하는지 확인 후 사용
+    if (BrainComponent)
+    {
+        if (BrainComponent->IsRunning())
+        {
+            BrainComponent->StopLogic(TEXT("Enemy Died"));
+            UE_LOG(LogTemp, Warning, TEXT("%s AI BrainLogic Stopped"), *GetPawn()->GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s AI BrainLogic Already Stopped"), *GetPawn()->GetName());
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s BrainComponent is NULL, Skip Logic Stop"), *GetPawn()->GetName());
+    }
+
+    // AI를 완전히 분리하기 위해 폰 UnPossess
+    APawn* ControlledPawn = GetPawn();
+    if (ControlledPawn)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("AI Controller is UnPossessing %s"), *ControlledPawn->GetName());
+        UnPossess();
+
+        // 추가 안전 조치: 캐릭터의 충돌 및 틱 비활성화
+        ControlledPawn->SetActorEnableCollision(false);
+        ControlledPawn->SetActorTickEnabled(false);
+    }
+}
+

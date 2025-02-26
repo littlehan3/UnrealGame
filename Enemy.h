@@ -40,6 +40,8 @@ protected:
     virtual void BeginPlay() override;
 
 public:
+    bool bIsDead = false;
+
     virtual float TakeDamage(
         float DamageAmount,
         struct FDamageEvent const& DamageEvent,
@@ -66,13 +68,15 @@ private:
     UPROPERTY(EditAnywhere, Category = "Combat")
     float Health = 100.0f;
 
-    bool bIsDead = false;
-
     bool bCanAttack = false; // 공격가능 상태 추적을 위한 변수
 
     void Die();
 
     void SetUpAI(); // AI가 NavMesh에서 이동할 수 있도록 설정
+
+    void StopActions(); // 모든 동작 정지
+    void FreezeDeadPose(); // 사망 후 물리 효과 활성화(시체 유지)
+    FTimerHandle DeathTimerHandle; // 사망 애니메이션 완료 처리를 위한 타이머
 
     // 애니메이션 인스턴스 추가
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
@@ -98,5 +102,11 @@ private:
 
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* JumpAttackMontage; // 점프 공격 애니메이션
+
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* HitReactionMontage; // 피격 애니메이션
+
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* DeadMontage; // 사망 애니메이션
 
 };

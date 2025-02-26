@@ -67,7 +67,7 @@ void AKnife::EnableHitBox(int32 ComboIndex)
     UE_LOG(LogTemp, Warning, TEXT("Knife HitBox Enabled! Damage: %f | ComboIndex: %d"), CurrentDamage, ComboIndex);
 
     // 본인과의 충돌 무시
-	AActor* OwnerActor = GetOwner();
+    AActor* OwnerActor = GetOwner();
     if (OwnerActor)
     {
         HitBox->MoveIgnoreActors.Add(OwnerActor); // 본인의 캐릭터와 충돌하지 않도록 설정
@@ -75,7 +75,7 @@ void AKnife::EnableHitBox(int32 ComboIndex)
     }
     else
     {
-		UE_LOG(LogTemp, Error, TEXT("Error: Knife has no owner!"));
+        UE_LOG(LogTemp, Error, TEXT("Error: Knife has no owner!"));
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Knife HitBox Enabled! Damage: %f"), CurrentDamage);
@@ -122,6 +122,3 @@ void AKnife::OnHitBoxOverlap(
 
     DisableHitBox();
 }
-
-
-

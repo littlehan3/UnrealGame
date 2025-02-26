@@ -315,13 +315,13 @@ void AMainCharacter::Tick(float DeltaTime)
 
     if (bIsLockedOn && LockOnComponent->IsLockedOn())
     {
-        UE_LOG(LogTemp, Warning, TEXT("Maintaing Lock-On % s"), *LockOnComponent->GetLockedTarget()->GetName());
+        //UE_LOG(LogTemp, Warning, TEXT("Maintaing Lock-On % s"), *LockOnComponent->GetLockedTarget()->GetName());
         LockOnComponent->UpdateLockOnRotation(DeltaTime);
     }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Lock-On Released!"));
-    }
+    //else
+    //{
+        //UE_LOG(LogTemp, Warning, TEXT("Lock-On Released!"));
+    //}
 }
 
 void AMainCharacter::HandleJump()
@@ -473,7 +473,7 @@ void AMainCharacter::ToggleLockOn()
     {
         LockOnComponent->UnlockTarget();
         bIsLockedOn = false;
-        UE_LOG(LogTemp, Warning, TEXT("Lock-On Released"));
+        //UE_LOG(LogTemp, Warning, TEXT("Lock-On Released"));
     }
     else
     {
@@ -593,6 +593,18 @@ void AMainCharacter::OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupte
 
     // 콤보 종료 후 자동 회전 다시 활성화
     GetCharacterMovement()->bOrientRotationToMovement = true;
+
+    // 공격 종료 시 히트박스 강제 비활성화
+    if (LeftKnife)
+    {
+        LeftKnife->DisableHitBox();
+        UE_LOG(LogTemp, Warning, TEXT("LeftKnife HitBox Disabled at Montage End!"));
+    }
+    if (RightKnife)
+    {
+        RightKnife->DisableHitBox();
+        UE_LOG(LogTemp, Warning, TEXT("RightKnife HitBox Disabled at Montage End!"));
+    }
 
     // 마지막 공격 방향을 유지 (이전 방향을 덮어쓰지 않도록)
     if (!LastAttackDirection.IsNearlyZero())

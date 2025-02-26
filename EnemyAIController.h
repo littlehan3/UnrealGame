@@ -6,6 +6,7 @@
 #include "EnemyAIController.generated.h"
 
 class AEnemy; //포인터만 사용하므로 전방선언
+class AEnemyAnimInstance;
 
 UCLASS()
 class LOCOMOTION_API AEnemyAIController : public AAIController
@@ -14,6 +15,8 @@ class LOCOMOTION_API AEnemyAIController : public AAIController
 
 public:
     AEnemyAIController();
+
+    void StopAI(); // AI 동작중지
 
 protected:
     virtual void BeginPlay() override;

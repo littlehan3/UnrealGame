@@ -24,6 +24,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Animation")
     bool GetIsInAir() const { return bIsInAir; }
 
+    UFUNCTION(BlueprintCallable, Category = "Animation")
+    bool GetIsDead() const { return bIsDead; }
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+    bool bIsDead;
+
 protected:
     virtual void NativeInitializeAnimation() override;
     virtual void NativeUpdateAnimation(float DeltaTime) override;
@@ -41,7 +47,7 @@ private:
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
     bool bIsInAir;
 
-    // 방향 계산 함수 (블루프린트 전용함수. Build에 추가후 사용)
+    // 방향 계산 함수 
     float CalculateDirection(const FVector& Velocity, const FRotator& BaseRotation);
 
 };

@@ -34,7 +34,12 @@ void ULockOnSystem::FindAndLockTarget()
     {
         AEnemy* Candidate = *It;
         if (Candidate == Cast<ACharacter>(OwnerCharacter)) continue;
-        if (!Candidate->CanBeLockedOn()) continue;
+        
+        // 사망한 적은 후보에서 제외
+        if (!IsTargetValid(Candidate))
+        {
+            continue;
+        }
 
         FVector TargetLocation = Candidate->GetActorLocation();
 
@@ -91,6 +96,19 @@ bool ULockOnSystem::IsLockedOn() const
     return LockedTarget != nullptr;
 }
 
+bool ULockOnSystem::IsTargetValid(AActor* Target) const
+{
+    if (!Target) return false;
+
+    AEnemy* EnemyTarget = Cast<AEnemy>(Target);
+    if (EnemyTarget && EnemyTarget->bIsDead) // 락온 대상이 nullptr이거나 AEnemy가 bIsDead 상태인 경우
+    {
+        return false; // 락온 해제
+    }
+
+    return true;
+}
+
 AActor* ULockOnSystem::GetLockedTarget() const
 {
     return LockedTarget;
@@ -117,6 +135,14 @@ void ULockOnSystem::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
     if (!OwnerCharacter || !LockedTarget) return;
+
+    // 락온 대상이 죽었거나 사라졌으면 락온 해제
+    if (!IsTargetValid(LockedTarget))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Lock-On Target is no longer valid! Lock-On Released."));
+        UnlockTarget();
+        return;
+    }
 
     float Distance = FVector::Dist(OwnerCharacter->GetActorLocation(), LockedTarget->GetActorLocation());
 	float LockOnReleaseRadius = LockOnRadius * 1.2f; // 락온 사거리의 1.2배만큼 멀어질 시 락온 해제

@@ -8,6 +8,7 @@ UEnemyAnimInstance::UEnemyAnimInstance()
     Speed = 0.0f;
     Direction = 0.0f;
     bIsInAir = false;
+    bIsDead = false;
 }
 
 void UEnemyAnimInstance::NativeInitializeAnimation()
@@ -27,15 +28,18 @@ void UEnemyAnimInstance::NativeUpdateAnimation(float DeltaTime)
 
     if (!EnemyCharacter) return;
 
-    // 이동 속도 업데이트
+    if (bIsDead)
+    {
+        Speed = 0.0f; // 사망시 이동속도를 0으로 고정
+        return; // 사망시 애니메이션 업데이트 중지
+    }
+
     Speed = EnemyCharacter->GetVelocity().Size();
-
-    // 공중 상태 확인
     bIsInAir = EnemyCharacter->GetCharacterMovement()->IsFalling();
-
-    // 직접 구현한 CalculateDirection() 함수 사용
     Direction = CalculateDirection(EnemyCharacter->GetVelocity(), EnemyCharacter->GetActorRotation());
 }
+
+
 
 // 이동 방향 계산 함수 구현
 float UEnemyAnimInstance::CalculateDirection(const FVector& Velocity, const FRotator& BaseRotation)

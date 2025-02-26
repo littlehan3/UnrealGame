@@ -41,7 +41,7 @@ void ARifle::Fire()
 
     if (!bCanFire)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Cannot Fire Yet! FireRate Cooldown Active."));
+        //UE_LOG(LogTemp, Warning, TEXT("Cannot Fire Yet! FireRate Cooldown Active."));
         return;
     }
 

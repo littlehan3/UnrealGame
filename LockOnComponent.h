@@ -23,6 +23,8 @@ public:
     void FindAndLockTarget();
     void UnlockTarget();
     bool IsLockedOn() const;
+    bool IsTargetValid(AActor* Target) const; // 락온 대상이 유효한지 확인
+
     AActor* GetLockedTarget() const;
 
     void UpdateLockOnRotation(float DeltaTime);  // 락온 유지용 회전 업데이트 추가
