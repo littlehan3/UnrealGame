@@ -4,7 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "Knife.generated.h"
 
-// 전방 선언 (헤더 파일에서 직접 include하지 않음)
+// 전방 선언
 class AMainCharacter;
 
 UENUM(BlueprintType)
@@ -32,7 +32,7 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UStaticMeshComponent* KnifeMesh;
 
-    // 히트박스 (블루프린트에서 수정 가능하도록 설정)
+    // 히트박스
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Components")
     class UBoxComponent* HitBox;
 
@@ -52,6 +52,12 @@ public:
 
 private:
     float CurrentDamage;
+
+    // 레이캐스트 공격
+    void RaycastAttack();
+
+    // 레이캐스트로 감지된 적을 저장
+    AActor* RaycastHitActor;
 
     // 히트 판정 함수 (충돌 감지)
     UFUNCTION()

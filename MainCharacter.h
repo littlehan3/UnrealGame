@@ -131,6 +131,9 @@ private:
 
     FVector LastAttackDirection;
 
+    void KickRaycastAttack();
+    AActor* KickRaycastHitActor; // 발차기 레이캐스트 적용 대상
+
     UPROPERTY()
     class ULockOnSystem* LockOnComponent; //락온 컴포넌트 변수추가
 

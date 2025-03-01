@@ -632,18 +632,53 @@ void AMainCharacter::EnableKickHitBox()
 {
     if (KickHitBox)
     {
-        KickHitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        KickHitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly); // 히트박스 충돌 활성화
         UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Enabled!"));
     }
-}
 
+  
+    KickRaycastAttack(); // 레이캐스트 실행
+}
 
 void AMainCharacter::DisableKickHitBox()
 {
     if (KickHitBox)
     {
-        KickHitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Disabled!"));
+        KickHitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 히트박스 충돌 비활성화
+        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Disabled!")); 
+    }
+
+    KickRaycastHitActor = nullptr; // 다음 공격을 위해 레이캐스트 적중 객체 초기화
+}
+
+void AMainCharacter::KickRaycastAttack()
+{
+    AActor* OwnerActor = this;
+    if (!OwnerActor) return;
+
+    FVector StartLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 20.0f); // 뒤에 있는 적 히트 방지를 위해 캐릭터로부터 해당거리 만큼 떨어진 곳에서 레이캐스트 시작
+    FVector EndLocation = StartLocation + (OwnerActor->GetActorForwardVector() * 150.0f); // 해당 길이만큼 레이캐스트 발사
+
+    FHitResult HitResult;
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(OwnerActor); // 자기 자신과의 충돌 무시
+
+    bool bRaycastHit = GetWorld()->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, ECC_Visibility, Params); // 레이캐스트 실행(적이 감지되면 bRaycastHit = true)
+
+    FColor LineColor = bRaycastHit ? FColor::Red : FColor::Green; // 디버그 시각화(빨간색 = 적중, 초록색 = 미적중)
+    DrawDebugLine(GetWorld(), StartLocation, EndLocation, LineColor, false, 1.0f, 0, 3.0f); // 앞쪽으로만 공격 범위 표시
+   
+    if (bRaycastHit)
+    {
+        KickRaycastHitActor = HitResult.GetActor(); // 레이캐스트에서 감지된 적 저장
+        UE_LOG(LogTemp, Warning, TEXT("Kick Raycast Hit: %s"), *KickRaycastHitActor->GetName());
+
+        // 충돌한 지점을 빨간색 구체로 시각화
+        DrawDebugSphere(GetWorld(), HitResult.ImpactPoint, 10.0f, 12, FColor::Red, false, 1.0f);
+    }
+    else
+    {
+        KickRaycastHitActor = nullptr; // 적중 실패 시 초기화
     }
 }
 
@@ -655,24 +690,25 @@ void AMainCharacter::OnKickHitBoxOverlap(
     bool bFromSweep,
     const FHitResult& SweepResult)
 {
-    // 자기 자신과 충돌한 경우 무시
-    if (!OtherActor || OtherActor == this || OtherComp == KickHitBox)
+    if (!OtherActor || OtherActor == this || OtherComp == KickHitBox) // 자기 자신이거나 잘못된 객체일 경우 무시
     {
         return;
     }
 
-    float KickDamage = 35.0f;
-
-    // ApplyDamage 호출
+    // 히트박스에 감지되었으나 레이캐스트에서 감지되지 않으면 무효
+    if (OtherActor != KickRaycastHitActor)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Detected, But No Raycast Hit: %s"), *OtherActor->GetName());
+        return;
+    }
+    
+    float KickDamage = 35.0f; // 발차기 데미지 적용
     UGameplayStatics::ApplyDamage(OtherActor, KickDamage, nullptr, this, nullptr);
 
     UE_LOG(LogTemp, Warning, TEXT("Kick Hit! Applied %f Damage to %s"), KickDamage, *OtherActor->GetName());
 
-    DisableKickHitBox();
+    DisableKickHitBox(); // 히트박스 비활성화
 }
-
-
-
 
 void AMainCharacter::PlayComboAttackAnimation1()
 {

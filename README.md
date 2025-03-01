@@ -1,8 +1,11 @@
-## 2025-02-11 깃허브 게시
+## 2025-02-11 깃허브 게시 및 문재해결 및 개선 기록 노트
 
-### 1. 2025년 1월 1일 부터 2월 11일까지의 문제해결 및 개선 기록 노트입니다.
--https://drive.google.com/file/d/1RFKRTb3lq0Ar7vT-4p2fAWsxuOvCUs_L/view
 -매달 1일 마다 업데이트되며 README 에는 결과적으로 구현한 기능들만 정리했습니다.
+### 1. 2025년 1월 1일~2월 11일까지의 노트입니다.
+-https://drive.google.com/file/d/1RFKRTb3lq0Ar7vT-4p2fAWsxuOvCUs_L/view
+
+### 2. 2025년 2월 12일~3월 1일까지의 노트입니다.
+https://drive.google.com/file/d/1fYCEe1V121CrIwy1mXYSQLtxwdE07ne7/view?usp=drive_link
 
 ## 2025-02-13 업데이트 내용
 
