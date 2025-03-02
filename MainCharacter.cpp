@@ -326,6 +326,12 @@ void AMainCharacter::Tick(float DeltaTime)
 
 void AMainCharacter::HandleJump()
 {
+    // 공격 중이면 점프 불가
+    if (bIsAttacking)
+    {
+        return;
+    }
+
     if (!bIsJumping)
     {
         Jump();
@@ -418,6 +424,8 @@ void AMainCharacter::ReloadWeapon()
 
 void AMainCharacter::EnterAimMode()
 {
+
+
     if (!bIsAiming)
     {
         bIsAiming = true;
@@ -492,7 +500,7 @@ void AMainCharacter::ToggleLockOn()
 
 void AMainCharacter::ComboAttack()
 {
-    if (bIsAttacking) return; // 이미 공격 중이면 실행 안 함
+    if (bIsAttacking || !CanPerformAction()) return; // 이미 공격중이거나 점프중이면 공격 불가
 
     bIsAttacking = true; // 공격 상태 변경
 
@@ -795,6 +803,113 @@ void AMainCharacter::PlayComboAttackAnimation5()
     }
 }
 
+bool AMainCharacter::CanPerformAction() const
+{
+    return !(bIsJumping || bIsInDoubleJump);
+}
+
+void AMainCharacter::Dash()
+{
+    if (!bCanDash) // 대쉬 쿨타임 상태면 취소
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: Cooldown Active"));
+        return;
+    }
+
+    if (bIsDashing) // 이미 대쉬중이라면 취소
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: Already Dashing"));
+        return;
+    }
+
+    FVector DashDirection = GetCharacterMovement()->GetLastInputVector().GetSafeNormal(); // 캐릭터가 마지막으로 입력한 이동 방향 가져오기
+
+    
+    if (DashDirection.IsNearlyZero())  // 입력방향이 없으면 대쉬 취소
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: No Valid Input Direction"));
+        return;
+    }
+
+    UAnimMontage* DashMontage = nullptr; // 사용할 대쉬 애니메이션 몽타주 변수 초기화
+
+    const FRotator ControlRotation = Controller->GetControlRotation(); // 컨트롤러 방향을 기준으로 대쉬 방향을 결정
+    const FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f); // 요 값만 유지하여 평면 회전 적용
+
+    FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X); // 컨트롤러 앞쪽 방향을 벡터로 가져옴
+    FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y); // 컨트롤러 오른쪽 방향을 벡터로 가져옴
+
+    float ForwardDot = FVector::DotProduct(DashDirection, ForwardDirection); // 플레이어 입력 방향과 컨트롤러 방향의 내적(dot product) 계산
+    float RightDot = FVector::DotProduct(DashDirection, RightDirection); // 플레이어 입력 방향과 컨트롤러 방향의 내적(dot product) 계산
+
+    // 내적 값을 비교하여 큰 값에 따라 대쉬 애니메이션 선택 (WASD 대응)
+    if (FMath::Abs(ForwardDot) > FMath::Abs(RightDot)) // 앞뒤 이동 방향이 좌우 이동 방향보다 크다면
+    {
+        DashMontage = (ForwardDot > 0) ? ForwardDashMontage : BackwardDashMontage; // ForwardDot이 양수면 앞, 음수면 뒤 방향으로 대시 애니메이션 선택
+    }
+    else // 좌우 이동 방향이 전후 이동 방향보다 크다면
+    {
+        DashMontage = (RightDot > 0) ? RightDashMontage : LeftDashMontage; // RightDot이 양수면 오른쪽, 음수면 왼쪽 방향으로 대시 애니메이션 선택
+    }
+
+    if (DashMontage == nullptr) // 대쉬 애니메이션이 없다면 대쉬 취소
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: No Montage Found"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Dash Started! Direction: %s"), *DashDirection.ToString()); // 대쉬 실행 로그
+
+    bIsDashing = true; // 대쉬 상태 트루
+    bCanDash = false; // 대쉬중이므로 대시 불가
+
+    PlayDashMontage(DashMontage); // 해당 대쉬 애니메이션 실행
+
+    GetWorldTimerManager().SetTimer(DashCooldownTimerHandle, this, &AMainCharacter::ResetDashCooldown, DashCooldown, false); // 대시 쿨타임 타이머 설정
+
+}
+
+void AMainCharacter::PlayDashMontage(UAnimMontage* DashMontage)
+{
+    if (!DashMontage) // 애니메이션이 없으면 실행 취소
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlayDashMontage Failed: DashMontage is NULL"));
+        return;
+    }
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 캐릭터와 애님 인스턴스를 가져옴
+    if (!AnimInstance) // 애님 인스턴스가 없으면 실행 취소
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlayDashMontage Failed: AnimInstance is NULL"));
+        return;
+    }
+
+    float MontageDuration = AnimInstance->Montage_Play(DashMontage, 1.0f); // 대쉬 애니메이션 실행
+    if (MontageDuration <= 0.0f)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *DashMontage->GetName());
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *DashMontage->GetName()); // 애니메이션 실행 성공 로그
+
+    // 애니메이션 종료 시 대시 상태를 초기화하도록 콜백 함수 설정
+    FOnMontageEnded EndDelegate;
+    EndDelegate.BindUObject(this, &AMainCharacter::ResetDash);
+    AnimInstance->Montage_SetEndDelegate(EndDelegate, DashMontage);
+}
+
+void AMainCharacter::ResetDash(UAnimMontage* Montage, bool bInterrupted) // 대쉬 상태 초기화
+{
+    bIsDashing = false;
+    UE_LOG(LogTemp, Warning, TEXT("Dash Reset! Ready for Next Dash."));
+}
+
+void AMainCharacter::ResetDashCooldown() // 대쉬 쿨타임 해제
+{
+    bCanDash = true;
+    UE_LOG(LogTemp, Warning, TEXT("Dash Cooldown Over: Ready to Dash Again."));
+}
 
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
@@ -811,5 +926,6 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &AMainCharacter::FireWeapon);
         EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Triggered, this, &AMainCharacter::ReloadWeapon);
         EnhancedInputComponent->BindAction(LockOnAction, ETriggerEvent::Triggered, this, &AMainCharacter::ToggleLockOn);
+        EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Triggered, this, &AMainCharacter::Dash);
     }
 }

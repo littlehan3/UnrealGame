@@ -175,7 +175,7 @@ void AEnemyAIController::JumpAttack()
 
     EnemyCharacter->PlayJumpAttackAnimation(); // 점프 공격 애니메이션 실행
 
-    StopMovement(); 
+    StopMovement();
 
     // 점프 공격 타이머 전용 핸들 사용
     float JumpAttackDuration = EnemyCharacter->GetJumpAttackDuration();
@@ -221,4 +221,3 @@ void AEnemyAIController::StopAI()
         ControlledPawn->SetActorTickEnabled(false);
     }
 }
-

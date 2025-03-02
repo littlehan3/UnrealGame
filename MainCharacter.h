@@ -94,6 +94,9 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     class UInputAction* LockOnAction; // 락온 인풋액션 추가
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    class UInputAction* DashAction; // 대쉬 인풋액션 추가
+
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
     bool bIsAiming;
@@ -179,4 +182,34 @@ private:
     // 발차기 히트박스 변수 추가
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
     class UBoxComponent* KickHitBox;
+
+    bool CanPerformAction() const;
+
+    // 대시 애니메이션
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash Animations", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* ForwardDashMontage;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash Animations", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* LeftDashMontage;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash Animations", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* RightDashMontage;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash Animations", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* BackwardDashMontage;
+
+    // 대시 쿨타임
+    UPROPERTY(EditDefaultsOnly, Category = "Dash")
+    float DashCooldown = 1.0f; // 지정된 시간만큼 쿨타임
+
+    bool bIsDashing = false; // 대시중인지 여부
+    bool bCanDash = true; // 대시 가능 여부
+
+    FTimerHandle DashCooldownTimerHandle; // 대시 쿨타임 타이머 핸들
+
+    void Dash(); // 대시 실행 함수
+    void PlayDashMontage(UAnimMontage* DashMontage); // 대시 애니메이션 재생 함수
+    void ResetDash(UAnimMontage* Montage, bool bInterrupted); // 대시 상태 초기화 함수
+    void ResetDashCooldown(); // 대시 쿨타임 해제 함수
+
 };
