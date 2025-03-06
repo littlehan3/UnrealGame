@@ -50,7 +50,7 @@ protected:
     void EnableKickHitBox();
     void DisableKickHitBox();
 
-	void ToggleLockOn(); // 락온 토글 함수 추가
+    void ToggleLockOn(); // 락온 토글 함수 추가
 
     UFUNCTION()
     void OnKickHitBoxOverlap(

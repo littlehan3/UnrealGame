@@ -284,34 +284,22 @@ void AMainCharacter::Tick(float DeltaTime)
         if (PlayerController)
         {
             FRotator ControlRotation = PlayerController->GetControlRotation();
-            AimPitch = ControlRotation.Pitch;
+            AimPitch = FMath::Clamp(FMath::UnwindDegrees(ControlRotation.Pitch), -90.0f, 90.0f);
 
-            // AimPitch 값을 -180~180 범위로 변환
-            AimPitch = FMath::UnwindDegrees(AimPitch);
-
-            // Clamp로 AimPitch 제한 (-90도에서 90도 사이)
-            AimPitch = FMath::Clamp(AimPitch, -90.0f, 90.0f);
-
-            // 디버깅 메시지 출력
-            if (PlayerController->IsInputKeyDown(EKeys::RightMouseButton))
+            if (!bIsDashing && GetCharacterMovement()->IsMovingOnGround())
             {
-                if (GEngine)
+                FVector LastInput = GetCharacterMovement()->GetLastInputVector();
+
+                if (!LastInput.IsNearlyZero())
                 {
-                    GEngine->AddOnScreenDebugMessage(
-                        -1,
-                        0.1f,
-                        FColor::Yellow,
-                        FString::Printf(TEXT("Clamped AimPitch: %.2f"), AimPitch)
-                    );
+                    FRotator NewRotation(0.0f, ControlRotation.Yaw, 0.0f);
+                    SetActorRotation(NewRotation);
                 }
             }
         }
-
-        // 캐릭터의 회전 유지
-        FRotator ControlRotation = GetControlRotation();
-        FRotator NewRotation(0.0f, ControlRotation.Yaw, 0.0f);
-        SetActorRotation(NewRotation);
     }
+
+
 
     if (bIsLockedOn && LockOnComponent->IsLockedOn())
     {
@@ -424,8 +412,6 @@ void AMainCharacter::ReloadWeapon()
 
 void AMainCharacter::EnterAimMode()
 {
-
-
     if (!bIsAiming)
     {
         bIsAiming = true;
@@ -500,7 +486,7 @@ void AMainCharacter::ToggleLockOn()
 
 void AMainCharacter::ComboAttack()
 {
-    if (bIsAttacking || !CanPerformAction()) return; // 이미 공격중이거나 점프중이면 공격 불가
+    if (bIsAttacking || !CanPerformAction() || bIsDashing) return; // 이미 공격중이거나 점프중이면 공격 불가
 
     bIsAttacking = true; // 공격 상태 변경
 
@@ -644,7 +630,7 @@ void AMainCharacter::EnableKickHitBox()
         UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Enabled!"));
     }
 
-  
+
     KickRaycastAttack(); // 레이캐스트 실행
 }
 
@@ -653,7 +639,7 @@ void AMainCharacter::DisableKickHitBox()
     if (KickHitBox)
     {
         KickHitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 히트박스 충돌 비활성화
-        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Disabled!")); 
+        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Disabled!"));
     }
 
     KickRaycastHitActor = nullptr; // 다음 공격을 위해 레이캐스트 적중 객체 초기화
@@ -675,7 +661,7 @@ void AMainCharacter::KickRaycastAttack()
 
     FColor LineColor = bRaycastHit ? FColor::Red : FColor::Green; // 디버그 시각화(빨간색 = 적중, 초록색 = 미적중)
     DrawDebugLine(GetWorld(), StartLocation, EndLocation, LineColor, false, 1.0f, 0, 3.0f); // 앞쪽으로만 공격 범위 표시
-   
+
     if (bRaycastHit)
     {
         KickRaycastHitActor = HitResult.GetActor(); // 레이캐스트에서 감지된 적 저장
@@ -709,7 +695,7 @@ void AMainCharacter::OnKickHitBoxOverlap(
         UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Detected, But No Raycast Hit: %s"), *OtherActor->GetName());
         return;
     }
-    
+
     float KickDamage = 35.0f; // 발차기 데미지 적용
     UGameplayStatics::ApplyDamage(OtherActor, KickDamage, nullptr, this, nullptr);
 
@@ -810,64 +796,65 @@ bool AMainCharacter::CanPerformAction() const
 
 void AMainCharacter::Dash()
 {
-    if (!bCanDash) // 대쉬 쿨타임 상태면 취소
+    if (!bCanDash || bIsDashing || !Controller) return;
+
+    FVector DashDirection = FVector::ZeroVector;
+
+    const FRotator ControlRotation = Controller->GetControlRotation();
+    const FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f);
+
+    FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+    FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+    FVector InputVector = GetCharacterMovement()->GetLastInputVector();
+
+    if (bIsAiming)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: Cooldown Active"));
-        return;
+        if (InputVector.IsNearlyZero())
+        {
+            DashDirection = ForwardDirection;
+        }
+        else
+        {
+            DashDirection = (-ForwardDirection * InputVector.X + -RightDirection * InputVector.Y).GetSafeNormal();
+        }
+    }
+    else
+    {
+        if (InputVector.IsNearlyZero())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: No Valid Input Direction"));
+            return;
+        }
+
+        DashDirection = InputVector.GetSafeNormal();
     }
 
-    if (bIsDashing) // 이미 대쉬중이라면 취소
+    UAnimMontage* DashMontage = nullptr;
+
+    float ForwardDot = FVector::DotProduct(DashDirection, ForwardDirection);
+    float RightDot = FVector::DotProduct(DashDirection, RightDirection);
+
+    if (FMath::Abs(ForwardDot) > FMath::Abs(RightDot))
     {
-        UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: Already Dashing"));
-        return;
+        DashMontage = (ForwardDot > 0) ? ForwardDashMontage : BackwardDashMontage;
+    }
+    else
+    {
+        DashMontage = (RightDot > 0) ? RightDashMontage : LeftDashMontage;
     }
 
-    FVector DashDirection = GetCharacterMovement()->GetLastInputVector().GetSafeNormal(); // 캐릭터가 마지막으로 입력한 이동 방향 가져오기
+    if (!DashMontage) return;
 
-    
-    if (DashDirection.IsNearlyZero())  // 입력방향이 없으면 대쉬 취소
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: No Valid Input Direction"));
-        return;
-    }
+    bIsDashing = true;
+    bCanDash = false;
 
-    UAnimMontage* DashMontage = nullptr; // 사용할 대쉬 애니메이션 몽타주 변수 초기화
+    SetActorRotation(DashDirection.Rotation());
+    PlayDashMontage(DashMontage);
 
-    const FRotator ControlRotation = Controller->GetControlRotation(); // 컨트롤러 방향을 기준으로 대쉬 방향을 결정
-    const FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f); // 요 값만 유지하여 평면 회전 적용
-
-    FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X); // 컨트롤러 앞쪽 방향을 벡터로 가져옴
-    FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y); // 컨트롤러 오른쪽 방향을 벡터로 가져옴
-
-    float ForwardDot = FVector::DotProduct(DashDirection, ForwardDirection); // 플레이어 입력 방향과 컨트롤러 방향의 내적(dot product) 계산
-    float RightDot = FVector::DotProduct(DashDirection, RightDirection); // 플레이어 입력 방향과 컨트롤러 방향의 내적(dot product) 계산
-
-    // 내적 값을 비교하여 큰 값에 따라 대쉬 애니메이션 선택 (WASD 대응)
-    if (FMath::Abs(ForwardDot) > FMath::Abs(RightDot)) // 앞뒤 이동 방향이 좌우 이동 방향보다 크다면
-    {
-        DashMontage = (ForwardDot > 0) ? ForwardDashMontage : BackwardDashMontage; // ForwardDot이 양수면 앞, 음수면 뒤 방향으로 대시 애니메이션 선택
-    }
-    else // 좌우 이동 방향이 전후 이동 방향보다 크다면
-    {
-        DashMontage = (RightDot > 0) ? RightDashMontage : LeftDashMontage; // RightDot이 양수면 오른쪽, 음수면 왼쪽 방향으로 대시 애니메이션 선택
-    }
-
-    if (DashMontage == nullptr) // 대쉬 애니메이션이 없다면 대쉬 취소
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: No Montage Found"));
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Dash Started! Direction: %s"), *DashDirection.ToString()); // 대쉬 실행 로그
-
-    bIsDashing = true; // 대쉬 상태 트루
-    bCanDash = false; // 대쉬중이므로 대시 불가
-
-    PlayDashMontage(DashMontage); // 해당 대쉬 애니메이션 실행
-
-    GetWorldTimerManager().SetTimer(DashCooldownTimerHandle, this, &AMainCharacter::ResetDashCooldown, DashCooldown, false); // 대시 쿨타임 타이머 설정
-
+    GetWorldTimerManager().SetTimer(DashCooldownTimerHandle, this, &AMainCharacter::ResetDashCooldown, DashCooldown, false);
 }
+
 
 void AMainCharacter::PlayDashMontage(UAnimMontage* DashMontage)
 {
