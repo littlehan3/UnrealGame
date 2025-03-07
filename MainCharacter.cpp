@@ -799,62 +799,100 @@ void AMainCharacter::Dash()
     if (!bCanDash || bIsDashing || !Controller) return;
 
     FVector DashDirection = FVector::ZeroVector;
-
-    const FRotator ControlRotation = Controller->GetControlRotation();
-    const FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f);
-
-    FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-    FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
     FVector InputVector = GetCharacterMovement()->GetLastInputVector();
+
+    // 이동 입력이 있다면 그대로 대시 방향으로 설정
+    if (!InputVector.IsNearlyZero())
+    {
+        DashDirection = InputVector.GetSafeNormal();
+    }
+    else
+    {
+        // 입력이 없으면 현재 캐릭터가 바라보는 방향으로 대시
+        DashDirection = GetActorForwardVector();
+    }
+
+    // 에임 모드 여부에 따라 ForwardVector, RightVector를 다르게 설정
+    FVector ForwardVector;
+    FVector RightVector;
 
     if (bIsAiming)
     {
-        if (InputVector.IsNearlyZero())
-        {
-            DashDirection = ForwardDirection;
-        }
-        else
-        {
-            DashDirection = (-ForwardDirection * InputVector.X + -RightDirection * InputVector.Y).GetSafeNormal();
-        }
+        // 에임 모드일 때: 캐릭터의 현재 회전을 기준으로 설정
+        ForwardVector = GetActorForwardVector();
+        RightVector = GetActorRightVector();
     }
     else
     {
-        if (InputVector.IsNearlyZero())
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Dash Canceled: No Valid Input Direction"));
-            return;
-        }
+        // 일반 모드일 때: 컨트롤러(카메라) 방향을 기준으로 설정
+        FRotator ControlRotation = Controller->GetControlRotation();
+        FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f);
 
-        DashDirection = InputVector.GetSafeNormal();
+        ForwardVector = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+        RightVector = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
     }
+
+    DashDirection.Normalize();
+
+    float ForwardDot = FVector::DotProduct(DashDirection, ForwardVector);
+    float RightDot = FVector::DotProduct(DashDirection, RightVector);
+
+    // 방향을 확인하는 로그 
+    UE_LOG(LogTemp, Warning, TEXT("DashDirection: %s"), *DashDirection.ToString());
+    UE_LOG(LogTemp, Warning, TEXT("ForwardVector: %s, RightVector: %s"), *ForwardVector.ToString(), *RightVector.ToString());
+    UE_LOG(LogTemp, Warning, TEXT("ForwardDot: %f, RightDot: %f"), ForwardDot, RightDot);
 
     UAnimMontage* DashMontage = nullptr;
 
-    float ForwardDot = FVector::DotProduct(DashDirection, ForwardDirection);
-    float RightDot = FVector::DotProduct(DashDirection, RightDirection);
-
-    if (FMath::Abs(ForwardDot) > FMath::Abs(RightDot))
+    // 대쉬 판별 로직 
+    if (ForwardDot > 0.8f) //앞으로 대쉬
     {
-        DashMontage = (ForwardDot > 0) ? ForwardDashMontage : BackwardDashMontage;
+        DashMontage = ForwardDashMontage;
+        UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: ForwardDashMontage"));
     }
-    else
+	else if (ForwardDot > 0.6f && RightDot > 0.6f) //오른쪽 앞으로 대쉬
     {
-        DashMontage = (RightDot > 0) ? RightDashMontage : LeftDashMontage;
+        DashMontage = RightDashMontage;
+        UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: RightDashMontage (Front-Right)"));
+    }
+	else if (ForwardDot > 0.6f && RightDot < -0.6f) //왼쪽 앞으로 대쉬
+    {
+        DashMontage = LeftDashMontage;
+        UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: LeftDashMontage (Front-Left)"));
+    }
+	else if (ForwardDot < -0.3f) //뒤로 대쉬
+    {
+        DashMontage = BackwardDashMontage;
+        UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: BackwardDashMontage"));
+    }
+	else if (RightDot > 0.5f) //오른쪽으로 대쉬
+    {
+        DashMontage = RightDashMontage;
+        UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: RightDashMontage"));
+    }
+	else if (RightDot < -0.5f) //왼쪽으로 대쉬
+    {
+        DashMontage = LeftDashMontage;
+        UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: LeftDashMontage"));
     }
 
-    if (!DashMontage) return;
+    if (!DashMontage)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Dash Failed: No valid DashMontage found!"));
+        return;
+    }
 
+    // 회전 적용 (DotProduct 계산 이후에 적용으로 정확한 방향 비교)
+    SetActorRotation(DashDirection.Rotation());
+
+    // 대시 실행
     bIsDashing = true;
     bCanDash = false;
 
-    SetActorRotation(DashDirection.Rotation());
     PlayDashMontage(DashMontage);
 
     GetWorldTimerManager().SetTimer(DashCooldownTimerHandle, this, &AMainCharacter::ResetDashCooldown, DashCooldown, false);
 }
-
 
 void AMainCharacter::PlayDashMontage(UAnimMontage* DashMontage)
 {
@@ -871,10 +909,10 @@ void AMainCharacter::PlayDashMontage(UAnimMontage* DashMontage)
         return;
     }
 
-    float MontageDuration = AnimInstance->Montage_Play(DashMontage, 1.0f); // 대쉬 애니메이션 실행
+	float MontageDuration = AnimInstance->Montage_Play(DashMontage, 1.2f); // 대쉬 애니메이션 실행 (1.2배속)
     if (MontageDuration <= 0.0f)
     {
-        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *DashMontage->GetName());
+		UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *DashMontage->GetName()); // 애니메이션 실행 실패 로그
         return;
     }
 
