@@ -192,8 +192,6 @@ private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
     class UBoxComponent* KickHitBox;
 
-    bool CanPerformAction() const;
-
     // 대시 애니메이션
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash Animations", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* ForwardDashMontage;
@@ -232,4 +230,8 @@ private:
 
 	void ZoomIn();
 	void ZoomOut();
+
+	bool bIsLanding = false; // 착지 상태 여부
+	FTimerHandle LandingTimerHandle; // 착지 타이머 핸들
+	void ResetLandingState(); // 착지 상태 초기화 함수
 };

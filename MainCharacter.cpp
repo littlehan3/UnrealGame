@@ -286,11 +286,19 @@ void AMainCharacter::Tick(float DeltaTime)
             FRotator ControlRotation = PlayerController->GetControlRotation();
             AimPitch = FMath::Clamp(FMath::UnwindDegrees(ControlRotation.Pitch), -90.0f, 90.0f);
 
-            if (!bIsDashing && GetCharacterMovement()->IsMovingOnGround())
+            // 대쉬 중이거나 점프중이거나 착지중이라면 회전하지 않음
+            if (!bIsDashing && !bIsJumping && !bIsInDoubleJump && !bIsLanding)
             {
                 FVector LastInput = GetCharacterMovement()->GetLastInputVector();
 
+                // 이동 중이면 카메라 방향을 따라 캐릭터 회전   
                 if (!LastInput.IsNearlyZero())
+                {
+                    FRotator NewRotation(0.0f, ControlRotation.Yaw, 0.0f);
+                    SetActorRotation(NewRotation);
+                }
+                // 이동 입력이 없더라도 카메라 방향을 따라 캐릭터 회전
+                else
                 {
                     FRotator NewRotation(0.0f, ControlRotation.Yaw, 0.0f);
                     SetActorRotation(NewRotation);
@@ -298,11 +306,11 @@ void AMainCharacter::Tick(float DeltaTime)
             }
         }
 
-		CurrentZoom = FMath::FInterpTo(CurrentZoom, AimZoom, DeltaTime, ZoomInterpSpeed); // 에임모드줌 보간
+        CurrentZoom = FMath::FInterpTo(CurrentZoom, AimZoom, DeltaTime, ZoomInterpSpeed); // 에임모드줌 보간
     }
     else
     {
-		CurrentZoom = FMath::FInterpTo(CurrentZoom, TargetZoom, DeltaTime, ZoomInterpSpeed); // 기본모드줌 보간
+        CurrentZoom = FMath::FInterpTo(CurrentZoom, TargetZoom, DeltaTime, ZoomInterpSpeed); // 기본모드줌 보간
     }
 
     CameraBoom->TargetArmLength = CurrentZoom; // 줌 값 적용
@@ -359,6 +367,12 @@ void AMainCharacter::Landed(const FHitResult& Hit)
 {
     Super::Landed(Hit);
 
+    // 착지 상태 활성화
+    bIsLanding = true;
+
+    // 착지 후 설정한 시간 뒤에 상태 초기화
+    GetWorldTimerManager().SetTimer(LandingTimerHandle, this, &AMainCharacter::ResetLandingState, 0.5f, false);
+
     // 착지 시 중력을 원래대로 복구
     GetCharacterMovement()->GravityScale = 1.0f;
 
@@ -366,6 +380,12 @@ void AMainCharacter::Landed(const FHitResult& Hit)
     GetCharacterMovement()->FallingLateralFriction = 0.5f;  // 기본값 복구
 
     UE_LOG(LogTemp, Warning, TEXT("Landed! Gravity & Falling Speed Reset. Character Rotation: %s"), *GetActorRotation().ToString());
+}
+
+void AMainCharacter::ResetLandingState()
+{
+    bIsLanding = false;
+    UE_LOG(LogTemp, Warning, TEXT("Landing State Reset!"));
 }
 
 void AMainCharacter::Move(const FInputActionValue& Value)
@@ -447,7 +467,6 @@ void AMainCharacter::ExitAimMode()
 
         AttachRifleToBack(); // 다시 등에 이동
         AttachKnifeToHand();
-
     }
 }
 
@@ -493,10 +512,10 @@ void AMainCharacter::ToggleLockOn()
 
 void AMainCharacter::ComboAttack()
 {
-    if (bIsAttacking || !CanPerformAction() || bIsDashing) return; // 이미 공격중이거나 점프중이면 공격 불가
+    if (bIsAttacking || bIsJumping || bIsInDoubleJump || bIsDashing) return; // 이미 공격중이거나 점프중이면 공격 불가
 
-	GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
-	GetWorldTimerManager().SetTimer(ComboCooldownHandle, this, &AMainCharacter::ResetCombo, ComboCooldownTime, false); // 콤보 쿨다운 타이머 설정
+    GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
+    GetWorldTimerManager().SetTimer(ComboCooldownHandle, this, &AMainCharacter::ResetCombo, ComboCooldownTime, false); // 콤보 쿨다운 타이머 설정
 
     bIsAttacking = true; // 공격 상태 변경
 
@@ -586,15 +605,15 @@ void AMainCharacter::ComboAttack()
 
 void AMainCharacter::ResetComboTimer()
 {
-	ResetCombo(); // 콤보 초기화
+    ResetCombo(); // 콤보 초기화
 }
 // 콤보 리셋 함수 (공격 후 콤보 상태 초기화)
 void AMainCharacter::ResetCombo()
 {
     bIsAttacking = false; // 공격 상태 초기화
-	ComboIndex = 0; // 콤보 인덱스 초기화
+    ComboIndex = 0; // 콤보 인덱스 초기화
 
-	GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
+    GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
     UE_LOG(LogTemp, Warning, TEXT("Combo Reset!"));
 }
 
@@ -806,14 +825,9 @@ void AMainCharacter::PlayComboAttackAnimation5()
     }
 }
 
-bool AMainCharacter::CanPerformAction() const
-{
-    return !(bIsJumping || bIsInDoubleJump);
-}
-
 void AMainCharacter::Dash()
 {
-    if (!bCanDash || bIsDashing || !Controller) return;
+    if (!bCanDash || bIsDashing || !Controller || bIsJumping || bIsInDoubleJump) return;
 
     FVector DashDirection = FVector::ZeroVector;
     FVector InputVector = GetCharacterMovement()->GetLastInputVector();
@@ -867,27 +881,27 @@ void AMainCharacter::Dash()
         DashMontage = ForwardDashMontage;
         UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: ForwardDashMontage"));
     }
-	else if (ForwardDot > 0.6f && RightDot > 0.6f) //오른쪽 앞으로 대쉬
+    else if (ForwardDot > 0.6f && RightDot > 0.6f) //오른쪽 앞으로 대쉬
     {
         DashMontage = RightDashMontage;
         UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: RightDashMontage (Front-Right)"));
     }
-	else if (ForwardDot > 0.6f && RightDot < -0.6f) //왼쪽 앞으로 대쉬
+    else if (ForwardDot > 0.6f && RightDot < -0.6f) //왼쪽 앞으로 대쉬
     {
         DashMontage = LeftDashMontage;
         UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: LeftDashMontage (Front-Left)"));
     }
-	else if (ForwardDot < -0.3f) //뒤로 대쉬
+    else if (ForwardDot < -0.3f) //뒤로 대쉬
     {
         DashMontage = BackwardDashMontage;
         UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: BackwardDashMontage"));
     }
-	else if (RightDot > 0.5f) //오른쪽으로 대쉬
+    else if (RightDot > 0.5f) //오른쪽으로 대쉬
     {
         DashMontage = RightDashMontage;
         UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: RightDashMontage"));
     }
-	else if (RightDot < -0.5f) //왼쪽으로 대쉬
+    else if (RightDot < -0.5f) //왼쪽으로 대쉬
     {
         DashMontage = LeftDashMontage;
         UE_LOG(LogTemp, Warning, TEXT("Selected Dash Montage: LeftDashMontage"));
@@ -926,10 +940,10 @@ void AMainCharacter::PlayDashMontage(UAnimMontage* DashMontage)
         return;
     }
 
-	float MontageDuration = AnimInstance->Montage_Play(DashMontage, 1.2f); // 대쉬 애니메이션 실행 (1.2배속)
+    float MontageDuration = AnimInstance->Montage_Play(DashMontage, 1.2f); // 대쉬 애니메이션 실행 (1.2배속)
     if (MontageDuration <= 0.0f)
     {
-		UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *DashMontage->GetName()); // 애니메이션 실행 실패 로그
+        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *DashMontage->GetName()); // 애니메이션 실행 실패 로그
         return;
     }
 
@@ -944,6 +958,19 @@ void AMainCharacter::PlayDashMontage(UAnimMontage* DashMontage)
 void AMainCharacter::ResetDash(UAnimMontage* Montage, bool bInterrupted) // 대쉬 상태 초기화
 {
     bIsDashing = false;
+    // 대시 종료 시 에임 모드 상태라면 컨트롤러 방향을 바라보게 조정
+    if (bIsAiming)
+    {
+        if (Controller)
+        {
+            FRotator ControlRotation = Controller->GetControlRotation();
+            FRotator NewRotation(0.0f, ControlRotation.Yaw, 0.0f);
+            SetActorRotation(NewRotation);
+
+            UE_LOG(LogTemp, Warning, TEXT("Dash Reset! Character Rotated to Aim Direction."));
+        }
+    }
+
     UE_LOG(LogTemp, Warning, TEXT("Dash Reset! Ready for Next Dash."));
 }
 
