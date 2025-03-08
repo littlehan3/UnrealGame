@@ -97,6 +97,12 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     class UInputAction* DashAction; // 대쉬 인풋액션 추가
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    class UInputAction* ZoomInAction; // 줌인 인풋액션 추가
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    class UInputAction* ZoomOutAction; // 줌아웃 인풋액션 추가
+
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
     bool bIsAiming;
@@ -132,7 +138,10 @@ private:
     UFUNCTION()
     void OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-    FVector LastAttackDirection;
+	FVector LastAttackDirection; // 마지막 공격 방향
+	FTimerHandle ComboResetTimerHandle; // 근접 콤보 초기화 타이머
+	float ComboResetTime = 1.5f; // 근접 콤보 초기화 시간
+	void ResetComboTimer(); // 콤보 초기화 타이머 함수
 
     void KickRaycastAttack();
     AActor* KickRaycastHitActor; // 발차기 레이캐스트 적용 대상
@@ -212,4 +221,15 @@ private:
     void ResetDash(UAnimMontage* Montage, bool bInterrupted); // 대시 상태 초기화 함수
     void ResetDashCooldown(); // 대시 쿨타임 해제 함수
 
+    float DefaultZoom = 250.0f; // 기본 줌 거리
+	float AimZoom = 100.0f; // 에임 줌 거리
+	float MinZoom = 125.0f; // 최소 줌 거리 (확대)
+	float MaxZoom = 500.0f; // 최대 줌 거리 (축소)
+    float ZoomStep = 20.0f; // 줌 조정 단위 
+    float ZoomInterpSpeed = 10.0f; // 줌 변경 속도 (보간)
+    float CurrentZoom = DefaultZoom;  // 현재 줌 값
+    float TargetZoom = DefaultZoom;   // 목표 줌 값 (보간 대상)
+
+	void ZoomIn();
+	void ZoomOut();
 };

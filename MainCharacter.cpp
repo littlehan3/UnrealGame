@@ -297,9 +297,15 @@ void AMainCharacter::Tick(float DeltaTime)
                 }
             }
         }
+
+		CurrentZoom = FMath::FInterpTo(CurrentZoom, AimZoom, DeltaTime, ZoomInterpSpeed); // 에임모드줌 보간
+    }
+    else
+    {
+		CurrentZoom = FMath::FInterpTo(CurrentZoom, TargetZoom, DeltaTime, ZoomInterpSpeed); // 기본모드줌 보간
     }
 
-
+    CameraBoom->TargetArmLength = CurrentZoom; // 줌 값 적용
 
     if (bIsLockedOn && LockOnComponent->IsLockedOn())
     {
@@ -314,8 +320,8 @@ void AMainCharacter::Tick(float DeltaTime)
 
 void AMainCharacter::HandleJump()
 {
-    // 공격 중이면 점프 불가
-    if (bIsAttacking)
+    // 공격 중이거나 대쉬중에 점프 불가
+    if (bIsAttacking || bIsDashing)
     {
         return;
     }
@@ -359,9 +365,8 @@ void AMainCharacter::Landed(const FHitResult& Hit)
     // 낙하 속도 원래대로 복구
     GetCharacterMovement()->FallingLateralFriction = 0.5f;  // 기본값 복구
 
-    UE_LOG(LogTemp, Warning, TEXT("Landed! Gravity & Falling Speed Reset"));
+    UE_LOG(LogTemp, Warning, TEXT("Landed! Gravity & Falling Speed Reset. Character Rotation: %s"), *GetActorRotation().ToString());
 }
-
 
 void AMainCharacter::Move(const FInputActionValue& Value)
 {
@@ -415,11 +420,12 @@ void AMainCharacter::EnterAimMode()
     if (!bIsAiming)
     {
         bIsAiming = true;
+        TargetZoom = AimZoom; // 에임 모드 진입 시 즉시 줌 변경
         UE_LOG(LogTemp, Warning, TEXT("Entered Aim Mode"));
+        CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
+
         AttachRifleToHand(); // 손으로 이동
         AttachKnifeToBack();
-        CameraBoom->TargetArmLength = 100.0f;
-        CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
 
         if (bIsLockedOn)  // 사격 모드 진입 시 락온 자동 해제
         {
@@ -435,11 +441,12 @@ void AMainCharacter::ExitAimMode()
     if (bIsAiming)
     {
         bIsAiming = false;
+        TargetZoom = DefaultZoom; // 기본 줌 값으로 복귀
         UE_LOG(LogTemp, Warning, TEXT("Exited Aim Mode"));
+        CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
+
         AttachRifleToBack(); // 다시 등에 이동
         AttachKnifeToHand();
-        CameraBoom->TargetArmLength = 250.0f;
-        CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
 
     }
 }
@@ -487,6 +494,9 @@ void AMainCharacter::ToggleLockOn()
 void AMainCharacter::ComboAttack()
 {
     if (bIsAttacking || !CanPerformAction() || bIsDashing) return; // 이미 공격중이거나 점프중이면 공격 불가
+
+	GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
+	GetWorldTimerManager().SetTimer(ComboCooldownHandle, this, &AMainCharacter::ResetCombo, ComboCooldownTime, false); // 콤보 쿨다운 타이머 설정
 
     bIsAttacking = true; // 공격 상태 변경
 
@@ -574,11 +584,18 @@ void AMainCharacter::ComboAttack()
     ComboIndex = (ComboIndex + 1) % 5;
 }
 
-
+void AMainCharacter::ResetComboTimer()
+{
+	ResetCombo(); // 콤보 초기화
+}
 // 콤보 리셋 함수 (공격 후 콤보 상태 초기화)
 void AMainCharacter::ResetCombo()
 {
     bIsAttacking = false; // 공격 상태 초기화
+	ComboIndex = 0; // 콤보 인덱스 초기화
+
+	GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
+    UE_LOG(LogTemp, Warning, TEXT("Combo Reset!"));
 }
 
 void AMainCharacter::OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -936,6 +953,23 @@ void AMainCharacter::ResetDashCooldown() // 대쉬 쿨타임 해제
     UE_LOG(LogTemp, Warning, TEXT("Dash Cooldown Over: Ready to Dash Again."));
 }
 
+void AMainCharacter::ZoomIn()
+{
+    if (bIsAiming) return; // 에임 모드일 때는 줌 불가능
+
+    TargetZoom = FMath::Clamp(TargetZoom - ZoomStep, MinZoom, MaxZoom);
+    UE_LOG(LogTemp, Warning, TEXT("Zoom In: %f"), CurrentZoom);
+}
+
+void AMainCharacter::ZoomOut()
+{
+    if (bIsAiming) return; // 에임 모드일 때는 줌 불가능
+
+    TargetZoom = FMath::Clamp(TargetZoom + ZoomStep, MinZoom, MaxZoom);
+    UE_LOG(LogTemp, Warning, TEXT("Zoom Out: %f"), CurrentZoom);
+}
+
+
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -952,5 +986,7 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Triggered, this, &AMainCharacter::ReloadWeapon);
         EnhancedInputComponent->BindAction(LockOnAction, ETriggerEvent::Triggered, this, &AMainCharacter::ToggleLockOn);
         EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Triggered, this, &AMainCharacter::Dash);
+        EnhancedInputComponent->BindAction(ZoomInAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomIn);
+        EnhancedInputComponent->BindAction(ZoomOutAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomOut);
     }
 }
