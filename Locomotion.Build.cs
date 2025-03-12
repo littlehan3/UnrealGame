@@ -17,7 +17,8 @@ public class Locomotion : ModuleRules
             "AIModule",
             "GameplayTasks",
             "NavigationSystem", // 네비게이션 시스템 모듈 추가
-            "AnimGraphRuntime" // 애니메이션 그래프 런타임 모듈 추가
+            "AnimGraphRuntime", // 애니메이션 그래프 런타임 모듈 추가
+            "Niagara" // 나이아가라 모듈 추가
         });
 
         PrivateDependencyModuleNames.AddRange(new string[] { });

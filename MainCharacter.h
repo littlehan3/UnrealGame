@@ -103,6 +103,8 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     class UInputAction* ZoomOutAction; // 줌아웃 인풋액션 추가
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    class UInputAction* Skill1Action; // 스킬1 인풋액션 추가
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
     bool bIsAiming;
@@ -123,16 +125,13 @@ private:
     UPROPERTY()
     AKnife* RightKnife;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animations", meta = (AllowPrivateAccess = "true"))
     int32 ComboIndex = 0;  // 콤보 단계
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animations", meta = (AllowPrivateAccess = "true"))
     bool bIsAttacking = false;  // 공격중인지 여부
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animations", meta = (AllowPrivateAccess = "true"))
     FTimerHandle ComboCooldownHandle; //콤보 쿨다운 타이머
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animations", meta = (AllowPrivateAccess = "true"))
     float ComboCooldownTime = 2.0f; //각 콤보 간 딜레이 시간
 
     UFUNCTION()
@@ -205,10 +204,10 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash Animations", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* BackwardDashMontage;
 
-    // 대시 쿨타임
-    UPROPERTY(EditDefaultsOnly, Category = "Dash")
-    float DashCooldown = 1.0f; // 지정된 시간만큼 쿨타임
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill1 Animation", meta = (AllowPrivateAccess = "true"))
+	UAnimMontage* Skill1AnimMontage; // 스킬1 애니메이션 추가
 
+    float DashCooldown = 1.0f; // 지정된 시간만큼 쿨타임
     bool bIsDashing = false; // 대시중인지 여부
     bool bCanDash = true; // 대시 가능 여부
 
@@ -234,4 +233,14 @@ private:
 	bool bIsLanding = false; // 착지 상태 여부
 	FTimerHandle LandingTimerHandle; // 착지 타이머 핸들
 	void ResetLandingState(); // 착지 상태 초기화 함수
+
+	void Skill1(); // 스킬 사용 함수 추가
+	void PlaySkill1Montage(UAnimMontage* Skill1Montage); // 스킬1 애니메이션 재생 함수
+	FTimerHandle Skill1CooldownTimerHandle; // 스킬1 쿨다운 타이머 핸들
+	void ResetSkill1(UAnimMontage*Montage, bool bInterrupted); // 스킬1 상태 초기화 함수
+	void ResetSkill1Cooldown(); // 스킬1 쿨다운 해제 함수
+
+	float Skill1Cooldown = 5.0f; // 스킬1 쿨다운 시간
+	bool bIsUsingSkill1 = false; // 스킬1 사용중인지 여부
+	bool bCanUseSkill1 = true; // 스킬1 사용 가능 여부
 };

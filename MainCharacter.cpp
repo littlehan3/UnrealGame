@@ -996,6 +996,61 @@ void AMainCharacter::ZoomOut()
     UE_LOG(LogTemp, Warning, TEXT("Zoom Out: %f"), CurrentZoom);
 }
 
+void AMainCharacter::Skill1()
+{
+	if (bIsUsingSkill1) return; // 스킬 사용 중일 때는 스킬 사용 불가
+	if (!bCanUseSkill1) return; // 스킬 쿨다운 중일 때는 스킬 사용 불가
+    
+    bIsUsingSkill1 = true;
+    bCanUseSkill1 = false; // 스킬 사용 중이므로 쿨다운 시작
+
+    PlaySkill1Montage(Skill1AnimMontage);
+
+    GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
+}
+
+void AMainCharacter::PlaySkill1Montage(UAnimMontage* Skill1Montage)
+{
+    if (!Skill1Montage) // 애니메이션이 없으면 실행 취소
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlaySkill1Montage Failed: SkillMontage is NULL"));
+        return;
+    }
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 캐릭터와 애님 인스턴스를 가져옴
+    if (!AnimInstance) // 애님 인스턴스가 없으면 실행 취소
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlaySkillMontage Failed: AnimInstance is NULL"));
+        return;
+    }
+
+    float MontageDuration = AnimInstance->Montage_Play(Skill1Montage, 1.0f); // 스킬 애니메이션 실행
+    if (MontageDuration <= 0.0f)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *Skill1Montage->GetName()); // 애니메이션 실행 실패 로그
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill1Montage->GetName()); // 애니메이션 실행 성공 로그
+
+    // 애니메이션 종료 시 대시 상태를 초기화하도록 콜백 함수 설정
+    FOnMontageEnded EndDelegate;
+    EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill1);
+    AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill1Montage);
+}
+
+void AMainCharacter::ResetSkill1(UAnimMontage* Montage, bool bInterrupted)
+{
+	bIsUsingSkill1 = false;
+	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false);
+	UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Started!"));
+}
+
+void AMainCharacter::ResetSkill1Cooldown()
+{
+    bCanUseSkill1 = true;
+	UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Over! Ready to Use Skill1 Again."));
+}
 
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
@@ -1015,5 +1070,6 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Triggered, this, &AMainCharacter::Dash);
         EnhancedInputComponent->BindAction(ZoomInAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomIn);
         EnhancedInputComponent->BindAction(ZoomOutAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomOut);
+        EnhancedInputComponent->BindAction(Skill1Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill1);
     }
 }
