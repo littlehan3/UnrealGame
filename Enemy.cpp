@@ -173,8 +173,6 @@ void AEnemy::StopActions()
     UE_LOG(LogTemp, Warning, TEXT("All actions stopped for dead enemy."));
 }
 
-
-
 void AEnemy::FreezeDeadPose()
 {
     if (!GetMesh() || !bIsDead) return;
@@ -211,9 +209,7 @@ void AEnemy::FreezeDeadPose()
     UE_LOG(LogTemp, Warning, TEXT("DeadPose Freezed. Enemy %s Maintaining DeadPose."), *GetName());
 }
 
-
-
-// 특정 조건을 만족해야 락온 가능
+// 락온 가능
 bool AEnemy::CanBeLockedOn() const
 {
     // 특정 체력 이하일 때만 락온 등 확장  
@@ -369,4 +365,87 @@ void AEnemy::PlayJumpAttackAnimation()
 float AEnemy::GetJumpAttackDuration() const
 {
     return (JumpAttackMontage) ? JumpAttackMontage->GetPlayLength() : 1.0f;
+}
+
+void AEnemy::EnterInAirStunState(float Duration)
+{
+    if (bIsDead) return;
+    UE_LOG(LogTemp, Warning, TEXT("Entering InAirStunState..."));
+
+    // AI 멈추기 (바로 이동 정지하지 않고, 스턴 종료 시점에서 다시 활성화)
+    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    if (AICon)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Stopping AI manually..."));
+        AICon->StopMovement();
+    }
+
+    // 적을 위로 띄우기 (LaunchCharacter 먼저 실행)
+    FVector LaunchDirection = FVector(0.0f, 0.0f, 1.0f); // 위쪽 방향
+    float LaunchStrength = 1000.0f; // 충분히 강한 힘 적용
+    LaunchCharacter(LaunchDirection * LaunchStrength, true, true);
+
+    UE_LOG(LogTemp, Warning, TEXT("Enemy %s launched upwards! Current Location: %s"), *GetName(), *GetActorLocation().ToString());
+
+    // 일정 시간 후 중력 제거 (즉시 0으로 만들면 착지가 방해될 수 있음)
+    FTimerHandle GravityDisableHandle;
+    GetWorld()->GetTimerManager().SetTimer(
+        GravityDisableHandle,
+        [this]()
+        {
+            GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+            GetCharacterMovement()->GravityScale = 0.0f;
+            GetCharacterMovement()->Velocity = FVector::ZeroVector; // 위치 고정
+            UE_LOG(LogTemp, Warning, TEXT("Enemy %s gravity disabled, now floating!"), *GetName());
+        },
+        0.3f, // 0.3초 후 중력 제거
+        false
+    );
+
+    // 스턴 애니메이션 실행
+    if (EnemyAnimInstance && InAirStunMontage)
+    {
+        EnemyAnimInstance->Montage_Play(InAirStunMontage, 1.0f);
+    }
+
+    // 일정 시간이 지나면 원래 상태로 복귀
+    GetWorld()->GetTimerManager().SetTimer(
+        StunTimerHandle,
+        this,
+        &AEnemy::ExitInAirStunState,
+        Duration,
+        false
+    );
+
+    UE_LOG(LogTemp, Warning, TEXT("Enemy %s is now stunned for %f seconds!"), *GetName(), Duration);
+}
+
+void AEnemy::ExitInAirStunState()
+{
+    if (bIsDead) return;
+    UE_LOG(LogTemp, Warning, TEXT("Exiting InAirStunState..."));
+
+    // 중력 복구 및 낙하 상태로 변경
+    GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+    GetCharacterMovement()->GravityScale = 1.5f; // 조금 더 빠르게 낙하
+
+    // AI 이동 다시 활성화
+    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    if (AICon)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Reactivating AI movement..."));
+        GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
+        GetCharacterMovement()->SetDefaultMovementMode();
+
+        // 다시 이동 시작
+        AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+    }
+
+    // 애니메이션 정지
+    if (EnemyAnimInstance)
+    {
+        EnemyAnimInstance->Montage_Stop(0.1f);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Enemy %s has recovered from stun and resumed AI behavior!"), *GetName());
 }

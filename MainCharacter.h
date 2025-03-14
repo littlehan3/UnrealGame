@@ -243,4 +243,10 @@ private:
 	float Skill1Cooldown = 5.0f; // 스킬1 쿨다운 시간
 	bool bIsUsingSkill1 = false; // 스킬1 사용중인지 여부
 	bool bCanUseSkill1 = true; // 스킬1 사용 가능 여부
+
+	float SkillRange = 500.0f; // 스킬 범위
+	FTimerHandle SkillEffectTimerHandle; // 스킬 효과 타이머 핸들
+
+	void DrawSkill1Range(); // 스킬1 범위 표시 함수
+	void ApplySkill1Effect(); // 스킬1 효과 적용 함수
 };

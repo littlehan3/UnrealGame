@@ -36,6 +36,8 @@ public:
     void PlayJumpAttackAnimation(); // 점프 공격 애니메이션 실행 함수
     float GetJumpAttackDuration() const; // 점프 공격 몽타주 길이 반환
 
+    void EnterInAirStunState(float Duration); // 공중 스턴 상태 진입
+
 protected:
     virtual void BeginPlay() override;
 
@@ -65,7 +67,6 @@ private:
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* DodgeSound;
 
-    UPROPERTY(EditAnywhere, Category = "Combat")
     float Health = 100.0f;
 
     bool bCanAttack = false; // 공격가능 상태 추적을 위한 변수
@@ -109,4 +110,9 @@ private:
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DeadMontage; // 사망 애니메이션
 
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* InAirStunMontage; // 공중스턴 애니메이션
+
+	void ExitInAirStunState(); // 공중 스턴 상태 해제
+	FTimerHandle StunTimerHandle; // 스턴 상태 해제를 위한 타이머
 };

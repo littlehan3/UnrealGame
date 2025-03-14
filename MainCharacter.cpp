@@ -10,6 +10,7 @@
 #include "Rifle.h"
 #include "Knife.h"
 #include "LockOnComponent.h"
+#include "Enemy.h" // Enemy 헤더 추가
 #include "Kismet/GameplayStatics.h"
 
 
@@ -1000,13 +1001,54 @@ void AMainCharacter::Skill1()
 {
 	if (bIsUsingSkill1) return; // 스킬 사용 중일 때는 스킬 사용 불가
 	if (!bCanUseSkill1) return; // 스킬 쿨다운 중일 때는 스킬 사용 불가
-    
-    bIsUsingSkill1 = true;
-    bCanUseSkill1 = false; // 스킬 사용 중이므로 쿨다운 시작
 
-    PlaySkill1Montage(Skill1AnimMontage);
+	if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
+
+    bIsUsingSkill1 = true; // 스킬 사용 상태로 변경
+    bCanUseSkill1 = false; // 스킬 쿨다운 시작
+
+	PlaySkill1Montage(Skill1AnimMontage); // 스킬 애니메이션 실행
+
+	DrawSkill1Range(); // 스킬 범위 표시
+
+    GetWorldTimerManager().SetTimer(SkillEffectTimerHandle, this, &AMainCharacter::ApplySkill1Effect, 0.5f, false);  // 일정 시간 후 스킬 적용 실행
 
     GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
+}
+
+void AMainCharacter::DrawSkill1Range()
+{
+    FVector SkillCenter = GetActorLocation(); // 스킬 중심 위치 가져옴
+    float Duration = 1.0f; // 디버그 지속 시간
+
+	DrawDebugSphere(GetWorld(), SkillCenter, SkillRange, 32, FColor::Red, false, Duration, 0, 2.0f); // 스킬 범위 표시
+}
+
+void AMainCharacter::ApplySkill1Effect()
+{
+
+    FVector SkillCenter = GetActorLocation();
+
+    TArray<AActor*> OverlappingEnemies;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), OverlappingEnemies);
+
+	float InAirTime = 4.0f; // 공준 스턴 지속 시간
+
+    for (AActor* Actor : OverlappingEnemies)
+    {
+        AEnemy* Enemy = Cast<AEnemy>(Actor);
+
+        if (Enemy && Enemy->GetCharacterMovement())
+        {
+            float Distance = FVector::Dist(SkillCenter, Enemy->GetActorLocation());
+            if (Distance <= SkillRange)
+            {
+                // 공준 스턴 적용
+                Enemy->EnterInAirStunState(InAirTime);
+                UE_LOG(LogTemp, Warning, TEXT("Enemy %s stunned by Skill1!"), *Enemy->GetName());
+            }
+        }
+    }
 }
 
 void AMainCharacter::PlaySkill1Montage(UAnimMontage* Skill1Montage)
@@ -1041,14 +1083,14 @@ void AMainCharacter::PlaySkill1Montage(UAnimMontage* Skill1Montage)
 
 void AMainCharacter::ResetSkill1(UAnimMontage* Montage, bool bInterrupted)
 {
-	bIsUsingSkill1 = false;
-	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false);
+	bIsUsingSkill1 = false; // 스킬 사용 상태 해제
+	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false); // 쿨다운 타이머 시작
 	UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Started!"));
 }
 
 void AMainCharacter::ResetSkill1Cooldown()
 {
-    bCanUseSkill1 = true;
+    bCanUseSkill1 = true; // 스킬 사용 가능상태로 변경
 	UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Over! Ready to Use Skill1 Again."));
 }
 
