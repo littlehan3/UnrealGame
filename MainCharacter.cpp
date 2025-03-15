@@ -9,7 +9,6 @@
 #include "Engine/Engine.h"
 #include "Rifle.h"
 #include "Knife.h"
-#include "LockOnComponent.h"
 #include "Enemy.h" // Enemy 헤더 추가
 #include "Kismet/GameplayStatics.h"
 
@@ -54,8 +53,6 @@ AMainCharacter::AMainCharacter()
     KickHitBox->SetCollisionObjectType(ECC_WorldDynamic);  // 충돌 오브젝트 타입 설정
     KickHitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
     KickHitBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // 캐릭터와만 충돌 감지
-
-    LockOnComponent = CreateDefaultSubobject<ULockOnSystem>(TEXT("LockOnComponent"));
 }
 
 void AMainCharacter::BeginPlay()
@@ -107,28 +104,6 @@ void AMainCharacter::BeginPlay()
             RightKnife->SetOwner(this);
             UE_LOG(LogTemp, Warning, TEXT("RightKnife spawned,attached and owner set!"));
         }
-    }
-
-    // LockOnComponent가 nullptr이면 직접 추가
-    if (!LockOnComponent)
-    {
-        UE_LOG(LogTemp, Error, TEXT("LockOnComponent가 nullptr! Can not run Lock-On"));
-
-        // LockOnComponent가 없다면 새로 추가
-        LockOnComponent = NewObject<ULockOnSystem>(this, ULockOnSystem::StaticClass()); // 런타임에 락온컴포넌트 동적생성 및 현재캐릭터에 속하도록 설정
-        if (LockOnComponent)
-        {
-            LockOnComponent->RegisterComponent(); // 생성한 락온컴포넌트를 게임에서 사용할 수 있도록 등록
-            UE_LOG(LogTemp, Warning, TEXT("LockOnComponent Added to Runtime"));
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("LockOnComponent Generate Failed!"));
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("LockOnComponent Initialization Compelete!"));
     }
 
 }
@@ -316,15 +291,11 @@ void AMainCharacter::Tick(float DeltaTime)
 
     CameraBoom->TargetArmLength = CurrentZoom; // 줌 값 적용
 
-    if (bIsLockedOn && LockOnComponent->IsLockedOn())
+    if (bApplyRootMotionRotation)
     {
-        //UE_LOG(LogTemp, Warning, TEXT("Maintaing Lock-On % s"), *LockOnComponent->GetLockedTarget()->GetName());
-        LockOnComponent->UpdateLockOnRotation(DeltaTime);
+        UE_LOG(LogTemp, Warning, TEXT("Root Motion Applied! Rotation Set To: %s"), *TargetRootMotionRotation.ToString());
+        SetActorRotation(TargetRootMotionRotation); // 루트모션(콤보공격)이 적용되는 동안 방향유지 
     }
-    //else
-    //{
-        //UE_LOG(LogTemp, Warning, TEXT("Lock-On Released!"));
-    //}
 }
 
 void AMainCharacter::HandleJump()
@@ -447,13 +418,6 @@ void AMainCharacter::EnterAimMode()
 
         AttachRifleToHand(); // 손으로 이동
         AttachKnifeToBack();
-
-        if (bIsLockedOn)  // 사격 모드 진입 시 락온 자동 해제
-        {
-            LockOnComponent->UnlockTarget();
-            bIsLockedOn = false;
-            UE_LOG(LogTemp, Warning, TEXT("Lock-On Automatically Released Due to Aiming"));
-        }
     }
 }
 
@@ -471,46 +435,6 @@ void AMainCharacter::ExitAimMode()
     }
 }
 
-void AMainCharacter::ToggleLockOn()
-{
-    if (!LockOnComponent)
-    {
-        UE_LOG(LogTemp, Error, TEXT("LockOnComponent nullptr! Can not run Lock-On"));
-        return;
-    }
-
-    if (bIsAiming)
-    {
-        if (bIsLockedOn)
-        {
-            LockOnComponent->UnlockTarget();
-            bIsLockedOn = false;
-            UE_LOG(LogTemp, Warning, TEXT("Aim Mode Activated: Lock-On Automatically Released"));
-        }
-        return;
-    }
-
-    if (bIsLockedOn)
-    {
-        LockOnComponent->UnlockTarget();
-        bIsLockedOn = false;
-        //UE_LOG(LogTemp, Warning, TEXT("Lock-On Released"));
-    }
-    else
-    {
-        LockOnComponent->FindAndLockTarget();
-        if (LockOnComponent->IsLockedOn())
-        {
-            bIsLockedOn = true;
-            UE_LOG(LogTemp, Warning, TEXT("Lock-On Activated"));
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Lock-On failed: There is no Target to Lock-On"));
-        }
-    }
-}
-
 void AMainCharacter::ComboAttack()
 {
     if (bIsAttacking || bIsJumping || bIsInDoubleJump || bIsDashing) return; // 이미 공격중이거나 점프중이면 공격 불가
@@ -522,6 +446,8 @@ void AMainCharacter::ComboAttack()
 
     // 콤보 중 자동 회전 비활성화 (카메라 영향을 막음)
     GetCharacterMovement()->bOrientRotationToMovement = false;
+
+    AdjustComboAttackDirection(); // 공격 방향 보정
 
     FVector InputDirection = FVector::ZeroVector;
 
@@ -618,9 +544,61 @@ void AMainCharacter::ResetCombo()
     UE_LOG(LogTemp, Warning, TEXT("Combo Reset!"));
 }
 
+void AMainCharacter::AdjustComboAttackDirection()
+{
+    float MaxAutoAimDistance = 200.0f; // 자동 보정이 적용되는 거리
+    float RotationSpeed = 8.0f; // 회전 속도
+
+    AActor* TargetEnemy = nullptr; // 가장 가까운 적을 저장할 변수
+    float ClosestDistance = MaxAutoAimDistance; // 현재 가장 가까운 적과의 거리 초기값은 최대 보정값
+
+    TArray<AActor*> FoundEnemies; // 모든 적을 저장할 배열
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), FoundEnemies); // 모든 적을 찾아 배열에 저장
+
+    for (AActor* Enemy : FoundEnemies) // 모든 적을 순회하며 가장 가까운 적을 찾음
+    {
+        AEnemy* EnemyCharacter = Cast<AEnemy>(Enemy); // AActor 타입을 AEnemy 타입으로 변환 AActor는 bIsDead 변수를 사용할 수 없음
+
+        // nullptr이거나 죽은 상태인 적은 무시
+        if (!EnemyCharacter || EnemyCharacter->bIsDead) // EnemyCharacter은 AEneymy 타입이므로 bIsDead 변수 사용 가능
+        {
+            continue;
+        }
+
+        float Distance = FVector::Dist(GetActorLocation(), Enemy->GetActorLocation()); // 플레이어와 적 사이의 거리 계산
+
+        if (Distance < ClosestDistance) // 현재 가장 가까운 적보다 더 가까운 적을 찾았다면
+        {
+            ClosestDistance = Distance; // 가장 가까운 적의 거리 업데이트
+            TargetEnemy = Enemy; // 보정할 적을 현재 적으로 설정
+        }
+    }
+
+    if (TargetEnemy) // 보정 대상이 되는 적의 경우
+    {
+        FVector DirectionToEnemy = (TargetEnemy->GetActorLocation() - GetActorLocation()).GetSafeNormal(); // 플레이어에서 적을 향하는 방향 벡터 계산
+        TargetRootMotionRotation = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator(); // 적을 향한 방향으로 캐릭터 회전
+        bApplyRootMotionRotation = true; // 루트모션 중 보정된 방향을 유지하도록 설정
+
+        UE_LOG(LogTemp, Warning, TEXT("Adjusted Attack Direction to: %s"), *TargetEnemy->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("Target Position: %s"), *TargetEnemy->GetActorLocation().ToString());
+        UE_LOG(LogTemp, Warning, TEXT("Target RootMotion Rotation: %s"), *TargetRootMotionRotation.ToString());
+
+        // 디버그로 시각화
+        FVector Start = GetActorLocation(); // 시작점: 캐릭터 위치
+        FVector End = TargetEnemy->GetActorLocation(); // 끝점: 보정 대상 적 위치
+        DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 2.0f, 0, 2.0f); // 적 방향 (빨간색)
+        DrawDebugLine(GetWorld(), Start, Start + GetActorForwardVector() * 200.0f, FColor::Green, false, 2.0f, 0, 2.0f); // 현재 공격 방향 (초록색)
+    }
+}
+
 void AMainCharacter::OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
     bIsAttacking = false; // 공격 상태 초기화
+    GetCharacterMovement()->bOrientRotationToMovement = true; // 이동 시 자동 회전 다시 활성화
+    bApplyRootMotionRotation = false; // 루트모션 방향 보정 해제
+
+    UE_LOG(LogTemp, Warning, TEXT("Root Motion Stopped. Player Control Restored!"));
 
     // 콤보 종료 후 자동 회전 다시 활성화
     GetCharacterMovement()->bOrientRotationToMovement = true;
@@ -999,17 +977,17 @@ void AMainCharacter::ZoomOut()
 
 void AMainCharacter::Skill1()
 {
-	if (bIsUsingSkill1) return; // 스킬 사용 중일 때는 스킬 사용 불가
-	if (!bCanUseSkill1) return; // 스킬 쿨다운 중일 때는 스킬 사용 불가
+    if (bIsUsingSkill1) return; // 스킬 사용 중일 때는 스킬 사용 불가
+    if (!bCanUseSkill1) return; // 스킬 쿨다운 중일 때는 스킬 사용 불가
 
-	if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
+    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
 
     bIsUsingSkill1 = true; // 스킬 사용 상태로 변경
     bCanUseSkill1 = false; // 스킬 쿨다운 시작
 
-	PlaySkill1Montage(Skill1AnimMontage); // 스킬 애니메이션 실행
+    PlaySkill1Montage(Skill1AnimMontage); // 스킬 애니메이션 실행
 
-	DrawSkill1Range(); // 스킬 범위 표시
+    DrawSkill1Range(); // 스킬 범위 표시
 
     GetWorldTimerManager().SetTimer(SkillEffectTimerHandle, this, &AMainCharacter::ApplySkill1Effect, 0.5f, false);  // 일정 시간 후 스킬 적용 실행
 
@@ -1021,7 +999,7 @@ void AMainCharacter::DrawSkill1Range()
     FVector SkillCenter = GetActorLocation(); // 스킬 중심 위치 가져옴
     float Duration = 1.0f; // 디버그 지속 시간
 
-	DrawDebugSphere(GetWorld(), SkillCenter, SkillRange, 32, FColor::Red, false, Duration, 0, 2.0f); // 스킬 범위 표시
+    DrawDebugSphere(GetWorld(), SkillCenter, SkillRange, 32, FColor::Red, false, Duration, 0, 2.0f); // 스킬 범위 표시
 }
 
 void AMainCharacter::ApplySkill1Effect()
@@ -1032,7 +1010,7 @@ void AMainCharacter::ApplySkill1Effect()
     TArray<AActor*> OverlappingEnemies;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), OverlappingEnemies);
 
-	float InAirTime = 4.0f; // 공준 스턴 지속 시간
+    float InAirTime = 4.0f; // 공준 스턴 지속 시간
 
     for (AActor* Actor : OverlappingEnemies)
     {
@@ -1083,15 +1061,15 @@ void AMainCharacter::PlaySkill1Montage(UAnimMontage* Skill1Montage)
 
 void AMainCharacter::ResetSkill1(UAnimMontage* Montage, bool bInterrupted)
 {
-	bIsUsingSkill1 = false; // 스킬 사용 상태 해제
-	GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false); // 쿨다운 타이머 시작
-	UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Started!"));
+    bIsUsingSkill1 = false; // 스킬 사용 상태 해제
+    GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false); // 쿨다운 타이머 시작
+    UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Started!"));
 }
 
 void AMainCharacter::ResetSkill1Cooldown()
 {
     bCanUseSkill1 = true; // 스킬 사용 가능상태로 변경
-	UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Over! Ready to Use Skill1 Again."));
+    UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Over! Ready to Use Skill1 Again."));
 }
 
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -1108,7 +1086,6 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AMainCharacter::ExitAimMode);
         EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &AMainCharacter::FireWeapon);
         EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Triggered, this, &AMainCharacter::ReloadWeapon);
-        EnhancedInputComponent->BindAction(LockOnAction, ETriggerEvent::Triggered, this, &AMainCharacter::ToggleLockOn);
         EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Triggered, this, &AMainCharacter::Dash);
         EnhancedInputComponent->BindAction(ZoomInAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomIn);
         EnhancedInputComponent->BindAction(ZoomOutAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomOut);

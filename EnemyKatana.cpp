@@ -5,6 +5,13 @@ AEnemyKatana::AEnemyKatana()
 {
     // Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
     PrimaryActorTick.bCanEverTick = true;
+
+    // 카타나 메시 초기화 및 RootComponent로 설정
+    KatanaMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("KatanaMesh"));
+    RootComponent = KatanaMesh;
+
+    KatanaMesh->SetSimulatePhysics(false); // 시작할 때 물리 시뮬레이션 비활성화
+    KatanaMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // 충돌 활성화
 }
 
 // Called when the game starts or when spawned

@@ -12,7 +12,6 @@
 AEnemy::AEnemy()
 {
     PrimaryActorTick.bCanEverTick = true;
-    bCanBeLockedOn = true;
 
     AIControllerClass = AEnemyAIController::StaticClass(); // AI 컨트롤러 설정
 
@@ -103,14 +102,14 @@ void AEnemy::Die()
     if (bIsInAirStun && InAirStunDeathMontage) // 공중에서 사망 시
     {
         float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
-		EnemyAnimInstance->Montage_Play(InAirStunDeathMontage, 1.2f); // 애니메이션 재생속도 조절
+		EnemyAnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f); // 애니메이션 재생속도 조절
         HideTime = AirDeathDuration * 0.35f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
     }
     else if (EnemyAnimInstance && DeadMontage) // 일반 사망 시
     {
         float DeathAnimDuration = DeadMontage->GetPlayLength();
         EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
-        HideTime = DeathAnimDuration * 0.6f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
+        HideTime = DeathAnimDuration * 0.7f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
     }
     else
     {
@@ -179,16 +178,6 @@ void AEnemy::HideEnemy()
 
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s and katana disappeared mid-death animation!"), *GetName());
 }
-
-// 락온 가능
-bool AEnemy::CanBeLockedOn() const
-{
-    // 특정 체력 이하일 때만 락온 등 확장  
-    // if (CurrentHealth < 50.0f) return false;
-
-    return bCanBeLockedOn; // 기본적으로 bCanBeLockedOn이 true인 경우 락온 가능
-}
-
 
 // AI가 NavMesh에서 이동할 수 있도록 설정
 void AEnemy::SetUpAI()

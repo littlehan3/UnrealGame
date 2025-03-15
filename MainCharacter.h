@@ -5,7 +5,6 @@
 #include "InputActionValue.h"
 #include "Rifle.h" 
 #include "Knife.h"
-#include "LockOnComponent.h"
 #include "Components/BoxComponent.h"  // BoxComponent 추가 (히트박스 용)
 #include "Animation/AnimMontage.h"
 #include "MainCharacter.generated.h"
@@ -50,8 +49,6 @@ protected:
     void EnableKickHitBox();
     void DisableKickHitBox();
 
-    void ToggleLockOn(); // 락온 토글 함수 추가
-
     UFUNCTION()
     void OnKickHitBoxOverlap(
         UPrimitiveComponent* OverlappedComponent,
@@ -90,9 +87,6 @@ private:
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     class UInputAction* ReloadAction;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-    class UInputAction* LockOnAction; // 락온 인풋액션 추가
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     class UInputAction* DashAction; // 대쉬 인풋액션 추가
@@ -137,19 +131,13 @@ private:
     UFUNCTION()
     void OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-	FVector LastAttackDirection; // 마지막 공격 방향
-	FTimerHandle ComboResetTimerHandle; // 근접 콤보 초기화 타이머
-	float ComboResetTime = 1.5f; // 근접 콤보 초기화 시간
-	void ResetComboTimer(); // 콤보 초기화 타이머 함수
+    FVector LastAttackDirection; // 마지막 공격 방향
+    FTimerHandle ComboResetTimerHandle; // 근접 콤보 초기화 타이머
+    float ComboResetTime = 1.5f; // 근접 콤보 초기화 시간
+    void ResetComboTimer(); // 콤보 초기화 타이머 함수
 
     void KickRaycastAttack();
     AActor* KickRaycastHitActor; // 발차기 레이캐스트 적용 대상
-
-    UPROPERTY()
-    class ULockOnSystem* LockOnComponent; //락온 컴포넌트 변수추가
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Lock-On", meta = (AllowPrivateAccess = "true"))
-    bool bIsLockedOn;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combo Animations", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* ComboAttackMontage1;
@@ -205,7 +193,7 @@ private:
     UAnimMontage* BackwardDashMontage;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill1 Animation", meta = (AllowPrivateAccess = "true"))
-	UAnimMontage* Skill1AnimMontage; // 스킬1 애니메이션 추가
+    UAnimMontage* Skill1AnimMontage; // 스킬1 애니메이션 추가
 
     float DashCooldown = 1.0f; // 지정된 시간만큼 쿨타임
     bool bIsDashing = false; // 대시중인지 여부
@@ -219,34 +207,40 @@ private:
     void ResetDashCooldown(); // 대시 쿨타임 해제 함수
 
     float DefaultZoom = 250.0f; // 기본 줌 거리
-	float AimZoom = 100.0f; // 에임 줌 거리
-	float MinZoom = 125.0f; // 최소 줌 거리 (확대)
-	float MaxZoom = 500.0f; // 최대 줌 거리 (축소)
+    float AimZoom = 100.0f; // 에임 줌 거리
+    float MinZoom = 125.0f; // 최소 줌 거리 (확대)
+    float MaxZoom = 500.0f; // 최대 줌 거리 (축소)
     float ZoomStep = 20.0f; // 줌 조정 단위 
     float ZoomInterpSpeed = 10.0f; // 줌 변경 속도 (보간)
     float CurrentZoom = DefaultZoom;  // 현재 줌 값
     float TargetZoom = DefaultZoom;   // 목표 줌 값 (보간 대상)
 
-	void ZoomIn();
-	void ZoomOut();
+    void ZoomIn();
+    void ZoomOut();
 
-	bool bIsLanding = false; // 착지 상태 여부
-	FTimerHandle LandingTimerHandle; // 착지 타이머 핸들
-	void ResetLandingState(); // 착지 상태 초기화 함수
+    bool bIsLanding = false; // 착지 상태 여부
+    FTimerHandle LandingTimerHandle; // 착지 타이머 핸들
+    void ResetLandingState(); // 착지 상태 초기화 함수
 
-	void Skill1(); // 스킬 사용 함수 추가
-	void PlaySkill1Montage(UAnimMontage* Skill1Montage); // 스킬1 애니메이션 재생 함수
-	FTimerHandle Skill1CooldownTimerHandle; // 스킬1 쿨다운 타이머 핸들
-	void ResetSkill1(UAnimMontage*Montage, bool bInterrupted); // 스킬1 상태 초기화 함수
-	void ResetSkill1Cooldown(); // 스킬1 쿨다운 해제 함수
+    void Skill1(); // 스킬 사용 함수 추가
+    void PlaySkill1Montage(UAnimMontage* Skill1Montage); // 스킬1 애니메이션 재생 함수
+    FTimerHandle Skill1CooldownTimerHandle; // 스킬1 쿨다운 타이머 핸들
+    void ResetSkill1(UAnimMontage* Montage, bool bInterrupted); // 스킬1 상태 초기화 함수
+    void ResetSkill1Cooldown(); // 스킬1 쿨다운 해제 함수
 
-	float Skill1Cooldown = 5.0f; // 스킬1 쿨다운 시간
-	bool bIsUsingSkill1 = false; // 스킬1 사용중인지 여부
-	bool bCanUseSkill1 = true; // 스킬1 사용 가능 여부
+    float Skill1Cooldown = 5.0f; // 스킬1 쿨다운 시간
+    bool bIsUsingSkill1 = false; // 스킬1 사용중인지 여부
+    bool bCanUseSkill1 = true; // 스킬1 사용 가능 여부
 
-	float SkillRange = 500.0f; // 스킬 범위
-	FTimerHandle SkillEffectTimerHandle; // 스킬 효과 타이머 핸들
+    float SkillRange = 500.0f; // 스킬 범위
+    FTimerHandle SkillEffectTimerHandle; // 스킬 효과 타이머 핸들
 
-	void DrawSkill1Range(); // 스킬1 범위 표시 함수
-	void ApplySkill1Effect(); // 스킬1 효과 적용 함수
+    void DrawSkill1Range(); // 스킬1 범위 표시 함수
+    void ApplySkill1Effect(); // 스킬1 효과 적용 함수
+
+    void AdjustComboAttackDirection(); // 콤보 공격 방향 보정 함수
+    // 콤보 공격 방향 보정 관련 변수
+    bool bApplyRootMotionRotation = false;  // 루트모션 적용 여부
+    FRotator TargetRootMotionRotation;      // 루트모션 중 유지할 회전값
+
 };
