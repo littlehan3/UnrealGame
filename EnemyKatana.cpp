@@ -18,3 +18,15 @@ void AEnemyKatana::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 }
+
+void AEnemyKatana::HideKatana()
+{
+    SetActorHiddenInGame(true);  // 렌더링 숨김
+    SetActorEnableCollision(false); // 충돌 제거
+    SetActorTickEnabled(false); // Tick 비활성화
+
+    // 2초 후 삭제 (메모리에서 완적히 삭제하기 위한 보완) 자동 가비지 컬렉션 유도
+    SetLifeSpan(2.0f);
+
+    UE_LOG(LogTemp, Warning, TEXT("Katana %s is now hidden and will be destroyed soon!"), *GetName());
+}

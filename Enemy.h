@@ -36,12 +36,6 @@ public:
     void PlayJumpAttackAnimation(); // 점프 공격 애니메이션 실행 함수
     float GetJumpAttackDuration() const; // 점프 공격 몽타주 길이 반환
 
-    void EnterInAirStunState(float Duration); // 공중 스턴 상태 진입
-
-protected:
-    virtual void BeginPlay() override;
-
-public:
     bool bIsDead = false;
 
     virtual float TakeDamage(
@@ -50,6 +44,11 @@ public:
         class AController* EventInstigator,
         AActor* DamageCauser
     ) override;
+
+    void EnterInAirStunState(float Duration); // 공중 스턴 상태 진입
+
+protected:
+    virtual void BeginPlay() override;
 
 private:
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
@@ -76,8 +75,7 @@ private:
     void SetUpAI(); // AI가 NavMesh에서 이동할 수 있도록 설정
 
     void StopActions(); // 모든 동작 정지
-    void FreezeDeadPose(); // 사망 후 물리 효과 활성화(시체 유지)
-    FTimerHandle DeathTimerHandle; // 사망 애니메이션 완료 처리를 위한 타이머
+    FTimerHandle DeathTimerHandle; // 사망 애니메이션 처리를 위한 타이머
 
     // 애니메이션 인스턴스 추가
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
@@ -113,6 +111,11 @@ private:
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* InAirStunMontage; // 공중스턴 애니메이션
 
-	void ExitInAirStunState(); // 공중 스턴 상태 해제
-	FTimerHandle StunTimerHandle; // 스턴 상태 해제를 위한 타이머
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* InAirStunDeathMontage; // 공중스턴 사망 애니메이션
+
+    void ExitInAirStunState(); // 공중 스턴 상태 해제
+    FTimerHandle StunTimerHandle; // 스턴 상태 해제를 위한 타이머
+	void HideEnemy(); // 적 숨기기
+	bool bIsInAirStun = false; // 공중 스턴 상태 여부
 };

@@ -24,4 +24,8 @@ public:
     // 나이프 메시 추가
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UStaticMeshComponent* KatanaMesh;
+
+    UFUNCTION()
+    void HideKatana();
+
 };

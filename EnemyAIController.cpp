@@ -5,7 +5,6 @@
 #include "GameFramework/RotatingMovementComponent.h"
 #include "Enemy.h"
 #include "EnemyAnimInstance.h"
-#include "BrainComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 void AEnemyAIController::BeginPlay()
@@ -190,24 +189,6 @@ void AEnemyAIController::StopAI()
     // 먼저 모든 이동 중지
     StopMovement();
     UE_LOG(LogTemp, Warning, TEXT("%s AI Movement Stopped"), *GetPawn()->GetName());
-
-    // BrainComponent가 존재하는지 확인 후 사용
-    if (BrainComponent)
-    {
-        if (BrainComponent->IsRunning())
-        {
-            BrainComponent->StopLogic(TEXT("Enemy Died"));
-            UE_LOG(LogTemp, Warning, TEXT("%s AI BrainLogic Stopped"), *GetPawn()->GetName());
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("%s AI BrainLogic Already Stopped"), *GetPawn()->GetName());
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("%s BrainComponent is NULL, Skip Logic Stop"), *GetPawn()->GetName());
-    }
 
     // AI를 완전히 분리하기 위해 폰 UnPossess
     APawn* ControlledPawn = GetPawn();

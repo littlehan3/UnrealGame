@@ -7,7 +7,6 @@
 #include "EnemyAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
-#include "BrainComponent.h" // AI 컨트롤러의 BrainComponent 사용을 위해 추가
 
 
 AEnemy::AEnemy()
@@ -99,25 +98,35 @@ void AEnemy::Die()
     bIsDead = true;
     StopActions();
 
-    // 사망 애니메이션 재생
-    if (EnemyAnimInstance && DeadMontage)
-    {
-        EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
+    float HideTime = 0.0f;
 
-        // 해당 사망 애니메이션이 끝나기 직전에 사망 포즈를 고정하기 위한 타이머 설정
+    if (bIsInAirStun && InAirStunDeathMontage) // 공중에서 사망 시
+    {
+        float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
+		EnemyAnimInstance->Montage_Play(InAirStunDeathMontage, 1.2f); // 애니메이션 재생속도 조절
+        HideTime = AirDeathDuration * 0.35f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
+    }
+    else if (EnemyAnimInstance && DeadMontage) // 일반 사망 시
+    {
         float DeathAnimDuration = DeadMontage->GetPlayLength();
-        GetWorld()->GetTimerManager().SetTimer(
-            DeathTimerHandle,
-            this,
-            &AEnemy::FreezeDeadPose,
-            DeathAnimDuration - 0.35f, // 애니메이션이 끝나기 N초 전에 멈춤 (애니메이션에 따라 상이하게 설정해야함)
-            false);
+        EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
+        HideTime = DeathAnimDuration * 0.6f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
     }
     else
     {
-        // 사망 몽타주가 없으면 즉시 고정
-        FreezeDeadPose();
+        // 사망 애니메이션이 없을 경우 즉시 사라지게 함
+        HideEnemy();
+        return;
     }
+
+    // 일정 시간 후 사라지도록 설정
+    GetWorld()->GetTimerManager().SetTimer(
+        DeathTimerHandle,
+        this,
+        &AEnemy::HideEnemy,
+        HideTime,
+        false
+    );
 
     // AI 컨트롤러 중지
     AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
@@ -140,25 +149,6 @@ void AEnemy::Die()
 void AEnemy::StopActions()
 {
     AAIController* AICon = Cast<AAIController>(GetController());
-    if (AICon)
-    {
-        AICon->StopMovement();
-
-        // BrainComponent가 nullptr이 아닌지 확인 후 호출
-        if (AICon->BrainComponent)
-        {
-            AICon->BrainComponent->StopLogic(TEXT("Enemy Died"));
-            UE_LOG(LogTemp, Warning, TEXT("BrainComponent logic stopped."));
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("BrainComponent is NULL! AI logic not stopped."));
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("AIController is NULL! AI behavior not stopped."));
-    }
 
     // 모든 입력 및 이동 차단
     GetCharacterMovement()->DisableMovement();
@@ -173,40 +163,21 @@ void AEnemy::StopActions()
     UE_LOG(LogTemp, Warning, TEXT("All actions stopped for dead enemy."));
 }
 
-void AEnemy::FreezeDeadPose()
+void AEnemy::HideEnemy()
 {
-    if (!GetMesh() || !bIsDead) return;
+    if (!bIsDead) return;
 
-    UE_LOG(LogTemp, Warning, TEXT("%s Freezing DeadPose"), *GetName());
-
-    // 모든 애니메이션을 중지하고 현재 포즈 고정
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-    if (AnimInstance)
-    {
-        // 재생 중인 몽타주 모두 중지
-        AnimInstance->Montage_Stop(0.0f);
-
-        // 사망 애니메이션의 마지막 프레임을 유지하도록 강제 (Idle상태로 돌아가지않게)
-        GetMesh()->bPauseAnims = true; // 애니메이션 정지
-        GetMesh()->bNoSkeletonUpdate = true; // 스켈레톤 업데이트 중지 (Transform 변화 방지)
-    }
-
-    // 추가 AI 액션 방지
-    AAIController* AIController = Cast<AAIController>(GetController());
-    if (AIController)
-    {
-        AIController->UnPossess();
-    }
-
-    // 모든 이동 비활성화 
-    GetCharacterMovement()->DisableMovement();
-    GetCharacterMovement()->StopMovementImmediately();
-
-    // 틱 비활성화
+    SetActorHiddenInGame(true);  // 렌더링 숨김
+    SetActorEnableCollision(false); // 충돌 제거
     SetActorTickEnabled(false); // AI 전체 Tick 비활성화
-    GetMesh()->SetComponentTickEnabled(false); // 매쉬 Tick 비활성화
 
-    UE_LOG(LogTemp, Warning, TEXT("DeadPose Freezed. Enemy %s Maintaining DeadPose."), *GetName());
+    // 카타나도 함께 숨기기
+    if (EquippedKatana)
+    {
+        EquippedKatana->HideKatana();
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Enemy %s and katana disappeared mid-death animation!"), *GetName());
 }
 
 // 락온 가능
@@ -372,6 +343,8 @@ void AEnemy::EnterInAirStunState(float Duration)
     if (bIsDead) return;
     UE_LOG(LogTemp, Warning, TEXT("Entering InAirStunState..."));
 
+	bIsInAirStun = true;
+
     // AI 멈추기 (바로 이동 정지하지 않고, 스턴 종료 시점에서 다시 활성화)
     AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
     if (AICon)
@@ -424,6 +397,8 @@ void AEnemy::ExitInAirStunState()
 {
     if (bIsDead) return;
     UE_LOG(LogTemp, Warning, TEXT("Exiting InAirStunState..."));
+
+	bIsInAirStun = false;
 
     // 중력 복구 및 낙하 상태로 변경
     GetCharacterMovement()->SetMovementMode(MOVE_Falling);
