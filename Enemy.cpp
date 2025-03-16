@@ -109,7 +109,7 @@ void AEnemy::Die()
     {
         float DeathAnimDuration = DeadMontage->GetPlayLength();
         EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
-        HideTime = DeathAnimDuration * 0.7f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
+        HideTime = DeathAnimDuration * 0.6f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
     }
     else
     {
@@ -344,7 +344,7 @@ void AEnemy::EnterInAirStunState(float Duration)
 
     // 적을 위로 띄우기 (LaunchCharacter 먼저 실행)
     FVector LaunchDirection = FVector(0.0f, 0.0f, 1.0f); // 위쪽 방향
-    float LaunchStrength = 1000.0f; // 충분히 강한 힘 적용
+    float LaunchStrength = 600.0f; // 강한 힘 적용
     LaunchCharacter(LaunchDirection * LaunchStrength, true, true);
 
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s launched upwards! Current Location: %s"), *GetName(), *GetActorLocation().ToString());

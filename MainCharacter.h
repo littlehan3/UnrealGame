@@ -59,7 +59,6 @@ protected:
         const FHitResult& SweepResult
     );
 
-
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
     class USpringArmComponent* CameraBoom;
@@ -99,6 +98,9 @@ private:
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     class UInputAction* Skill1Action; // 스킬1 인풋액션 추가
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    class UInputAction* Skill2Action; // 스킬2 인풋액션 추가
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
     bool bIsAiming;
@@ -195,6 +197,9 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill1 Animation", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* Skill1AnimMontage; // 스킬1 애니메이션 추가
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill2 Animation", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* Skill2AnimMontage; // 스킬1 애니메이션 추가
+
     float DashCooldown = 1.0f; // 지정된 시간만큼 쿨타임
     bool bIsDashing = false; // 대시중인지 여부
     bool bCanDash = true; // 대시 가능 여부
@@ -222,25 +227,30 @@ private:
     FTimerHandle LandingTimerHandle; // 착지 타이머 핸들
     void ResetLandingState(); // 착지 상태 초기화 함수
 
-    void Skill1(); // 스킬 사용 함수 추가
+    void Skill1(); // 스킬1 사용 함수
     void PlaySkill1Montage(UAnimMontage* Skill1Montage); // 스킬1 애니메이션 재생 함수
     FTimerHandle Skill1CooldownTimerHandle; // 스킬1 쿨다운 타이머 핸들
     void ResetSkill1(UAnimMontage* Montage, bool bInterrupted); // 스킬1 상태 초기화 함수
     void ResetSkill1Cooldown(); // 스킬1 쿨다운 해제 함수
-
     float Skill1Cooldown = 5.0f; // 스킬1 쿨다운 시간
     bool bIsUsingSkill1 = false; // 스킬1 사용중인지 여부
     bool bCanUseSkill1 = true; // 스킬1 사용 가능 여부
-
-    float SkillRange = 500.0f; // 스킬 범위
+    float SkillRange = 400.0f; // 스킬 범위
     FTimerHandle SkillEffectTimerHandle; // 스킬 효과 타이머 핸들
-
     void DrawSkill1Range(); // 스킬1 범위 표시 함수
     void ApplySkill1Effect(); // 스킬1 효과 적용 함수
 
     void AdjustComboAttackDirection(); // 콤보 공격 방향 보정 함수
     // 콤보 공격 방향 보정 관련 변수
-    bool bApplyRootMotionRotation = false;  // 루트모션 적용 여부
-    FRotator TargetRootMotionRotation;      // 루트모션 중 유지할 회전값
+    bool bApplyRootMotionRotation = false; // 루트모션 적용 여부
+    FRotator TargetRootMotionRotation; // 루트모션 중 유지할 회전값
 
+    void Skill2();
+    void PlaySkill2Montage(UAnimMontage* Skill2Montage);
+    FTimerHandle Skill2CooldownTimerHandle;
+    void ResetSkill2(UAnimMontage* Montage, bool bInterrupted);
+    void ResetSkill2Cooldown();
+    float Skill2Cooldown = 3.0f;
+    bool bIsUsingSkill2 = false;
+    bool bCanUseSkill2 = true;
 };

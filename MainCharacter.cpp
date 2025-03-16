@@ -1072,6 +1072,64 @@ void AMainCharacter::ResetSkill1Cooldown()
     UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Over! Ready to Use Skill1 Again."));
 }
 
+void AMainCharacter::Skill2()
+{
+    if (bIsUsingSkill2) return;
+    if (!bCanUseSkill2) return;
+
+    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
+
+    bIsUsingSkill2 = true;
+    bCanUseSkill2 = false;
+
+    PlaySkill2Montage(Skill2AnimMontage); // 스킬 애니메이션 실행
+
+    GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &AMainCharacter::ResetSkill2Cooldown, Skill2Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
+}
+
+void AMainCharacter::PlaySkill2Montage(UAnimMontage* Skill2Montage)
+{
+    if (!Skill2Montage) // 애니메이션이 없으면 실행 취소
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlaySkill1Montage Failed: SkillMontage is NULL"));
+        return;
+    }
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 캐릭터와 애님 인스턴스를 가져옴
+    if (!AnimInstance) // 애님 인스턴스가 없으면 실행 취소
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlaySkillMontage Failed: AnimInstance is NULL"));
+        return;
+    }
+
+    float MontageDuration = AnimInstance->Montage_Play(Skill2Montage, 1.2f); // 스킬 애니메이션 실행
+    if (MontageDuration <= 0.0f)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *Skill2Montage->GetName()); // 애니메이션 실행 실패 로그
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill2Montage->GetName()); // 애니메이션 실행 성공 로그
+
+    // 애니메이션 종료 시 대시 상태를 초기화하도록 콜백 함수 설정
+    FOnMontageEnded EndDelegate;
+    EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill2);
+    AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill2Montage);
+}
+
+void AMainCharacter::ResetSkill2(UAnimMontage* Montage, bool bInterrupted)
+{
+    bIsUsingSkill2 = false; // 스킬 사용 상태 해제
+    GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &AMainCharacter::ResetSkill2Cooldown, Skill2Cooldown, false); // 쿨다운 타이머 시작
+    UE_LOG(LogTemp, Warning, TEXT("Skill2 Cooldown Started!"));
+}
+
+void AMainCharacter::ResetSkill2Cooldown()
+{
+    bCanUseSkill2 = true; // 스킬 사용 가능상태로 변경
+    UE_LOG(LogTemp, Warning, TEXT("Skill2 Cooldown Over! Ready to Use Skill2 Again."));
+}
+
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -1090,5 +1148,6 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(ZoomInAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomIn);
         EnhancedInputComponent->BindAction(ZoomOutAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomOut);
         EnhancedInputComponent->BindAction(Skill1Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill1);
+        EnhancedInputComponent->BindAction(Skill2Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill2);
     }
 }
