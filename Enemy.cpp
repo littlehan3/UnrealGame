@@ -119,13 +119,7 @@ void AEnemy::Die()
     }
 
     // 일정 시간 후 사라지도록 설정
-    GetWorld()->GetTimerManager().SetTimer(
-        DeathTimerHandle,
-        this,
-        &AEnemy::HideEnemy,
-        HideTime,
-        false
-    );
+    GetWorld()->GetTimerManager().SetTimer(DeathTimerHandle, this, &AEnemy::HideEnemy, HideTime, false);
 
     // AI 컨트롤러 중지
     AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
@@ -157,6 +151,14 @@ void AEnemy::StopActions()
     if (EnemyAnimInstance)
     {
         EnemyAnimInstance->Montage_Stop(0.1f);
+    }
+
+    // 스턴 상태일 경우 추가 조치
+    if (bIsInAirStun)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Enemy is stunned! Forcing all actions to stop."));
+        bCanAttack = false; // 공격 불가 상태 유지
+        GetWorld()->GetTimerManager().ClearTimer(StunTimerHandle); // 스턴 해제 타이머 취소
     }
 
     UE_LOG(LogTemp, Warning, TEXT("All actions stopped for dead enemy."));
@@ -206,76 +208,65 @@ void AEnemy::PostInitializeComponents()
 
 void AEnemy::PlayNormalAttackAnimation()
 {
-    if (NormalAttackMontages.Num() > 0)
+    if (!EnemyAnimInstance || NormalAttackMontages.Num() == 0) return;
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+    // 애니메이션 실행 중이라면 공격 실행 금지
+    if (AnimInstance && AnimInstance->IsAnyMontagePlaying())
     {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-        if (AnimInstance && !AnimInstance->IsAnyMontagePlaying())
+        UE_LOG(LogTemp, Warning, TEXT("PlayNormalAttackAnimation() blocked: Animation still playing."));
+        return;
+    }
+
+    int32 RandomIndex = FMath::RandRange(0, NormalAttackMontages.Num() - 1);
+    UAnimMontage* SelectedMontage = NormalAttackMontages[RandomIndex];
+
+    if (SelectedMontage)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Enemy is playing attack montage: %s"), *SelectedMontage->GetName());
+
+        float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+        if (PlayResult == 0.0f)
         {
-            int32 RandomIndex = FMath::RandRange(0, NormalAttackMontages.Num() - 1);
-            UAnimMontage* SelectedMontage = NormalAttackMontages[RandomIndex];
-
-            if (SelectedMontage)
-            {
-                UE_LOG(LogTemp, Warning, TEXT("Enemy is playing attack montage: %s"), *SelectedMontage->GetName());
-
-                // 공격 몽타주 실행
-                float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
-                if (PlayResult == 0.0f)
-                {
-                    UE_LOG(LogTemp, Error, TEXT("Montage_Play failed! Check slot settings."));
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
-                }
-                //공격 시 사운드 재생
-                if (NormalAttackSound)
-                {
-                    UGameplayStatics::PlaySoundAtLocation(this, NormalAttackSound, GetActorLocation());
-                }
-
-                // AI 이동 멈춤
-                AAIController* AICon = Cast<AAIController>(GetController());
-                if (AICon)
-                {
-                    AICon->StopMovement();
-                    UE_LOG(LogTemp, Warning, TEXT("Enemy stopped moving to attack!"));
-                }
-
-                // 공격 가능 상태 리셋을 애니메이션 끝날 때까지 지연
-                bCanAttack = false;
-            }
-            else
-            {
-                UE_LOG(LogTemp, Error, TEXT("Selected Montage is NULL!"));
-            }
+            UE_LOG(LogTemp, Error, TEXT("Montage_Play failed! Check slot settings."));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("Enemy is already playing an animation!"));
+            UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
         }
+
+        // 공격 실행 후 AI 이동 정지
+        AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+        if (AICon)
+        {
+            AICon->StopMovement();
+            UE_LOG(LogTemp, Warning, TEXT("Enemy stopped moving to attack!"));
+        }
+
+        bCanAttack = false;
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("No attack montages available!"));
+        UE_LOG(LogTemp, Error, TEXT("Selected Montage is NULL!"));
     }
 }
 
 void AEnemy::PlayStrongAttackAnimation()
 {
-    if (StrongAttackMontage)
+    if (!EnemyAnimInstance || !StrongAttackMontage) return;
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+    // 애니메이션 실행 중이라면 강공격 실행 금지
+    if (AnimInstance && AnimInstance->IsAnyMontagePlaying())
     {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-        if (AnimInstance)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Enemy is performing StrongAttack: %s"), *StrongAttackMontage->GetName());
-            AnimInstance->Montage_Play(StrongAttackMontage, 1.0f);
-        }
+        UE_LOG(LogTemp, Warning, TEXT("PlayStrongAttackAnimation() blocked: Animation still playing."));
+        return;
     }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("StrongAttack montage is NULL! Check BP_Enemy."));
-    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Enemy is performing StrongAttack: %s"), *StrongAttackMontage->GetName());
+    AnimInstance->Montage_Play(StrongAttackMontage, 1.0f);
 
     if (StrongAttackSound)
     {
@@ -286,6 +277,7 @@ void AEnemy::PlayStrongAttackAnimation()
         UE_LOG(LogTemp, Error, TEXT("StrongAttack sound is NULL! Check BP_Enemy."));
     }
 }
+
 
 void AEnemy::PlayDodgeAnimation(bool bDodgeLeft)
 {
@@ -329,7 +321,7 @@ float AEnemy::GetJumpAttackDuration() const
 
 void AEnemy::EnterInAirStunState(float Duration)
 {
-    if (bIsDead) return;
+    if (bIsDead || bIsInAirStun) return;
     UE_LOG(LogTemp, Warning, TEXT("Entering InAirStunState..."));
 
 	bIsInAirStun = true;
@@ -371,14 +363,7 @@ void AEnemy::EnterInAirStunState(float Duration)
     }
 
     // 일정 시간이 지나면 원래 상태로 복귀
-    GetWorld()->GetTimerManager().SetTimer(
-        StunTimerHandle,
-        this,
-        &AEnemy::ExitInAirStunState,
-        Duration,
-        false
-    );
-
+    GetWorld()->GetTimerManager().SetTimer(StunTimerHandle, this, &AEnemy::ExitInAirStunState, Duration,false);
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s is now stunned for %f seconds!"), *GetName(), Duration);
 }
 
@@ -412,4 +397,6 @@ void AEnemy::ExitInAirStunState()
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s has recovered from stun and resumed AI behavior!"), *GetName());
+
+    bIsInAirStun = false;
 }

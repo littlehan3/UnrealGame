@@ -64,4 +64,5 @@ private:
     FTimerHandle DodgeTimerHandle; // 닷지 쿨타임 타이머
     FTimerHandle DodgeCooldownTimerHandle; // 닷지 쿨다운 타이머
     FTimerHandle JumpAttackTimerHandle; // 점프공격 타이머
+
 };

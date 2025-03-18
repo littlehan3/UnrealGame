@@ -39,6 +39,8 @@ public:
 
     void EnterInAirStunState(float Duration); // 공중 스턴 상태 진입
 
+    bool bIsInAirStun = false; // 공중 스턴 상태 여부
+
 protected:
     virtual void BeginPlay() override;
 
@@ -109,5 +111,4 @@ private:
     void ExitInAirStunState(); // 공중 스턴 상태 해제
     FTimerHandle StunTimerHandle; // 스턴 상태 해제를 위한 타이머
 	void HideEnemy(); // 적 숨기기
-	bool bIsInAirStun = false; // 공중 스턴 상태 여부
 };
