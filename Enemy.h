@@ -111,4 +111,5 @@ private:
     void ExitInAirStunState(); // 공중 스턴 상태 해제
     FTimerHandle StunTimerHandle; // 스턴 상태 해제를 위한 타이머
 	void HideEnemy(); // 적 숨기기
+    void OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 에어본 상태에서 히트시 상태를 관리하기 위한 함수
 };

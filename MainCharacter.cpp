@@ -919,7 +919,7 @@ void AMainCharacter::PlayDashMontage(UAnimMontage* DashMontage)
         return;
     }
 
-    float MontageDuration = AnimInstance->Montage_Play(DashMontage, 1.2f); // 대쉬 애니메이션 실행 (1.2배속)
+    float MontageDuration = AnimInstance->Montage_Play(DashMontage, 1.3f); // 대쉬 애니메이션 실행 (1.3배속)
     if (MontageDuration <= 0.0f)
     {
         UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *DashMontage->GetName()); // 애니메이션 실행 실패 로그
@@ -985,6 +985,16 @@ void AMainCharacter::Skill1()
     bIsUsingSkill1 = true; // 스킬 사용 상태로 변경
     bCanUseSkill1 = false; // 스킬 쿨다운 시작
 
+    // 이동 입력 방향 감지
+    FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
+    if (!InputDirection.IsNearlyZero())
+    {
+        InputDirection.Normalize();
+        FRotator NewRotation = InputDirection.Rotation();
+        NewRotation.Pitch = 0.0f; // 피치값 유지로 고개 숙임 방지
+        SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
+    }
+
     PlaySkill1Montage(Skill1AnimMontage); // 스킬 애니메이션 실행
 
     DrawSkill1Range(); // 스킬 범위 표시
@@ -996,7 +1006,7 @@ void AMainCharacter::Skill1()
 
 void AMainCharacter::DrawSkill1Range()
 {
-    FVector SkillCenter = GetActorLocation(); // 스킬 중심 위치 가져옴
+    FVector SkillCenter = GetActorLocation(); // 현재 캐릭터 위치를 중심으로 스킬 발동
     float Duration = 1.0f; // 디버그 지속 시간
 
     DrawDebugSphere(GetWorld(), SkillCenter, SkillRange, 32, FColor::Red, false, Duration, 0, 2.0f); // 스킬 범위 표시
@@ -1004,25 +1014,24 @@ void AMainCharacter::DrawSkill1Range()
 
 void AMainCharacter::ApplySkill1Effect()
 {
+    FVector SkillCenter = GetActorLocation(); // 현재 캐릭터 위츠를 중심으로 스킬 발동
 
-    FVector SkillCenter = GetActorLocation();
-
-    TArray<AActor*> OverlappingEnemies;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), OverlappingEnemies);
+    TArray<AActor*> OverlappingEnemies; // 현재 맵에 존재하는 모든적 클래스를 탐색
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), OverlappingEnemies); // 현재 맵에 존재하는 모든적 클래스를 탐색
 
     float InAirTime = 4.0f; // 공준 스턴 지속 시간
 
-    for (AActor* Actor : OverlappingEnemies)
+    for (AActor* Actor : OverlappingEnemies) // 찾은 적들에게 
     {
-        AEnemy* Enemy = Cast<AEnemy>(Actor);
+        AEnemy* Enemy = Cast<AEnemy>(Actor); // 스킬 효과 적용
 
-        if (Enemy && Enemy->GetCharacterMovement())
+        if (Enemy && Enemy->GetCharacterMovement()) // 적이 존재하고 이동이 가능할때만
         {
             float Distance = FVector::Dist(SkillCenter, Enemy->GetActorLocation());
-            if (Distance <= SkillRange)
+
+            if (Distance <= SkillRange) // 스킬 범위 안에 있는 적만 효과 적용
             {
-                // 공준 스턴 적용
-                Enemy->EnterInAirStunState(InAirTime);
+                Enemy->EnterInAirStunState(InAirTime); // 공중 스턴 적용
                 UE_LOG(LogTemp, Warning, TEXT("Enemy %s stunned by Skill1!"), *Enemy->GetName());
             }
         }
@@ -1053,7 +1062,7 @@ void AMainCharacter::PlaySkill1Montage(UAnimMontage* Skill1Montage)
 
     UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill1Montage->GetName()); // 애니메이션 실행 성공 로그
 
-    // 애니메이션 종료 시 대시 상태를 초기화하도록 콜백 함수 설정
+    // 애니메이션 종료 시 스킬1 상태를 초기화하도록 콜백 함수 설정
     FOnMontageEnded EndDelegate;
     EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill1);
     AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill1Montage);
@@ -1061,30 +1070,113 @@ void AMainCharacter::PlaySkill1Montage(UAnimMontage* Skill1Montage)
 
 void AMainCharacter::ResetSkill1(UAnimMontage* Montage, bool bInterrupted)
 {
-    bIsUsingSkill1 = false; // 스킬 사용 상태 해제
+    bIsUsingSkill1 = false; // 스킬1 사용 상태 해제
     GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false); // 쿨다운 타이머 시작
     UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Started!"));
 }
 
 void AMainCharacter::ResetSkill1Cooldown()
 {
-    bCanUseSkill1 = true; // 스킬 사용 가능상태로 변경
+    bCanUseSkill1 = true; // 스킬1 사용 가능상태로 변경
     UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Over! Ready to Use Skill1 Again."));
 }
 
 void AMainCharacter::Skill2()
 {
-    if (bIsUsingSkill2) return;
-    if (!bCanUseSkill2) return;
+    if (bIsUsingSkill2) return; // 사용중이면 사용 불가
+    if (!bCanUseSkill2) return; // 쿨다운 상태면 사용 불가
 
     if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
 
-    bIsUsingSkill2 = true;
-    bCanUseSkill2 = false;
+    bIsUsingSkill2 = true; // 스킬 사용 상태 활성화
+    bCanUseSkill2 = false; // 스킬 쿨다운 시작
+
+    // 이동 입력 방향 감지
+    FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
+    if (!InputDirection.IsNearlyZero())
+    {
+        InputDirection.Normalize();
+        FRotator NewRotation = InputDirection.Rotation();
+        NewRotation.Pitch = 0.0f; // 피치 값 유지로 고개 숙임 방지
+        SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
+    }
 
     PlaySkill2Montage(Skill2AnimMontage); // 스킬 애니메이션 실행
 
+    GetWorldTimerManager().SetTimer(Skill2EffectTimerHandle, this, &AMainCharacter::ApplySkill2Effect, Skill2EffectDelay, false); // 설정된 Skill2EffectDelay 값만큼 후에 스킬 히트 판정 실행
+
     GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &AMainCharacter::ResetSkill2Cooldown, Skill2Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
+}
+
+void AMainCharacter::DrawSkill2Range()
+{
+    if (!bIsUsingSkill2) return; // 스킬이 끝났으면 범위를 갱신하지 않음
+
+    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());
+
+    FVector SkillCenter = GetActorLocation(); // 루트모션이 적용되는 동안 실시간 위치 가져오기
+    float DebugDuration = 0.1f; // 빠른 갱신을 위해 0.1초로 설정
+    float DebugRadius = 200.0f; // 원형 범위 반경
+
+    DrawDebugSphere(GetWorld(), SkillCenter, DebugRadius, 32, FColor::Blue, false, DebugDuration, 0, 3.0f); // 스킬범위 표시
+
+    UE_LOG(LogTemp, Warning, TEXT("Skill2 Range Circle Drawn at %s with Radius %f"), *SkillCenter.ToString(), DebugRadius);
+}
+
+void AMainCharacter::ApplySkill2Effect()
+{
+    FVector SkillCenter = GetActorLocation(); // 현재 캐릭터 위치를 기준으로 효과 적용
+
+    // 스킬2 사용시캐릭터 높이 조절 (루트모션 무시 가능)
+    float JumpHeight = 300.0f;  // 설정한 도약 높이 만큼
+    LaunchCharacter(FVector(0, 0, JumpHeight), false, true);
+
+    TArray<FHitResult> HitResults; // 히트된 적을 저장할 배열
+
+    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes; 
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));  // 적 탐색을 위해 Pawn을 대상으로 설정
+
+    // Sphere Trace를 사용하여 스킬 범위 내에 있는 적을 감지
+    bool bHit = UKismetSystemLibrary::SphereTraceMultiForObjects(
+        GetWorld(),
+        SkillCenter, // 탐색 중심 (캐릭터 위치)
+        SkillCenter, // 탐색 중심 (캐릭터 위치)
+        Skill2Range, // 범위 반경
+        ObjectTypes, // 감지할 오브젝트타입 (Pawn)
+        false,       // 단단한 벽 오브젝트 무시 여부
+        TArray<AActor*>(), // 무시할 엑터 목록 
+        EDrawDebugTrace::None, // 디버그 모드 설정
+        HitResults, // 감지된 결과 저장
+        true
+    );
+
+    TSet<AEnemy*> HitEnemies; // 이미 맞은 적을 저장할 Set (중복 공격 방지)
+
+    if (bHit)
+    {
+        DrawDebugSphere(GetWorld(), SkillCenter, Skill2Range, 32, FColor::Red, false, 0.4f, 0, 3.0f); // 스킬 범위 표시
+
+        for (const FHitResult& Hit : HitResults) // 감지된 적들에게 데미지 적용
+        {
+            AEnemy* Enemy = Cast<AEnemy>(Hit.GetActor());
+            if (Enemy && !HitEnemies.Contains(Enemy)) // 중복 방지
+            {
+                float AppliedDamage = Skill2Damage;
+                UGameplayStatics::ApplyDamage(Enemy, AppliedDamage, GetController(), this, UDamageType::StaticClass());
+
+                UE_LOG(LogTemp, Warning, TEXT("Skill2 Hit Enemy: %s | Damage: %f"), *Enemy->GetName(), AppliedDamage);
+
+                HitEnemies.Add(Enemy); // 한 번 맞은 적은 추가
+            }
+        }
+    }
+
+    GetWorldTimerManager().SetTimer(Skill2RangeClearTimerHandle, this, &AMainCharacter::ClearSkill2Range, 0.4f, false); // 디버그 제거 (0.2초 후)
+}
+
+void AMainCharacter::ClearSkill2Range()
+{
+    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld()); // 디버그 범위 제거
 }
 
 void AMainCharacter::PlaySkill2Montage(UAnimMontage* Skill2Montage)
@@ -1120,6 +1212,9 @@ void AMainCharacter::PlaySkill2Montage(UAnimMontage* Skill2Montage)
 void AMainCharacter::ResetSkill2(UAnimMontage* Montage, bool bInterrupted)
 {
     bIsUsingSkill2 = false; // 스킬 사용 상태 해제
+    // 스킬 종료 시 디버그 삭제
+    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());
+
     GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &AMainCharacter::ResetSkill2Cooldown, Skill2Cooldown, false); // 쿨다운 타이머 시작
     UE_LOG(LogTemp, Warning, TEXT("Skill2 Cooldown Started!"));
 }

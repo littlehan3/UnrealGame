@@ -79,6 +79,11 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
     if (EnemyAnimInstance && HitReactionMontage) // 히트 시 애니메이션 재생
     {
         EnemyAnimInstance->Montage_Play(HitReactionMontage, 1.0f);
+
+        // 히트 애니메이션 종료 후 스턴 애니메이션 재생
+        FOnMontageEnded EndDelegate;
+        EndDelegate.BindUObject(this, &AEnemy::OnHitMontageEnded);
+        EnemyAnimInstance->Montage_SetEndDelegate(EndDelegate, HitReactionMontage);
     }
 
     if (Health <= 0.0f)
@@ -87,6 +92,25 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
     }
 
     return DamageApplied;
+}
+
+void AEnemy::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    if (bIsDead) return;
+
+    // 공중 스턴 상태일 때만 다시 스턴 애니메이션 실행
+    if (bIsInAirStun)
+    {
+        if (EnemyAnimInstance && InAirStunMontage)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Hit animation ended while airborne. Resuming InAirStunMontage."));
+            EnemyAnimInstance->Montage_Play(InAirStunMontage, 1.0f);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Hit animation ended on ground. No need to resume InAirStunMontage."));
+    }
 }
 
 
@@ -137,7 +161,6 @@ void AEnemy::Die()
     GetCharacterMovement()->StopMovementImmediately();
     SetActorTickEnabled(false); // AI Tick 중지
 }
-
 
 void AEnemy::StopActions()
 {

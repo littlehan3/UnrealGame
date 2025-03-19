@@ -236,7 +236,7 @@ private:
     bool bIsUsingSkill1 = false; // 스킬1 사용중인지 여부
     bool bCanUseSkill1 = true; // 스킬1 사용 가능 여부
     float SkillRange = 400.0f; // 스킬 범위
-    FTimerHandle SkillEffectTimerHandle; // 스킬 효과 타이머 핸들
+    FTimerHandle SkillEffectTimerHandle; // 스킬1 효과 타이머
     void DrawSkill1Range(); // 스킬1 범위 표시 함수
     void ApplySkill1Effect(); // 스킬1 효과 적용 함수
 
@@ -245,12 +245,20 @@ private:
     bool bApplyRootMotionRotation = false; // 루트모션 적용 여부
     FRotator TargetRootMotionRotation; // 루트모션 중 유지할 회전값
 
-    void Skill2();
-    void PlaySkill2Montage(UAnimMontage* Skill2Montage);
-    FTimerHandle Skill2CooldownTimerHandle;
-    void ResetSkill2(UAnimMontage* Montage, bool bInterrupted);
-    void ResetSkill2Cooldown();
-    float Skill2Cooldown = 3.0f;
-    bool bIsUsingSkill2 = false;
-    bool bCanUseSkill2 = true;
+    void Skill2(); // 스킬2 사용 함수
+    void PlaySkill2Montage(UAnimMontage* Skill2Montage); // 스킬2 애니메이션 재생 함수
+    FTimerHandle Skill2CooldownTimerHandle; // 스킬2 쿨다운 타이머
+    void ResetSkill2(UAnimMontage* Montage, bool bInterrupted); // 스킬2 상태 초기화 함수
+    void ResetSkill2Cooldown(); // 스킬 2 쿨다운 해제 함수
+    float Skill2Cooldown = 3.0f; // 스킬2 쿨다운 시간
+    bool bIsUsingSkill2 = false; // 스킬2 사용중인지 여부
+    bool bCanUseSkill2 = true; // 스킬2 사용 가능 여부
+    FTimerHandle Skill2EffectTimerHandle; // 스킬2 효과 타이머
+    void DrawSkill2Range(); // 스킬2 범위 표시 함수
+    void ApplySkill2Effect(); // 스킬2 효과 적용함수
+    void ClearSkill2Range(); // 스킬2 범위 삭제 함수
+    float Skill2Damage = 50.0f; // 스킬2 데미지
+    float Skill2Range = 200.0f; // 스킬2 범위
+    float Skill2EffectDelay = 0.5f; // 스킬2 효과 발생 지연시간
+    FTimerHandle Skill2RangeClearTimerHandle; // 스킬2 범위 삭제 타이머
 };
