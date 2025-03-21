@@ -102,6 +102,9 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     class UInputAction* Skill2Action; // 스킬2 인풋액션 추가
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    class UInputAction* Skill3Action; // 스킬3 인풋액션 추가
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
     bool bIsAiming;
 
@@ -198,7 +201,10 @@ private:
     UAnimMontage* Skill1AnimMontage; // 스킬1 애니메이션 추가
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill2 Animation", meta = (AllowPrivateAccess = "true"))
-    UAnimMontage* Skill2AnimMontage; // 스킬1 애니메이션 추가
+    UAnimMontage* Skill2AnimMontage; // 스킬2 애니메이션 추가
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill3 Animation", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* Skill3AnimMontage; // 스킬3 애니메이션 추가
 
     float DashCooldown = 1.0f; // 지정된 시간만큼 쿨타임
     bool bIsDashing = false; // 대시중인지 여부
@@ -261,4 +267,13 @@ private:
     float Skill2Range = 200.0f; // 스킬2 범위
     float Skill2EffectDelay = 0.5f; // 스킬2 효과 발생 지연시간
     FTimerHandle Skill2RangeClearTimerHandle; // 스킬2 범위 삭제 타이머
+
+    void Skill3();
+    void PlaySkill3Montage(UAnimMontage* Skill3Montage); // 스킬3 애니메이션 재생 함수
+    FTimerHandle Skill3CooldownTimerHandle; // 스킬3 쿨다운 타이머
+    void ResetSkill3(UAnimMontage* Montage, bool bInterrupted); // 스킬3 상태 초기화 함수
+    void ResetSkill3Cooldown(); // 스킬3 쿨다운 해제 함수
+    float Skill3Cooldown = 3.0f; // 스킬3 쿨다운 시간
+    bool bIsUsingSkill3 = false; // 스킬3 사용중인지 여부
+    bool bCanUseSkill3 = true; // 스킬3 사용 가능 여부
 };

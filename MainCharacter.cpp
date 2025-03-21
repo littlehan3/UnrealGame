@@ -565,6 +565,12 @@ void AMainCharacter::AdjustComboAttackDirection()
             continue;
         }
 
+        // 공중 스턴 상태인 적은 보정 대상에서 제외
+        if (EnemyCharacter->bIsInAirStun)
+        {
+            continue;
+        }
+
         float Distance = FVector::Dist(GetActorLocation(), Enemy->GetActorLocation()); // 플레이어와 적 사이의 거리 계산
 
         if (Distance < ClosestDistance) // 현재 가장 가까운 적보다 더 가까운 적을 찾았다면
@@ -576,7 +582,10 @@ void AMainCharacter::AdjustComboAttackDirection()
 
     if (TargetEnemy) // 보정 대상이 되는 적의 경우
     {
-        FVector DirectionToEnemy = (TargetEnemy->GetActorLocation() - GetActorLocation()).GetSafeNormal(); // 플레이어에서 적을 향하는 방향 벡터 계산
+        FVector DirectionToEnemy = TargetEnemy->GetActorLocation() - GetActorLocation(); // 플레이어에서 적을 향하는 방향 벡터 계산
+        DirectionToEnemy.Z = 0.0f; // 수직 방향 제거
+        DirectionToEnemy.Normalize(); // 정규화
+
         TargetRootMotionRotation = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator(); // 적을 향한 방향으로 캐릭터 회전
         bApplyRootMotionRotation = true; // 루트모션 중 보정된 방향을 유지하도록 설정
 
@@ -1225,6 +1234,76 @@ void AMainCharacter::ResetSkill2Cooldown()
     UE_LOG(LogTemp, Warning, TEXT("Skill2 Cooldown Over! Ready to Use Skill2 Again."));
 }
 
+void AMainCharacter::Skill3()
+{
+    if (bIsUsingSkill3) return; // 사용중이면 사용 불가
+    if (!bCanUseSkill3) return; // 쿨다운 상태면 사용 불가
+
+    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
+
+    bIsUsingSkill3 = true; // 스킬 사용 상태 활성화
+    bCanUseSkill3 = false; // 스킬 쿨다운 시작
+
+    // 이동 입력 방향 감지
+    FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
+    if (!InputDirection.IsNearlyZero())
+    {
+        InputDirection.Normalize();
+        FRotator NewRotation = InputDirection.Rotation();
+        NewRotation.Pitch = 0.0f; // 피치 값 유지로 고개 숙임 방지
+        SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
+    }
+
+    PlaySkill3Montage(Skill3AnimMontage); // 스킬 애니메이션 실행
+
+    GetWorldTimerManager().SetTimer(Skill3CooldownTimerHandle, this, &AMainCharacter::ResetSkill3Cooldown, Skill3Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
+}
+
+void AMainCharacter::PlaySkill3Montage(UAnimMontage* Skill3Montage)
+{
+    if (!Skill3Montage) // 애니메이션이 없으면 실행 취소
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlaySkill3Montage Failed: SkillMontage is NULL"));
+        return;
+    }
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 캐릭터와 애님 인스턴스를 가져옴
+    if (!AnimInstance) // 애님 인스턴스가 없으면 실행 취소
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlaySkil3Montage Failed: AnimInstance is NULL"));
+        return;
+    }
+
+    float MontageDuration = AnimInstance->Montage_Play(Skill3Montage, 1.5f); // 스킬 애니메이션 실행
+    if (MontageDuration <= 0.0f)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *Skill3Montage->GetName()); // 애니메이션 실행 실패 로그
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill3Montage->GetName()); // 애니메이션 실행 성공 로그
+
+    // 애니메이션 종료 시 대시 상태를 초기화하도록 콜백 함수 설정
+    FOnMontageEnded EndDelegate;
+    EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill3);
+    AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill3Montage);
+}
+
+
+void AMainCharacter::ResetSkill3(UAnimMontage* Montage, bool bInterrupted)
+{
+    bIsUsingSkill3 = false; // 스킬 사용 상태 해제
+
+    GetWorldTimerManager().SetTimer(Skill3CooldownTimerHandle, this, &AMainCharacter::ResetSkill3Cooldown, Skill3Cooldown, false); // 쿨다운 타이머 시작
+    UE_LOG(LogTemp, Warning, TEXT("Skill3 Cooldown Started!"));
+}
+
+void AMainCharacter::ResetSkill3Cooldown()
+{
+    bCanUseSkill3 = true; // 스킬 사용 가능상태로 변경
+    UE_LOG(LogTemp, Warning, TEXT("Skill3 Cooldown Over! Ready to Use Skill3 Again."));
+}
+
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -1244,5 +1323,6 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(ZoomOutAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomOut);
         EnhancedInputComponent->BindAction(Skill1Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill1);
         EnhancedInputComponent->BindAction(Skill2Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill2);
+        EnhancedInputComponent->BindAction(Skill3Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill3);
     }
 }
