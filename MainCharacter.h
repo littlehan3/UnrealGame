@@ -276,4 +276,9 @@ private:
     float Skill3Cooldown = 3.0f; // 스킬3 쿨다운 시간
     bool bIsUsingSkill3 = false; // 스킬3 사용중인지 여부
     bool bCanUseSkill3 = true; // 스킬3 사용 가능 여부
+
+    UPROPERTY(EditDefaultsOnly, Category = "Skill3")
+    TSubclassOf<class ASkill3Projectile> Skill3ProjectileClass;
+
+    float Skill3Damage = 60.0f;
 };

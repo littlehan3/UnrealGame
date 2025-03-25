@@ -10,6 +10,7 @@
 #include "Rifle.h"
 #include "Knife.h"
 #include "Enemy.h" // Enemy 헤더 추가
+#include "Skill3Projectile.h" // 스킬3 투사체 헤더 추가
 #include "Kismet/GameplayStatics.h"
 
 
@@ -1142,7 +1143,7 @@ void AMainCharacter::ApplySkill2Effect()
 
     TArray<FHitResult> HitResults; // 히트된 적을 저장할 배열
 
-    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes; 
+    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
     ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));  // 적 탐색을 위해 Pawn을 대상으로 설정
 
     // Sphere Trace를 사용하여 스킬 범위 내에 있는 적을 감지
@@ -1254,6 +1255,22 @@ void AMainCharacter::Skill3()
         SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
     }
 
+    FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 120.f + FVector(0, 0, 30.f);
+    FRotator SpawnRot = GetActorRotation();
+
+    if (Skill3ProjectileClass)
+    {
+        ASkill3Projectile* Projectile = GetWorld()->SpawnActor<ASkill3Projectile>(Skill3ProjectileClass, SpawnLoc, SpawnRot);
+        if (Projectile)
+        {
+            Projectile->SetDamage(Skill3Damage);
+            Projectile->SetShooter(this);
+
+            FVector FireDirection = GetActorForwardVector();
+            Projectile->FireInDirection(FireDirection);  // 명시적으로 방향 설정
+        }
+    }
+
     PlaySkill3Montage(Skill3AnimMontage); // 스킬 애니메이션 실행
 
     GetWorldTimerManager().SetTimer(Skill3CooldownTimerHandle, this, &AMainCharacter::ResetSkill3Cooldown, Skill3Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
@@ -1274,7 +1291,7 @@ void AMainCharacter::PlaySkill3Montage(UAnimMontage* Skill3Montage)
         return;
     }
 
-    float MontageDuration = AnimInstance->Montage_Play(Skill3Montage, 1.5f); // 스킬 애니메이션 실행
+    float MontageDuration = AnimInstance->Montage_Play(Skill3Montage, 1.0f); // 스킬 애니메이션 실행
     if (MontageDuration <= 0.0f)
     {
         UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *Skill3Montage->GetName()); // 애니메이션 실행 실패 로그

@@ -198,7 +198,7 @@ StopMovement()를 통해 불필요한 이동을 최소화
 - 공격 시 자동으로 가장 가까운 적을 감지하여 방향을 조정하는 기능을 구현
 - AdjustComboAttackDirection() 함수에서 FVector::Dist()를 활용하여 가장 가까운 적을 찾아 FRotationMatrix::MakeFromX()를 사용해 공격 방향을 조정
 
-### 3. 근접 모드 스킬 추가
+### 3. 근접 모드 스킬 추가 (스킬1)
 - 주변의 모든 적을 일정 시간 동안 공중에 띄우며, 해당 적들은 일정 시간 동안 행동 불가 상태가 되며 스턴 애니메이션을 재생
 - 띄워진 적들은 사격이나 추가로 개발될 스킬과 연계하여 사용할 수 있도록 설계됨
 - AMainCharacter::Skill1()을 통해 실행되며, EnterInAirStunState()를 호출하여 적을 띄우고 일정 시간 후 착지하게 함
@@ -212,3 +212,32 @@ StopMovement()를 통해 불필요한 이동을 최소화
 - 사망 애니메이션이 끝난 후 일정 시간이 지나면 적이 사라지도록 설정하여 씬을 깔끔하게 정리
 - AEnemy::Die()에서 GetWorld()->GetTimerManager().SetTimer()를 사용하여 특정 시간 후 HideEnemy()를 호출
 - 적이 사망하면 무기도 함께 사라지도록 AEnemyKatana::HideKatana() 함수를 호출하여 일정 시간 후 가비지 컬렉션을 유도
+
+## 2025-03-25 업데이트 내용
+
+### 1. 근접 모드 스킬 추가 (스킬2)
+- 캐릭터가 도약 후 광역 데미지를 가하는 스킬
+- 스킬 시전 후 일정 시간 뒤 범위 내에 있는 적들에게 피해를 줌
+- SphereTrace를 사용하여 피해 범위 내 적 감지 및 데미지 적용
+- 스킬1(공중 스턴)과의 연계를 고려하여 설계
+- Skill2CooldownTimerHandle을 통해 쿨다운을 적용하고, bIsUsingSkill2과 bCanUseSkill2 변수를 활용하여 연속 사용을 방지
+
+### 2. 근접 모드 스킬 추가(스킬3) 구현
+- 캐릭터가 바라보는 방향으로 형태의 투사체를 발사하여 광역 피해를 입힘
+- 적과 충돌 시 폭발 이펙트 및 사운드 재생
+- 벽과 충돌 시에도 폭발하여 피해 발생
+- Skill3CooldownTimerHandle을 통해 쿨다운을 적용하고, bIsUsingSkill3과 bCanUseSkill3 변수를 활용하여 연속 사용을 방지
+
+### 3. Skill3Projectile 클래스 추가
+- USphereComponent로 충돌 감지 OnComponentHit에서 충돌 이벤트 처리
+- 충돌한 액터가 시전자 또는 자기 자신이 아닐 경우 폭발 로직 실행
+- UGameplayStatics::ApplyDamage와 UKismetSystemLibrary::SphereTraceMultiForObjects를 활용해 폭발 반경 내 적에게 광역 피해 적용
+- 적을 한 번만 타격하기 위해 TSet<AActor*>를 통해 중복 감지 방지 처리
+- UProjectileMovementComponent를 통한 이동 구현
+- UNiagaraSystem을 활용한 폭발 이펙트 연출
+
+### 4. 기타 사운드 시스템 추가
+- 스킬 사운드, 기본 공격 사운드, 발걸음 사운드 추가
+- 사운드 큐의 어테뉴에이션 오버라이드를 활용하여 거리 기반 볼륨 감소 적용
+- 채워지지 않은 사운드 또한 추가 예정
+
