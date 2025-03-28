@@ -206,6 +206,9 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill3 Animation", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* Skill3AnimMontage; // 스킬3 애니메이션 추가
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AimSkill1 Animation", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* AimSkill1AnimMontage; // 에임모드스킬1 애니메이션 추가
+
     float DashCooldown = 1.0f; // 지정된 시간만큼 쿨타임
     bool bIsDashing = false; // 대시중인지 여부
     bool bCanDash = true; // 대시 가능 여부
@@ -276,9 +279,28 @@ private:
     float Skill3Cooldown = 3.0f; // 스킬3 쿨다운 시간
     bool bIsUsingSkill3 = false; // 스킬3 사용중인지 여부
     bool bCanUseSkill3 = true; // 스킬3 사용 가능 여부
-
+    
     UPROPERTY(EditDefaultsOnly, Category = "Skill3")
-    TSubclassOf<class ASkill3Projectile> Skill3ProjectileClass;
+    TSubclassOf<class ASkill3Projectile> Skill3ProjectileClass; // 투사체 클래스를 BP에서 장착
+    float Skill3Damage = 60.0f; // 스킬 3 데미지
 
-    float Skill3Damage = 60.0f;
+    void AimSkill1(); // 에임모드스킬1
+    void PlayAimSkill1Montage(UAnimMontage* AimSkill1Montage); // 에임모드 스킬1 애니메이션 재생 함수
+    FTimerHandle AimSkill1CooldownTimerHandle; // 에임모드 스킬1 쿨다운 타이머
+    void ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted); // 에임모드 스킬1 상태 초기화 함수
+    void ResetAimSkill1Cooldown(); // 에임모드 스킬1 쿨다운 해제함수
+    float AimSkill1Cooldown = 3.0f; // 에임모드 스킬1 쿨다운 시간
+    bool bIsUsingAimSkill1 = false; // 에임모드 스킬1 사용중 여부
+    bool bCanUseAimSkill1 = true; // 에임모드 스킬1 사용가능 여부
+    FTimerHandle AimSkill1RepeatTimerHandle; // 반복 애니메이션 재생 타이머
+    float AimSkill1Duration = 5.0f; // 에임모드 스킬1 지속시간
+    float AimSkill1PlayInterval = 0.85f; // 에임모드 스킬1 애니메이션 시작 시간 저장 변수
+    void RepeatAImSkill1Montage(); // 에임모드 스킬1 애니메이션 반복 재생 함수
+
+    float AimSkill1MontageStartTime = 0.0f; // 에임모드 스킬1 애니메이션 시작 시간 저장용 변수
+
+    UFUNCTION()
+    void ResetAimSkill1Timer(); // 에임모드 스킬 1 종료를 위한 인자 없는 타이머 중계 함수
+
+
 };

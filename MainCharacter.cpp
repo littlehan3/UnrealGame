@@ -295,7 +295,7 @@ void AMainCharacter::Tick(float DeltaTime)
     if (bApplyRootMotionRotation)
     {
         UE_LOG(LogTemp, Warning, TEXT("Root Motion Applied! Rotation Set To: %s"), *TargetRootMotionRotation.ToString());
-        SetActorRotation(TargetRootMotionRotation); // 루트모션(콤보공격)이 적용되는 동안 방향유지 
+        SetActorRotation(TargetRootMotionRotation); // 루트모션이 적용되는 동안 방향유지 
     }
 }
 
@@ -987,6 +987,12 @@ void AMainCharacter::ZoomOut()
 
 void AMainCharacter::Skill1()
 {
+    if (bIsAiming)
+    {
+        AimSkill1(); // 에임 모드일 때는 AimSkill1 호출
+        return;
+    }
+
     if (bIsUsingSkill1) return; // 스킬 사용 중일 때는 스킬 사용 불가
     if (!bCanUseSkill1) return; // 스킬 쿨다운 중일 때는 스킬 사용 불가
 
@@ -1193,7 +1199,7 @@ void AMainCharacter::PlaySkill2Montage(UAnimMontage* Skill2Montage)
 {
     if (!Skill2Montage) // 애니메이션이 없으면 실행 취소
     {
-        UE_LOG(LogTemp, Error, TEXT("PlaySkill1Montage Failed: SkillMontage is NULL"));
+        UE_LOG(LogTemp, Error, TEXT("PlaySkill2Montage Failed: SkillMontage is NULL"));
         return;
     }
 
@@ -1213,7 +1219,7 @@ void AMainCharacter::PlaySkill2Montage(UAnimMontage* Skill2Montage)
 
     UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill2Montage->GetName()); // 애니메이션 실행 성공 로그
 
-    // 애니메이션 종료 시 대시 상태를 초기화하도록 콜백 함수 설정
+    // 애니메이션 종료 시 스킬2 상태를 초기화하도록 콜백 함수 설정
     FOnMontageEnded EndDelegate;
     EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill2);
     AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill2Montage);
@@ -1300,12 +1306,11 @@ void AMainCharacter::PlaySkill3Montage(UAnimMontage* Skill3Montage)
 
     UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill3Montage->GetName()); // 애니메이션 실행 성공 로그
 
-    // 애니메이션 종료 시 대시 상태를 초기화하도록 콜백 함수 설정
+    // 애니메이션 종료 시 스킬3 상태를 초기화하도록 콜백 함수 설정
     FOnMontageEnded EndDelegate;
     EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill3);
     AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill3Montage);
 }
-
 
 void AMainCharacter::ResetSkill3(UAnimMontage* Montage, bool bInterrupted)
 {
@@ -1319,6 +1324,108 @@ void AMainCharacter::ResetSkill3Cooldown()
 {
     bCanUseSkill3 = true; // 스킬 사용 가능상태로 변경
     UE_LOG(LogTemp, Warning, TEXT("Skill3 Cooldown Over! Ready to Use Skill3 Again."));
+}
+
+void AMainCharacter::AimSkill1()
+{
+    UE_LOG(LogTemp, Warning, TEXT("AimSkill1 triggered!"));
+
+    if (bIsUsingAimSkill1) return; // 사용중이면 사용 불가
+    if (!bCanUseAimSkill1) return; // 쿨다운 상태면 사용 불가
+
+    if (bIsDashing || bIsJumping || bIsInDoubleJump) return; // 대쉬, 점프 중일 때는 스킬 사용 불가
+
+    bIsUsingAimSkill1 = true; // 스킬 사용 상태 활성화
+    bCanUseAimSkill1 = false; // 스킬 쿨다운 시작
+
+    // 이동 입력 방향 감지
+    FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
+    if (!InputDirection.IsNearlyZero())
+    {
+        InputDirection.Normalize();
+        FRotator NewRotation = InputDirection.Rotation();
+        NewRotation.Pitch = 0.0f; // 피치 값 유지로 고개 숙임 방지
+        SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
+    }
+
+    PlayAimSkill1Montage(AimSkill1AnimMontage); // 스킬 애니메이션 실행
+
+    GetWorldTimerManager().SetTimer(AimSkill1RepeatTimerHandle, this, &AMainCharacter::RepeatAImSkill1Montage, AimSkill1PlayInterval, true); // 설정된 시간 간격으로 반복재생 시작
+
+    GetWorldTimerManager().SetTimer(AimSkill1CooldownTimerHandle, this, &AMainCharacter::ResetAimSkill1Cooldown, AimSkill1Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
+}
+
+void AMainCharacter::PlayAimSkill1Montage(UAnimMontage* AimSkill1Montage)
+{
+    if (!AimSkill1Montage) return;
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (!AnimInstance) return;
+
+    float PlayRate = 0.8f; // 애니메이션 재생속도를 위한 변수 초기화
+    float MontageDuration = AnimInstance->Montage_Play(AimSkill1Montage, PlayRate); // 애니메이션 재생속도 설정
+
+    if (MontageDuration > 0.0f)
+    {
+        // 섹션 루프 설정 (Start-> Loop -> Loop)
+        AnimInstance->Montage_SetNextSection(FName("Start"), FName("Loop"), AimSkill1Montage);
+        AnimInstance->Montage_SetNextSection(FName("Loop"), FName("Loop"), AimSkill1Montage);
+
+        AimSkill1MontageStartTime = GetWorld()->GetTimeSeconds(); // 시작 시간 기록
+
+        // AimSkill1Duration 경과 후 종료용 타이머 설정, 인자 없는 중계 함수로 호출
+        GetWorldTimerManager().SetTimer(
+            AimSkill1RepeatTimerHandle,
+            this,
+            &AMainCharacter::ResetAimSkill1Timer,
+            AimSkill1Duration,
+            false
+        );
+
+        UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Montage Started with Looping Sections!"));
+    }
+}
+
+void AMainCharacter::RepeatAImSkill1Montage()
+{
+    if (!bIsUsingAimSkill1) return;
+
+    float ElapsedTime = GetWorld()->GetTimeSeconds() - AimSkill1MontageStartTime;
+    if (ElapsedTime >= AimSkill1Duration)
+    {
+        ResetAimSkill1(nullptr, false); // 지속 시간이 끝나면 스킬 종료
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Replaying AimSkill1 Montage. Elapsed: %.2f"), ElapsedTime); 
+    PlayAimSkill1Montage(AimSkill1AnimMontage); // 반복 재생
+}
+
+void AMainCharacter::ResetAimSkill1Timer()
+{
+    ResetAimSkill1(nullptr, false);  // 기존 종료 함수 호출
+}
+
+void AMainCharacter::ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted)
+{
+    bIsUsingAimSkill1 = false; // 사용 상태 해제
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (AnimInstance && AimSkill1AnimMontage)
+    {
+        AnimInstance->Montage_Stop(0.3f, AimSkill1AnimMontage); // 부드럽게 애니메이션 종료
+        UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Montage Stopped After 10 Seconds!"));
+    }
+
+    GetWorldTimerManager().ClearTimer(AimSkill1RepeatTimerHandle); // 반복 타이머 해제
+    GetWorldTimerManager().SetTimer(AimSkill1CooldownTimerHandle, this, &AMainCharacter::ResetAimSkill1Cooldown, AimSkill1Cooldown, false); // 쿨다운 재설정
+}
+
+
+void AMainCharacter::ResetAimSkill1Cooldown()
+{
+    bCanUseAimSkill1 = true; // 스킬 사용 가능상태로 변경
+    UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Cooldown Over! Ready to Use AimSkill1 Again."));
 }
 
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
