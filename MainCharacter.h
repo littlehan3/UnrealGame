@@ -11,6 +11,7 @@
 
 class ARifle;
 class AKnife;
+class AMachineGun; // 전방 선언
 
 UCLASS()
 class LOCOMOTION_API AMainCharacter : public ACharacter
@@ -302,5 +303,11 @@ private:
     UFUNCTION()
     void ResetAimSkill1Timer(); // 에임모드 스킬 1 종료를 위한 인자 없는 타이머 중계 함수
 
+    // BP_MachineGun을 기반으로 생성할 클래스
+    UPROPERTY(EditDefaultsOnly, Category = "Combat")
+    TSubclassOf<AMachineGun> MachineGunClass;
 
+    // 현재 소환된 머시건 인스턴스
+    UPROPERTY()
+    AMachineGun* MachineGun;
 };

@@ -11,6 +11,7 @@
 #include "Knife.h"
 #include "Enemy.h" // Enemy 헤더 추가
 #include "Skill3Projectile.h" // 스킬3 투사체 헤더 추가
+#include "MachineGun.h" // 머신건 헤더 추가
 #include "Kismet/GameplayStatics.h"
 
 
@@ -107,6 +108,24 @@ void AMainCharacter::BeginPlay()
         }
     }
 
+    if (MachineGunClass)
+    {
+        MachineGun = GetWorld()->SpawnActor<AMachineGun>(MachineGunClass);
+        if (MachineGun)
+        {
+            MachineGun->SetOwner(this);
+
+            MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket")); // 먼저 소켓에 부착
+
+            // 트랜스폼 설정
+            MachineGun->SetActorRelativeLocation(FVector::ZeroVector); // 원하는 위치로 수정
+            MachineGun->SetActorRelativeRotation(FRotator(0.f, 180.f, 0.f)); // 원하는 방향으로 수정
+            MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
+
+            MachineGun->SetActorHiddenInGame(true); // 기본적으로 보이지 않음
+            UE_LOG(LogTemp, Warning, TEXT("MachineGun Spawned, Attached, and Hidden."));
+        }
+    }
 }
 
 void AMainCharacter::AttachRifleToBack()
@@ -301,6 +320,8 @@ void AMainCharacter::Tick(float DeltaTime)
 
 void AMainCharacter::HandleJump()
 {
+    if (bIsUsingSkill1 || bIsUsingSkill2 || bIsUsingSkill3) return;
+
     // 공격 중이거나 대쉬중에 점프 불가
     if (bIsAttacking || bIsDashing)
     {
@@ -389,6 +410,8 @@ void AMainCharacter::Look(const FInputActionValue& Value)
 
 void AMainCharacter::FireWeapon()
 {
+    if (bIsUsingSkill1 || bIsUsingSkill2 || bIsUsingSkill3 || bIsUsingAimSkill1) return;
+
     if (bIsAiming && Rifle)
     {
         Rifle->Fire();
@@ -410,6 +433,8 @@ void AMainCharacter::ReloadWeapon()
 
 void AMainCharacter::EnterAimMode()
 {
+    if (bIsUsingSkill1 || bIsUsingSkill2 || bIsUsingSkill3 || bIsUsingAimSkill1 || !bCanUseAimSkill1) return;
+
     if (!bIsAiming)
     {
         bIsAiming = true;
@@ -438,7 +463,7 @@ void AMainCharacter::ExitAimMode()
 
 void AMainCharacter::ComboAttack()
 {
-    if (bIsAttacking || bIsJumping || bIsInDoubleJump || bIsDashing) return; // 이미 공격중이거나 점프중이면 공격 불가
+    if (bIsAttacking || bIsJumping || bIsInDoubleJump || bIsDashing || bIsUsingAimSkill1) return; // 이미 공격중이거나 점프, 대쉬, 에임모드 스킬1 중이면 공격 불가
 
     GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
     GetWorldTimerManager().SetTimer(ComboCooldownHandle, this, &AMainCharacter::ResetCombo, ComboCooldownTime, false); // 콤보 쿨다운 타이머 설정
@@ -996,7 +1021,7 @@ void AMainCharacter::Skill1()
     if (bIsUsingSkill1) return; // 스킬 사용 중일 때는 스킬 사용 불가
     if (!bCanUseSkill1) return; // 스킬 쿨다운 중일 때는 스킬 사용 불가
 
-    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
+    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump || bIsUsingAimSkill1) return; // 대쉬, 에임, 점프, 에임모드 스킬1 중일 때는 스킬 사용 불가
 
     bIsUsingSkill1 = true; // 스킬 사용 상태로 변경
     bCanUseSkill1 = false; // 스킬 쿨다운 시작
@@ -1102,7 +1127,7 @@ void AMainCharacter::Skill2()
     if (bIsUsingSkill2) return; // 사용중이면 사용 불가
     if (!bCanUseSkill2) return; // 쿨다운 상태면 사용 불가
 
-    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
+    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump || bIsUsingAimSkill1) return; // 대쉬, 에임, 점프, 에임모드 스킬1 중일 때는 스킬 사용 불가
 
     bIsUsingSkill2 = true; // 스킬 사용 상태 활성화
     bCanUseSkill2 = false; // 스킬 쿨다운 시작
@@ -1246,7 +1271,7 @@ void AMainCharacter::Skill3()
     if (bIsUsingSkill3) return; // 사용중이면 사용 불가
     if (!bCanUseSkill3) return; // 쿨다운 상태면 사용 불가
 
-    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump) return; // 대쉬, 에임, 점프 중일 때는 스킬 사용 불가
+    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump || bIsUsingAimSkill1) return; // 대쉬, 에임, 점프, 에임모드스킬 1 중일 때는 스킬 사용 불가
 
     bIsUsingSkill3 = true; // 스킬 사용 상태 활성화
     bCanUseSkill3 = false; // 스킬 쿨다운 시작
@@ -1335,8 +1360,16 @@ void AMainCharacter::AimSkill1()
 
     if (bIsDashing || bIsJumping || bIsInDoubleJump) return; // 대쉬, 점프 중일 때는 스킬 사용 불가
 
+    if (bIsAiming)
+    {
+        ExitAimMode();  // 기존 에임모드 강제 종료
+    }
+
     bIsUsingAimSkill1 = true; // 스킬 사용 상태 활성화
     bCanUseAimSkill1 = false; // 스킬 쿨다운 시작
+
+    AttachRifleToBack(); // 라이플 등으로
+    AttachKnifeToBack(); // 양손 칼 집어넣기
 
     // 이동 입력 방향 감지
     FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
@@ -1346,6 +1379,19 @@ void AMainCharacter::AimSkill1()
         FRotator NewRotation = InputDirection.Rotation();
         NewRotation.Pitch = 0.0f; // 피치 값 유지로 고개 숙임 방지
         SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
+    }
+
+    if (MachineGun)
+    {
+        // 스킬 시작 전에 다시 부착
+        MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket"));
+        // 트랜스폼 설정
+        MachineGun->SetActorRelativeLocation(FVector::ZeroVector); // 원하는 위치로 수정
+        MachineGun->SetActorRelativeRotation(FRotator(0.f, 180.f, 0.f)); // 원하는 방향으로 수정
+        MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
+
+        MachineGun->SetActorHiddenInGame(false);  // 보이게
+        UE_LOG(LogTemp, Warning, TEXT("MachineGun Shown!"));
     }
 
     PlayAimSkill1Montage(AimSkill1AnimMontage); // 스킬 애니메이션 실행
@@ -1415,6 +1461,19 @@ void AMainCharacter::ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted)
     {
         AnimInstance->Montage_Stop(0.3f, AimSkill1AnimMontage); // 부드럽게 애니메이션 종료
         UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Montage Stopped After 10 Seconds!"));
+    }
+
+    if (MachineGun)
+    {
+        // 다시 정확하게 부착하고 숨김
+        MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket"));
+        // 트랜스폼 설정
+        MachineGun->SetActorRelativeLocation(FVector::ZeroVector); // 원하는 위치로 수정
+        MachineGun->SetActorRelativeRotation(FRotator(0.f, 180.f, 0.f)); // 원하는 방향으로 수정
+        MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
+
+        MachineGun->SetActorHiddenInGame(true);  // 숨김
+        UE_LOG(LogTemp, Warning, TEXT("MachineGun Hidden!"));
     }
 
     GetWorldTimerManager().ClearTimer(AimSkill1RepeatTimerHandle); // 반복 타이머 해제
