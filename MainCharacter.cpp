@@ -118,8 +118,8 @@ void AMainCharacter::BeginPlay()
             MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket")); // 먼저 소켓에 부착
 
             // 트랜스폼 설정
-            MachineGun->SetActorRelativeLocation(FVector::ZeroVector); // 원하는 위치로 수정
-            MachineGun->SetActorRelativeRotation(FRotator(0.f, 180.f, 0.f)); // 원하는 방향으로 수정
+            MachineGun->SetActorRelativeLocation(FVector(-5.f, -20.f, 0.f)); // 원하는 위치로 수정
+            MachineGun->SetActorRelativeRotation(FRotator(90.f, 180.f, 0.f)); // 원하는 방향으로 수정
             MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
 
             MachineGun->SetActorHiddenInGame(true); // 기본적으로 보이지 않음
@@ -272,9 +272,10 @@ void AMainCharacter::Tick(float DeltaTime)
         AnimInstance->bIsInAir = bIsInAir;
         AnimInstance->bIsAiming = bIsAiming;
         AnimInstance->AimPitch = AimPitch; // Pitch 값 전달
+        AnimInstance->bIsUsingAimSkill1 = bIsUsingAimSkill1;
     }
 
-    if (bIsAiming)
+    if (bIsAiming || bIsUsingAimSkill1)
     {
         APlayerController* PlayerController = Cast<APlayerController>(GetController());
         if (PlayerController)
@@ -1386,12 +1387,14 @@ void AMainCharacter::AimSkill1()
         // 스킬 시작 전에 다시 부착
         MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket"));
         // 트랜스폼 설정
-        MachineGun->SetActorRelativeLocation(FVector::ZeroVector); // 원하는 위치로 수정
-        MachineGun->SetActorRelativeRotation(FRotator(0.f, 180.f, 0.f)); // 원하는 방향으로 수정
+        MachineGun->SetActorRelativeLocation(FVector(-5.f, -20.f, 0.f)); // 원하는 위치로 수정
+        MachineGun->SetActorRelativeRotation(FRotator(90.f, 180.f, 0.f)); // 원하는 방향으로 수정
         MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
 
         MachineGun->SetActorHiddenInGame(false);  // 보이게
         UE_LOG(LogTemp, Warning, TEXT("MachineGun Shown!"));
+
+        MachineGun->StartFire();
     }
 
     PlayAimSkill1Montage(AimSkill1AnimMontage); // 스킬 애니메이션 실행
@@ -1443,7 +1446,7 @@ void AMainCharacter::RepeatAImSkill1Montage()
         return;
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("Replaying AimSkill1 Montage. Elapsed: %.2f"), ElapsedTime); 
+    UE_LOG(LogTemp, Warning, TEXT("Replaying AimSkill1 Montage. Elapsed: %.2f"), ElapsedTime);
     PlayAimSkill1Montage(AimSkill1AnimMontage); // 반복 재생
 }
 
@@ -1456,11 +1459,14 @@ void AMainCharacter::ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted)
 {
     bIsUsingAimSkill1 = false; // 사용 상태 해제
 
+    AttachRifleToBack(); // 라이플 등으로
+    AttachKnifeToHand(); // 양손 칼 손으로
+
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
     if (AnimInstance && AimSkill1AnimMontage)
     {
         AnimInstance->Montage_Stop(0.3f, AimSkill1AnimMontage); // 부드럽게 애니메이션 종료
-        UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Montage Stopped After 10 Seconds!"));
+        UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Montage Stopped"));
     }
 
     if (MachineGun)
@@ -1468,12 +1474,14 @@ void AMainCharacter::ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted)
         // 다시 정확하게 부착하고 숨김
         MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket"));
         // 트랜스폼 설정
-        MachineGun->SetActorRelativeLocation(FVector::ZeroVector); // 원하는 위치로 수정
-        MachineGun->SetActorRelativeRotation(FRotator(0.f, 180.f, 0.f)); // 원하는 방향으로 수정
+        MachineGun->SetActorRelativeLocation(FVector(-5.f, -20.f, 0.f)); // 원하는 위치로 수정
+        MachineGun->SetActorRelativeRotation(FRotator(90.f, 180.f, 0.f)); // 원하는 방향으로 수정
         MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
 
         MachineGun->SetActorHiddenInGame(true);  // 숨김
         UE_LOG(LogTemp, Warning, TEXT("MachineGun Hidden!"));
+
+        MachineGun->StopFire();
     }
 
     GetWorldTimerManager().ClearTimer(AimSkill1RepeatTimerHandle); // 반복 타이머 해제

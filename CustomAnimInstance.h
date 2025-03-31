@@ -10,6 +10,7 @@ class LOCOMOTION_API UCustomAnimInstance : public UAnimInstance
     GENERATED_BODY()
 
 public:
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
     float Speed;
 
@@ -30,4 +31,7 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
     bool bIsAiming;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
+    bool bIsUsingAimSkill1;
 };
