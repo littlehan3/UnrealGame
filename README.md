@@ -10,12 +10,18 @@
 
 ## 2025-02-11 깃허브 게시 및 문재해결 및 개선 기록 노트
 
--매달 1일 마다 업데이트되며 README 에는 결과적으로 구현한 기능들만 정리했습니다.
-### 1. 2025년 1월 1일~2월 11일까지의 노트입니다.
--https://drive.google.com/file/d/1RFKRTb3lq0Ar7vT-4p2fAWsxuOvCUs_L/view
+- 매달 1일 마다 업데이트되며 README 에는 결과적으로 구현한 기능과 수정된 사항들만 정리했습니다.
+- 개발 중 작성된 기록으로, 최종 게임이 완성되면 전체 내용을 정리 및 보완하여 다듬어진 형태로 다시 게시할 예정입니다.
 
-### 2. 2025년 2월 12일~3월 1일까지의 노트입니다.
-https://drive.google.com/file/d/1fYCEe1V121CrIwy1mXYSQLtxwdE07ne7/view?usp=drive_link
+### 1. 2025년 2월 11일 깃허브 게시전까지의 노트입니다.
+https://drive.google.com/file/d/1RFKRTb3lq0Ar7vT-4p2fAWsxuOvCUs_L/view?usp=sharing
+
+### 2. 2025년 2월 12일~ 3월 1일까지의 노트입니다.
+https://drive.google.com/file/d/1fYCEe1V121CrIwy1mXYSQLtxwdE07ne7/view?usp=sharing
+
+### 3. 2025년 3월 1일 ~ 4월 1일까지의 노트입니다.
+https://drive.google.com/file/d/1ZAbT8KDtF4GTCPC5VdIFl19bndv94JwC/view?usp=sharing
+
 
 ## 2025-02-13 업데이트 내용
 
