@@ -385,6 +385,8 @@ void AMainCharacter::ResetLandingState()
 
 void AMainCharacter::Move(const FInputActionValue& Value)
 {
+	if (bIsUsingAimSkill1) return; // 에임모드 스킬1 사용 중에는 이동 불가
+
     FVector2D MovementVector = Value.Get<FVector2D>();
 
     if (!Controller) return;
