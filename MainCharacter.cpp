@@ -45,7 +45,6 @@ AMainCharacter::AMainCharacter()
     bIsInAir = false;
     bCanDoubleJump = true;
     bIsAiming = false;
-    ComboIndex = 0;
 
     // 발차기 히트박스 초기화
     KickHitBox = CreateDefaultSubobject<UBoxComponent>(TEXT("KickHitBox"));
@@ -55,14 +54,14 @@ AMainCharacter::AMainCharacter()
     KickHitBox->SetCollisionObjectType(ECC_WorldDynamic);  // 충돌 오브젝트 타입 설정
     KickHitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
     KickHitBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // 캐릭터와만 충돌 감지
+
+    MeleeCombatComponent = CreateDefaultSubobject<UMeleeCombatComponent>(TEXT("MeleeCombatComponent"));
+
 }
 
 void AMainCharacter::BeginPlay()
 {
     Super::BeginPlay();
-
-    KickHitBox->OnComponentBeginOverlap.AddDynamic(this, &AMainCharacter::OnKickHitBoxOverlap);
-
 
     if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
     {
@@ -125,6 +124,20 @@ void AMainCharacter::BeginPlay()
             MachineGun->SetActorHiddenInGame(true); // 기본적으로 보이지 않음
             UE_LOG(LogTemp, Warning, TEXT("MachineGun Spawned, Attached, and Hidden."));
         }
+    }
+
+    if (MeleeCombatComponent)
+    {
+        MeleeCombatComponent->InitializeCombatComponent(this, KickHitBox, LeftKnife, RightKnife);
+
+        TArray<UAnimMontage*> Montages;
+        Montages.Add(ComboAttackMontage1);
+        Montages.Add(ComboAttackMontage2);
+        Montages.Add(ComboAttackMontage3);
+        Montages.Add(ComboAttackMontage4);
+        Montages.Add(ComboAttackMontage5);
+
+        MeleeCombatComponent->SetComboMontages(Montages);
     }
 }
 
@@ -324,7 +337,7 @@ void AMainCharacter::HandleJump()
     if (bIsUsingSkill1 || bIsUsingSkill2 || bIsUsingSkill3) return;
 
     // 공격 중이거나 대쉬중에 점프 불가
-    if (bIsAttacking || bIsDashing)
+    if (bIsDashing)
     {
         return;
     }
@@ -385,7 +398,7 @@ void AMainCharacter::ResetLandingState()
 
 void AMainCharacter::Move(const FInputActionValue& Value)
 {
-	if (bIsUsingAimSkill1) return; // 에임모드 스킬1 사용 중에는 이동 불가
+    if (bIsUsingAimSkill1) return; // 에임모드 스킬1 사용 중에는 이동 불가
 
     FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -466,380 +479,21 @@ void AMainCharacter::ExitAimMode()
 
 void AMainCharacter::ComboAttack()
 {
-    if (bIsAttacking || bIsJumping || bIsInDoubleJump || bIsDashing || bIsUsingAimSkill1) return; // 이미 공격중이거나 점프, 대쉬, 에임모드 스킬1 중이면 공격 불가
+    if (!MeleeCombatComponent) return;
 
-    GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
-    GetWorldTimerManager().SetTimer(ComboCooldownHandle, this, &AMainCharacter::ResetCombo, ComboCooldownTime, false); // 콤보 쿨다운 타이머 설정
-
-    bIsAttacking = true; // 공격 상태 변경
-
-    // 콤보 중 자동 회전 비활성화 (카메라 영향을 막음)
-    GetCharacterMovement()->bOrientRotationToMovement = false;
-
-    AdjustComboAttackDirection(); // 공격 방향 보정
-
-    FVector InputDirection = FVector::ZeroVector;
-
-    if (Controller)
-    {
-        const FRotator ControlRotation = Controller->GetControlRotation();
-        const FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f);
-
-        FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-        FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-        if (GetCharacterMovement()->GetLastInputVector().Size() > 0.0f)
-        {
-            InputDirection = GetCharacterMovement()->GetLastInputVector().GetSafeNormal();
-        }
-    }
-
-    // 이동 입력이 있다면 방향 업데이트
-    if (!InputDirection.IsNearlyZero())
-    {
-        LastAttackDirection = InputDirection;
-    }
-
-    // 캐릭터가 바라보는 방향 설정
-    FVector AttackDirection = GetActorForwardVector();
-
-    // 이동 입력이 있었다면 방향 업데이트
-    if (!LastAttackDirection.IsNearlyZero())
-    {
-        FRotator NewRotation = LastAttackDirection.Rotation();
-        NewRotation.Pitch = 0.0f;
-        SetActorRotation(NewRotation);
-
-        AttackDirection = LastAttackDirection;
-    }
-
-    if (ComboIndex == 3)
-    {
-        EnableKickHitBox();
-    }
-    else
-    {
-        if (LeftKnife)
-        {
-            LeftKnife->EnableHitBox(ComboIndex);
-        }
-        if (RightKnife)
-        {
-            RightKnife->EnableHitBox(ComboIndex);
-        }
-    }
-    // 콤보 공격 애니메이션 적용
-    switch (ComboIndex)
-    {
-    case 0:
-        PlayComboAttackAnimation1();
-        break;
-
-    case 1:
-        PlayComboAttackAnimation2();
-        break;
-
-    case 2:
-        PlayComboAttackAnimation3();
-        break;
-
-    case 3:
-        PlayComboAttackAnimation4();
-        break;
-
-    case 4:
-        PlayComboAttackAnimation5();
-        break;
-
-    default:
-        break;
-    }
-
-    // 콤보 인덱스 업데이트
-    ComboIndex = (ComboIndex + 1) % 5;
-}
-
-void AMainCharacter::ResetComboTimer()
-{
-    ResetCombo(); // 콤보 초기화
-}
-// 콤보 리셋 함수 (공격 후 콤보 상태 초기화)
-void AMainCharacter::ResetCombo()
-{
-    bIsAttacking = false; // 공격 상태 초기화
-    ComboIndex = 0; // 콤보 인덱스 초기화
-
-    GetWorldTimerManager().ClearTimer(ComboCooldownHandle); // 콤보 쿨다운 타이머 초기화
-    UE_LOG(LogTemp, Warning, TEXT("Combo Reset!"));
-}
-
-void AMainCharacter::AdjustComboAttackDirection()
-{
-    float MaxAutoAimDistance = 200.0f; // 자동 보정이 적용되는 거리
-    float RotationSpeed = 8.0f; // 회전 속도
-
-    AActor* TargetEnemy = nullptr; // 가장 가까운 적을 저장할 변수
-    float ClosestDistance = MaxAutoAimDistance; // 현재 가장 가까운 적과의 거리 초기값은 최대 보정값
-
-    TArray<AActor*> FoundEnemies; // 모든 적을 저장할 배열
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), FoundEnemies); // 모든 적을 찾아 배열에 저장
-
-    for (AActor* Enemy : FoundEnemies) // 모든 적을 순회하며 가장 가까운 적을 찾음
-    {
-        AEnemy* EnemyCharacter = Cast<AEnemy>(Enemy); // AActor 타입을 AEnemy 타입으로 변환 AActor는 bIsDead 변수를 사용할 수 없음
-
-        // nullptr이거나 죽은 상태인 적은 무시
-        if (!EnemyCharacter || EnemyCharacter->bIsDead) // EnemyCharacter은 AEneymy 타입이므로 bIsDead 변수 사용 가능
-        {
-            continue;
-        }
-
-        // 공중 스턴 상태인 적은 보정 대상에서 제외
-        if (EnemyCharacter->bIsInAirStun)
-        {
-            continue;
-        }
-
-        float Distance = FVector::Dist(GetActorLocation(), Enemy->GetActorLocation()); // 플레이어와 적 사이의 거리 계산
-
-        if (Distance < ClosestDistance) // 현재 가장 가까운 적보다 더 가까운 적을 찾았다면
-        {
-            ClosestDistance = Distance; // 가장 가까운 적의 거리 업데이트
-            TargetEnemy = Enemy; // 보정할 적을 현재 적으로 설정
-        }
-    }
-
-    if (TargetEnemy) // 보정 대상이 되는 적의 경우
-    {
-        FVector DirectionToEnemy = TargetEnemy->GetActorLocation() - GetActorLocation(); // 플레이어에서 적을 향하는 방향 벡터 계산
-        DirectionToEnemy.Z = 0.0f; // 수직 방향 제거
-        DirectionToEnemy.Normalize(); // 정규화
-
-        TargetRootMotionRotation = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator(); // 적을 향한 방향으로 캐릭터 회전
-        bApplyRootMotionRotation = true; // 루트모션 중 보정된 방향을 유지하도록 설정
-
-        UE_LOG(LogTemp, Warning, TEXT("Adjusted Attack Direction to: %s"), *TargetEnemy->GetName());
-        UE_LOG(LogTemp, Warning, TEXT("Target Position: %s"), *TargetEnemy->GetActorLocation().ToString());
-        UE_LOG(LogTemp, Warning, TEXT("Target RootMotion Rotation: %s"), *TargetRootMotionRotation.ToString());
-
-        // 디버그로 시각화
-        FVector Start = GetActorLocation(); // 시작점: 캐릭터 위치
-        FVector End = TargetEnemy->GetActorLocation(); // 끝점: 보정 대상 적 위치
-        DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 2.0f, 0, 2.0f); // 적 방향 (빨간색)
-        DrawDebugLine(GetWorld(), Start, Start + GetActorForwardVector() * 200.0f, FColor::Green, false, 2.0f, 0, 2.0f); // 현재 공격 방향 (초록색)
-    }
-}
-
-void AMainCharacter::OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupted)
-{
-    bIsAttacking = false; // 공격 상태 초기화
-    GetCharacterMovement()->bOrientRotationToMovement = true; // 이동 시 자동 회전 다시 활성화
-    bApplyRootMotionRotation = false; // 루트모션 방향 보정 해제
-
-    UE_LOG(LogTemp, Warning, TEXT("Root Motion Stopped. Player Control Restored!"));
-
-    // 콤보 종료 후 자동 회전 다시 활성화
-    GetCharacterMovement()->bOrientRotationToMovement = true;
-
-    // 공격 종료 시 히트박스 강제 비활성화
-    if (LeftKnife)
-    {
-        LeftKnife->DisableHitBox();
-        UE_LOG(LogTemp, Warning, TEXT("LeftKnife HitBox Disabled at Montage End!"));
-    }
-    if (RightKnife)
-    {
-        RightKnife->DisableHitBox();
-        UE_LOG(LogTemp, Warning, TEXT("RightKnife HitBox Disabled at Montage End!"));
-    }
-
-    // 마지막 공격 방향을 유지 (이전 방향을 덮어쓰지 않도록)
-    if (!LastAttackDirection.IsNearlyZero())
-    {
-        LastAttackDirection = GetActorForwardVector();
-    }
-}
-
-
-void AMainCharacter::ApplyComboMovement(float MoveDistance, FVector MoveDirection)
-{
-    if (!MoveDirection.IsNearlyZero())
-    {
-        MoveDirection.Z = 0; // 수직 이동 방지
-        MoveDirection.Normalize();
-
-        // 캐릭터를 입력 방향으로 즉시 이동
-        LaunchCharacter(MoveDirection * MoveDistance, false, false);
-
-        UE_LOG(LogTemp, Warning, TEXT("Character launched towards: %s"), *MoveDirection.ToString());
-    }
-}
-
-void AMainCharacter::EnableKickHitBox()
-{
-    if (KickHitBox)
-    {
-        KickHitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly); // 히트박스 충돌 활성화
-        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Enabled!"));
-    }
-
-
-    KickRaycastAttack(); // 레이캐스트 실행
-}
-
-void AMainCharacter::DisableKickHitBox()
-{
-    if (KickHitBox)
-    {
-        KickHitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 히트박스 충돌 비활성화
-        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Disabled!"));
-    }
-
-    KickRaycastHitActor = nullptr; // 다음 공격을 위해 레이캐스트 적중 객체 초기화
-}
-
-void AMainCharacter::KickRaycastAttack()
-{
-    AActor* OwnerActor = this;
-    if (!OwnerActor) return;
-
-    FVector StartLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 20.0f); // 뒤에 있는 적 히트 방지를 위해 캐릭터로부터 해당거리 만큼 떨어진 곳에서 레이캐스트 시작
-    FVector EndLocation = StartLocation + (OwnerActor->GetActorForwardVector() * 150.0f); // 해당 길이만큼 레이캐스트 발사
-
-    FHitResult HitResult;
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(OwnerActor); // 자기 자신과의 충돌 무시
-
-    bool bRaycastHit = GetWorld()->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, ECC_Visibility, Params); // 레이캐스트 실행(적이 감지되면 bRaycastHit = true)
-
-    FColor LineColor = bRaycastHit ? FColor::Red : FColor::Green; // 디버그 시각화(빨간색 = 적중, 초록색 = 미적중)
-    DrawDebugLine(GetWorld(), StartLocation, EndLocation, LineColor, false, 1.0f, 0, 3.0f); // 앞쪽으로만 공격 범위 표시
-
-    if (bRaycastHit)
-    {
-        KickRaycastHitActor = HitResult.GetActor(); // 레이캐스트에서 감지된 적 저장
-        UE_LOG(LogTemp, Warning, TEXT("Kick Raycast Hit: %s"), *KickRaycastHitActor->GetName());
-
-        // 충돌한 지점을 빨간색 구체로 시각화
-        DrawDebugSphere(GetWorld(), HitResult.ImpactPoint, 10.0f, 12, FColor::Red, false, 1.0f);
-    }
-    else
-    {
-        KickRaycastHitActor = nullptr; // 적중 실패 시 초기화
-    }
-}
-
-void AMainCharacter::OnKickHitBoxOverlap(
-    UPrimitiveComponent* OverlappedComponent,
-    AActor* OtherActor,
-    UPrimitiveComponent* OtherComp,
-    int32 OtherBodyIndex,
-    bool bFromSweep,
-    const FHitResult& SweepResult)
-{
-    if (!OtherActor || OtherActor == this || OtherComp == KickHitBox) // 자기 자신이거나 잘못된 객체일 경우 무시
+    // 공격 불가능한 상태일 때 막기
+    if (bIsJumping || bIsInDoubleJump || bIsDashing || bIsUsingAimSkill1)
     {
         return;
     }
 
-    // 히트박스에 감지되었으나 레이캐스트에서 감지되지 않으면 무효
-    if (OtherActor != KickRaycastHitActor)
+    // 이미 공격 중이면 막기
+    if (MeleeCombatComponent->IsAttacking())
     {
-        UE_LOG(LogTemp, Warning, TEXT("Kick HitBox Detected, But No Raycast Hit: %s"), *OtherActor->GetName());
         return;
     }
 
-    float KickDamage = 35.0f; // 발차기 데미지 적용
-    UGameplayStatics::ApplyDamage(OtherActor, KickDamage, nullptr, this, nullptr);
-
-    UE_LOG(LogTemp, Warning, TEXT("Kick Hit! Applied %f Damage to %s"), KickDamage, *OtherActor->GetName());
-
-    DisableKickHitBox(); // 히트박스 비활성화
-}
-
-void AMainCharacter::PlayComboAttackAnimation1()
-{
-    if (ComboAttackMontage1)
-    {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-
-        if (AnimInstance)
-        {
-            AnimInstance->Montage_Play(ComboAttackMontage1, 1.0f);
-
-            FOnMontageEnded EndDelegate;
-            EndDelegate.BindUObject(this, &AMainCharacter::OnComboMontageEnded);
-            AnimInstance->Montage_SetEndDelegate(EndDelegate, ComboAttackMontage1);
-        }
-    }
-}
-
-void AMainCharacter::PlayComboAttackAnimation2()
-{
-    if (ComboAttackMontage2)
-    {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-
-        if (AnimInstance)
-        {
-            AnimInstance->Montage_Play(ComboAttackMontage2, 1.0f);
-
-            FOnMontageEnded EndDelegate;
-            EndDelegate.BindUObject(this, &AMainCharacter::OnComboMontageEnded);
-            AnimInstance->Montage_SetEndDelegate(EndDelegate, ComboAttackMontage2);
-        }
-    }
-}
-
-void AMainCharacter::PlayComboAttackAnimation3()
-{
-    if (ComboAttackMontage3)
-    {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-
-        if (AnimInstance)
-        {
-            AnimInstance->Montage_Play(ComboAttackMontage3, 1.0f);
-
-            FOnMontageEnded EndDelegate;
-            EndDelegate.BindUObject(this, &AMainCharacter::OnComboMontageEnded);
-            AnimInstance->Montage_SetEndDelegate(EndDelegate, ComboAttackMontage3);
-        }
-    }
-}
-
-void AMainCharacter::PlayComboAttackAnimation4()
-{
-    if (ComboAttackMontage4)
-    {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-
-        if (AnimInstance)
-        {
-            AnimInstance->Montage_Play(ComboAttackMontage4, 1.0f);
-
-            FOnMontageEnded EndDelegate;
-            EndDelegate.BindUObject(this, &AMainCharacter::OnComboMontageEnded);
-            AnimInstance->Montage_SetEndDelegate(EndDelegate, ComboAttackMontage4);
-        }
-    }
-}
-
-void AMainCharacter::PlayComboAttackAnimation5()
-{
-    if (ComboAttackMontage5)
-    {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-
-        if (AnimInstance)
-        {
-            AnimInstance->Montage_Play(ComboAttackMontage5, 1.0f);
-
-            FOnMontageEnded EndDelegate;
-            EndDelegate.BindUObject(this, &AMainCharacter::OnComboMontageEnded);
-            AnimInstance->Montage_SetEndDelegate(EndDelegate, ComboAttackMontage5);
-        }
-    }
+    MeleeCombatComponent->TriggerComboAttack();
 }
 
 void AMainCharacter::Dash()

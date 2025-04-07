@@ -5,8 +5,9 @@
 #include "InputActionValue.h"
 #include "Rifle.h" 
 #include "Knife.h"
-#include "Components/BoxComponent.h"  // BoxComponent 추가 (히트박스 용)
+#include "MeleeCombatComponent.h" // 컴포넌트 헤더 추가
 #include "Animation/AnimMontage.h"
+#include "Components/BoxComponent.h"
 #include "MainCharacter.generated.h"
 
 class ARifle;
@@ -40,25 +41,6 @@ protected:
     void AttachKnifeToBack();
     void AttachKnifeToHand();
     void ComboAttack();
-    void ResetCombo();;
-    void PlayComboAttackAnimation1();
-    void PlayComboAttackAnimation2();
-    void PlayComboAttackAnimation3();
-    void PlayComboAttackAnimation4();
-    void PlayComboAttackAnimation5();
-    void ApplyComboMovement(float MoveDistance, FVector MoveDirection);
-    void EnableKickHitBox();
-    void DisableKickHitBox();
-
-    UFUNCTION()
-    void OnKickHitBoxOverlap(
-        UPrimitiveComponent* OverlappedComponent,
-        AActor* OtherActor,
-        UPrimitiveComponent* OtherComp,
-        int32 OtherBodyIndex,
-        bool bFromSweep,
-        const FHitResult& SweepResult
-    );
 
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
@@ -124,26 +106,6 @@ private:
     AKnife* LeftKnife;
     UPROPERTY()
     AKnife* RightKnife;
-
-    int32 ComboIndex = 0;  // 콤보 단계
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animations", meta = (AllowPrivateAccess = "true"))
-    bool bIsAttacking = false;  // 공격중인지 여부
-
-    FTimerHandle ComboCooldownHandle; //콤보 쿨다운 타이머
-
-    float ComboCooldownTime = 2.0f; //각 콤보 간 딜레이 시간
-
-    UFUNCTION()
-    void OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupted);
-
-    FVector LastAttackDirection; // 마지막 공격 방향
-    FTimerHandle ComboResetTimerHandle; // 근접 콤보 초기화 타이머
-    float ComboResetTime = 1.5f; // 근접 콤보 초기화 시간
-    void ResetComboTimer(); // 콤보 초기화 타이머 함수
-
-    void KickRaycastAttack();
-    AActor* KickRaycastHitActor; // 발차기 레이캐스트 적용 대상
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combo Animations", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* ComboAttackMontage1;
@@ -310,4 +272,7 @@ private:
     // 현재 소환된 머시건 인스턴스
     UPROPERTY()
     AMachineGun* MachineGun;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
+    UMeleeCombatComponent* MeleeCombatComponent;
 };
