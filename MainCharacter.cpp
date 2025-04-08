@@ -57,6 +57,8 @@ AMainCharacter::AMainCharacter()
 
     MeleeCombatComponent = CreateDefaultSubobject<UMeleeCombatComponent>(TEXT("MeleeCombatComponent"));
 
+    SkillComponent = CreateDefaultSubobject<USkillComponent>(TEXT("SkillComponent"));
+
 }
 
 void AMainCharacter::BeginPlay()
@@ -107,25 +109,6 @@ void AMainCharacter::BeginPlay()
         }
     }
 
-    if (MachineGunClass)
-    {
-        MachineGun = GetWorld()->SpawnActor<AMachineGun>(MachineGunClass);
-        if (MachineGun)
-        {
-            MachineGun->SetOwner(this);
-
-            MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket")); // 먼저 소켓에 부착
-
-            // 트랜스폼 설정
-            MachineGun->SetActorRelativeLocation(FVector(-5.f, -20.f, 0.f)); // 원하는 위치로 수정
-            MachineGun->SetActorRelativeRotation(FRotator(90.f, 180.f, 0.f)); // 원하는 방향으로 수정
-            MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
-
-            MachineGun->SetActorHiddenInGame(true); // 기본적으로 보이지 않음
-            UE_LOG(LogTemp, Warning, TEXT("MachineGun Spawned, Attached, and Hidden."));
-        }
-    }
-
     if (MeleeCombatComponent)
     {
         MeleeCombatComponent->InitializeCombatComponent(this, KickHitBox, LeftKnife, RightKnife);
@@ -138,6 +121,21 @@ void AMainCharacter::BeginPlay()
         Montages.Add(ComboAttackMontage5);
 
         MeleeCombatComponent->SetComboMontages(Montages);
+    }
+
+    if (MachineGunClass)
+    {
+        MachineGun = GetWorld()->SpawnActor<AMachineGun>(MachineGunClass);
+        if (MachineGun)
+        {
+            MachineGun->SetActorHiddenInGame(true); // 초기엔 숨겨놓기
+            MachineGun->SetOwner(this);
+        }
+    }
+
+    if (SkillComponent)
+    {
+        SkillComponent->InitializeSkills(this, MachineGun, LeftKnife, RightKnife, KickHitBox);
     }
 }
 
@@ -285,10 +283,10 @@ void AMainCharacter::Tick(float DeltaTime)
         AnimInstance->bIsInAir = bIsInAir;
         AnimInstance->bIsAiming = bIsAiming;
         AnimInstance->AimPitch = AimPitch; // Pitch 값 전달
-        AnimInstance->bIsUsingAimSkill1 = bIsUsingAimSkill1;
+        AnimInstance->bIsUsingAimSkill1 = (SkillComponent && SkillComponent->IsUsingAimSkill1());
     }
 
-    if (bIsAiming || bIsUsingAimSkill1)
+    if (bIsAiming || (SkillComponent && SkillComponent->IsUsingAimSkill1()))
     {
         APlayerController* PlayerController = Cast<APlayerController>(GetController());
         if (PlayerController)
@@ -334,7 +332,9 @@ void AMainCharacter::Tick(float DeltaTime)
 
 void AMainCharacter::HandleJump()
 {
-    if (bIsUsingSkill1 || bIsUsingSkill2 || bIsUsingSkill3) return;
+    if (SkillComponent &&
+        (SkillComponent->IsUsingSkill1() || SkillComponent->IsUsingSkill2() || SkillComponent->IsUsingSkill3()))
+        return;
 
     // 공격 중이거나 대쉬중에 점프 불가
     if (bIsDashing)
@@ -398,7 +398,7 @@ void AMainCharacter::ResetLandingState()
 
 void AMainCharacter::Move(const FInputActionValue& Value)
 {
-    if (bIsUsingAimSkill1) return; // 에임모드 스킬1 사용 중에는 이동 불가
+    if (SkillComponent && SkillComponent->IsUsingAimSkill1()) return;
 
     FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -426,7 +426,13 @@ void AMainCharacter::Look(const FInputActionValue& Value)
 
 void AMainCharacter::FireWeapon()
 {
-    if (bIsUsingSkill1 || bIsUsingSkill2 || bIsUsingSkill3 || bIsUsingAimSkill1) return;
+    if (SkillComponent &&
+        (SkillComponent->IsUsingSkill1() ||
+            SkillComponent->IsUsingSkill2() ||
+            SkillComponent->IsUsingSkill3() ||
+            SkillComponent->IsUsingAimSkill1()))
+        return;
+
 
     if (bIsAiming && Rifle)
     {
@@ -449,7 +455,13 @@ void AMainCharacter::ReloadWeapon()
 
 void AMainCharacter::EnterAimMode()
 {
-    if (bIsUsingSkill1 || bIsUsingSkill2 || bIsUsingSkill3 || bIsUsingAimSkill1 || !bCanUseAimSkill1) return;
+    if (SkillComponent &&
+        (SkillComponent->IsUsingSkill1() ||
+            SkillComponent->IsUsingSkill2() ||
+            SkillComponent->IsUsingSkill3() ||
+            SkillComponent->IsUsingAimSkill1() ||
+            !SkillComponent->CanUseAimSkill1()))
+        return;
 
     if (!bIsAiming)
     {
@@ -479,10 +491,9 @@ void AMainCharacter::ExitAimMode()
 
 void AMainCharacter::ComboAttack()
 {
-    if (!MeleeCombatComponent) return;
+    if (!MeleeCombatComponent || !SkillComponent) return;
 
-    // 공격 불가능한 상태일 때 막기
-    if (bIsJumping || bIsInDoubleJump || bIsDashing || bIsUsingAimSkill1)
+    if (bIsJumping || bIsInDoubleJump || bIsDashing || SkillComponent->IsUsingAimSkill1())
     {
         return;
     }
@@ -667,488 +678,56 @@ void AMainCharacter::ZoomOut()
     UE_LOG(LogTemp, Warning, TEXT("Zoom Out: %f"), CurrentZoom);
 }
 
-void AMainCharacter::Skill1()
+void AMainCharacter::UseSkill1()
 {
-    if (bIsAiming)
+    UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseSkill1 triggered"));
+    if (SkillComponent)
     {
-        AimSkill1(); // 에임 모드일 때는 AimSkill1 호출
-        return;
-    }
-
-    if (bIsUsingSkill1) return; // 스킬 사용 중일 때는 스킬 사용 불가
-    if (!bCanUseSkill1) return; // 스킬 쿨다운 중일 때는 스킬 사용 불가
-
-    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump || bIsUsingAimSkill1) return; // 대쉬, 에임, 점프, 에임모드 스킬1 중일 때는 스킬 사용 불가
-
-    bIsUsingSkill1 = true; // 스킬 사용 상태로 변경
-    bCanUseSkill1 = false; // 스킬 쿨다운 시작
-
-    // 이동 입력 방향 감지
-    FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
-    if (!InputDirection.IsNearlyZero())
-    {
-        InputDirection.Normalize();
-        FRotator NewRotation = InputDirection.Rotation();
-        NewRotation.Pitch = 0.0f; // 피치값 유지로 고개 숙임 방지
-        SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
-    }
-
-    PlaySkill1Montage(Skill1AnimMontage); // 스킬 애니메이션 실행
-
-    DrawSkill1Range(); // 스킬 범위 표시
-
-    GetWorldTimerManager().SetTimer(SkillEffectTimerHandle, this, &AMainCharacter::ApplySkill1Effect, 0.5f, false);  // 일정 시간 후 스킬 적용 실행
-
-    GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
-}
-
-void AMainCharacter::DrawSkill1Range()
-{
-    FVector SkillCenter = GetActorLocation(); // 현재 캐릭터 위치를 중심으로 스킬 발동
-    float Duration = 1.0f; // 디버그 지속 시간
-
-    DrawDebugSphere(GetWorld(), SkillCenter, SkillRange, 32, FColor::Red, false, Duration, 0, 2.0f); // 스킬 범위 표시
-}
-
-void AMainCharacter::ApplySkill1Effect()
-{
-    FVector SkillCenter = GetActorLocation(); // 현재 캐릭터 위츠를 중심으로 스킬 발동
-
-    TArray<AActor*> OverlappingEnemies; // 현재 맵에 존재하는 모든적 클래스를 탐색
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), OverlappingEnemies); // 현재 맵에 존재하는 모든적 클래스를 탐색
-
-    float InAirTime = 4.0f; // 공준 스턴 지속 시간
-
-    for (AActor* Actor : OverlappingEnemies) // 찾은 적들에게 
-    {
-        AEnemy* Enemy = Cast<AEnemy>(Actor); // 스킬 효과 적용
-
-        if (Enemy && Enemy->GetCharacterMovement()) // 적이 존재하고 이동이 가능할때만
+        if (bIsAiming && SkillComponent->CanUseAimSkill1()) // 에임 중이고, AimSkill1 사용 가능하면
         {
-            float Distance = FVector::Dist(SkillCenter, Enemy->GetActorLocation());
-
-            if (Distance <= SkillRange) // 스킬 범위 안에 있는 적만 효과 적용
-            {
-                Enemy->EnterInAirStunState(InAirTime); // 공중 스턴 적용
-                UE_LOG(LogTemp, Warning, TEXT("Enemy %s stunned by Skill1!"), *Enemy->GetName());
-            }
+            UE_LOG(LogTemp, Warning, TEXT("UseSkill1: Aiming 상태에서 AimSkill1 실행"));
+            SkillComponent->UseAimSkill1(); // 머신건 스킬
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UseSkill1: 일반 Skill1 실행"));
+            SkillComponent->UseSkill1(); // 일반 스킬
         }
     }
 }
 
-void AMainCharacter::PlaySkill1Montage(UAnimMontage* Skill1Montage)
+void AMainCharacter::UseSkill2()
 {
-    if (!Skill1Montage) // 애니메이션이 없으면 실행 취소
+    if (SkillComponent)
     {
-        UE_LOG(LogTemp, Error, TEXT("PlaySkill1Montage Failed: SkillMontage is NULL"));
-        return;
+        SkillComponent->UseSkill2();
     }
+}
 
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 캐릭터와 애님 인스턴스를 가져옴
-    if (!AnimInstance) // 애님 인스턴스가 없으면 실행 취소
+void AMainCharacter::UseSkill3()
+{
+    if (SkillComponent)
     {
-        UE_LOG(LogTemp, Error, TEXT("PlaySkillMontage Failed: AnimInstance is NULL"));
-        return;
+        SkillComponent->UseSkill3();
     }
+}
 
-    float MontageDuration = AnimInstance->Montage_Play(Skill1Montage, 1.0f); // 스킬 애니메이션 실행
-    if (MontageDuration <= 0.0f)
+void AMainCharacter::UseAimSkill1()
+{
+    UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseAimSkill1 triggered"));
+
+    if (SkillComponent)
     {
-        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *Skill1Montage->GetName()); // 애니메이션 실행 실패 로그
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill1Montage->GetName()); // 애니메이션 실행 성공 로그
-
-    // 애니메이션 종료 시 스킬1 상태를 초기화하도록 콜백 함수 설정
-    FOnMontageEnded EndDelegate;
-    EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill1);
-    AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill1Montage);
-}
-
-void AMainCharacter::ResetSkill1(UAnimMontage* Montage, bool bInterrupted)
-{
-    bIsUsingSkill1 = false; // 스킬1 사용 상태 해제
-    GetWorldTimerManager().SetTimer(Skill1CooldownTimerHandle, this, &AMainCharacter::ResetSkill1Cooldown, Skill1Cooldown, false); // 쿨다운 타이머 시작
-    UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Started!"));
-}
-
-void AMainCharacter::ResetSkill1Cooldown()
-{
-    bCanUseSkill1 = true; // 스킬1 사용 가능상태로 변경
-    UE_LOG(LogTemp, Warning, TEXT("Skill1 Cooldown Over! Ready to Use Skill1 Again."));
-}
-
-void AMainCharacter::Skill2()
-{
-    if (bIsUsingSkill2) return; // 사용중이면 사용 불가
-    if (!bCanUseSkill2) return; // 쿨다운 상태면 사용 불가
-
-    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump || bIsUsingAimSkill1) return; // 대쉬, 에임, 점프, 에임모드 스킬1 중일 때는 스킬 사용 불가
-
-    bIsUsingSkill2 = true; // 스킬 사용 상태 활성화
-    bCanUseSkill2 = false; // 스킬 쿨다운 시작
-
-    // 이동 입력 방향 감지
-    FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
-    if (!InputDirection.IsNearlyZero())
-    {
-        InputDirection.Normalize();
-        FRotator NewRotation = InputDirection.Rotation();
-        NewRotation.Pitch = 0.0f; // 피치 값 유지로 고개 숙임 방지
-        SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
-    }
-
-    PlaySkill2Montage(Skill2AnimMontage); // 스킬 애니메이션 실행
-
-    GetWorldTimerManager().SetTimer(Skill2EffectTimerHandle, this, &AMainCharacter::ApplySkill2Effect, Skill2EffectDelay, false); // 설정된 Skill2EffectDelay 값만큼 후에 스킬 히트 판정 실행
-
-    GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &AMainCharacter::ResetSkill2Cooldown, Skill2Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
-}
-
-void AMainCharacter::DrawSkill2Range()
-{
-    if (!bIsUsingSkill2) return; // 스킬이 끝났으면 범위를 갱신하지 않음
-
-    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());
-
-    FVector SkillCenter = GetActorLocation(); // 루트모션이 적용되는 동안 실시간 위치 가져오기
-    float DebugDuration = 0.1f; // 빠른 갱신을 위해 0.1초로 설정
-    float DebugRadius = 200.0f; // 원형 범위 반경
-
-    DrawDebugSphere(GetWorld(), SkillCenter, DebugRadius, 32, FColor::Blue, false, DebugDuration, 0, 3.0f); // 스킬범위 표시
-
-    UE_LOG(LogTemp, Warning, TEXT("Skill2 Range Circle Drawn at %s with Radius %f"), *SkillCenter.ToString(), DebugRadius);
-}
-
-void AMainCharacter::ApplySkill2Effect()
-{
-    FVector SkillCenter = GetActorLocation(); // 현재 캐릭터 위치를 기준으로 효과 적용
-
-    // 스킬2 사용시캐릭터 높이 조절 (루트모션 무시 가능)
-    float JumpHeight = 300.0f;  // 설정한 도약 높이 만큼
-    LaunchCharacter(FVector(0, 0, JumpHeight), false, true);
-
-    TArray<FHitResult> HitResults; // 히트된 적을 저장할 배열
-
-    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));  // 적 탐색을 위해 Pawn을 대상으로 설정
-
-    // Sphere Trace를 사용하여 스킬 범위 내에 있는 적을 감지
-    bool bHit = UKismetSystemLibrary::SphereTraceMultiForObjects(
-        GetWorld(),
-        SkillCenter, // 탐색 중심 (캐릭터 위치)
-        SkillCenter, // 탐색 중심 (캐릭터 위치)
-        Skill2Range, // 범위 반경
-        ObjectTypes, // 감지할 오브젝트타입 (Pawn)
-        false,       // 단단한 벽 오브젝트 무시 여부
-        TArray<AActor*>(), // 무시할 엑터 목록 
-        EDrawDebugTrace::None, // 디버그 모드 설정
-        HitResults, // 감지된 결과 저장
-        true
-    );
-
-    TSet<AEnemy*> HitEnemies; // 이미 맞은 적을 저장할 Set (중복 공격 방지)
-
-    if (bHit)
-    {
-        DrawDebugSphere(GetWorld(), SkillCenter, Skill2Range, 32, FColor::Red, false, 0.4f, 0, 3.0f); // 스킬 범위 표시
-
-        for (const FHitResult& Hit : HitResults) // 감지된 적들에게 데미지 적용
+        if (bIsAiming)
         {
-            AEnemy* Enemy = Cast<AEnemy>(Hit.GetActor());
-            if (Enemy && !HitEnemies.Contains(Enemy)) // 중복 방지
-            {
-                float AppliedDamage = Skill2Damage;
-                UGameplayStatics::ApplyDamage(Enemy, AppliedDamage, GetController(), this, UDamageType::StaticClass());
-
-                UE_LOG(LogTemp, Warning, TEXT("Skill2 Hit Enemy: %s | Damage: %f"), *Enemy->GetName(), AppliedDamage);
-
-                HitEnemies.Add(Enemy); // 한 번 맞은 적은 추가
-            }
+            UE_LOG(LogTemp, Warning, TEXT("Calling AimSkill1 instead of Skill1"));
+            SkillComponent->UseAimSkill1(); // 직접 SkillComponent로 전달
+        }
+        else
+        {
+            SkillComponent->UseSkill1();
         }
     }
-
-    GetWorldTimerManager().SetTimer(Skill2RangeClearTimerHandle, this, &AMainCharacter::ClearSkill2Range, 0.4f, false); // 디버그 제거 (0.2초 후)
-}
-
-void AMainCharacter::ClearSkill2Range()
-{
-    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld()); // 디버그 범위 제거
-}
-
-void AMainCharacter::PlaySkill2Montage(UAnimMontage* Skill2Montage)
-{
-    if (!Skill2Montage) // 애니메이션이 없으면 실행 취소
-    {
-        UE_LOG(LogTemp, Error, TEXT("PlaySkill2Montage Failed: SkillMontage is NULL"));
-        return;
-    }
-
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 캐릭터와 애님 인스턴스를 가져옴
-    if (!AnimInstance) // 애님 인스턴스가 없으면 실행 취소
-    {
-        UE_LOG(LogTemp, Error, TEXT("PlaySkillMontage Failed: AnimInstance is NULL"));
-        return;
-    }
-
-    float MontageDuration = AnimInstance->Montage_Play(Skill2Montage, 1.2f); // 스킬 애니메이션 실행
-    if (MontageDuration <= 0.0f)
-    {
-        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *Skill2Montage->GetName()); // 애니메이션 실행 실패 로그
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill2Montage->GetName()); // 애니메이션 실행 성공 로그
-
-    // 애니메이션 종료 시 스킬2 상태를 초기화하도록 콜백 함수 설정
-    FOnMontageEnded EndDelegate;
-    EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill2);
-    AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill2Montage);
-}
-
-void AMainCharacter::ResetSkill2(UAnimMontage* Montage, bool bInterrupted)
-{
-    bIsUsingSkill2 = false; // 스킬 사용 상태 해제
-    // 스킬 종료 시 디버그 삭제
-    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());
-
-    GetWorldTimerManager().SetTimer(Skill2CooldownTimerHandle, this, &AMainCharacter::ResetSkill2Cooldown, Skill2Cooldown, false); // 쿨다운 타이머 시작
-    UE_LOG(LogTemp, Warning, TEXT("Skill2 Cooldown Started!"));
-}
-
-void AMainCharacter::ResetSkill2Cooldown()
-{
-    bCanUseSkill2 = true; // 스킬 사용 가능상태로 변경
-    UE_LOG(LogTemp, Warning, TEXT("Skill2 Cooldown Over! Ready to Use Skill2 Again."));
-}
-
-void AMainCharacter::Skill3()
-{
-    if (bIsUsingSkill3) return; // 사용중이면 사용 불가
-    if (!bCanUseSkill3) return; // 쿨다운 상태면 사용 불가
-
-    if (bIsDashing || bIsAiming || bIsJumping || bIsInDoubleJump || bIsUsingAimSkill1) return; // 대쉬, 에임, 점프, 에임모드스킬 1 중일 때는 스킬 사용 불가
-
-    bIsUsingSkill3 = true; // 스킬 사용 상태 활성화
-    bCanUseSkill3 = false; // 스킬 쿨다운 시작
-
-    // 이동 입력 방향 감지
-    FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
-    if (!InputDirection.IsNearlyZero())
-    {
-        InputDirection.Normalize();
-        FRotator NewRotation = InputDirection.Rotation();
-        NewRotation.Pitch = 0.0f; // 피치 값 유지로 고개 숙임 방지
-        SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
-    }
-
-    FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 120.f + FVector(0, 0, 30.f);
-    FRotator SpawnRot = GetActorRotation();
-
-    if (Skill3ProjectileClass)
-    {
-        ASkill3Projectile* Projectile = GetWorld()->SpawnActor<ASkill3Projectile>(Skill3ProjectileClass, SpawnLoc, SpawnRot);
-        if (Projectile)
-        {
-            Projectile->SetDamage(Skill3Damage);
-            Projectile->SetShooter(this);
-
-            FVector FireDirection = GetActorForwardVector();
-            Projectile->FireInDirection(FireDirection);  // 명시적으로 방향 설정
-        }
-    }
-
-    PlaySkill3Montage(Skill3AnimMontage); // 스킬 애니메이션 실행
-
-    GetWorldTimerManager().SetTimer(Skill3CooldownTimerHandle, this, &AMainCharacter::ResetSkill3Cooldown, Skill3Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
-}
-
-void AMainCharacter::PlaySkill3Montage(UAnimMontage* Skill3Montage)
-{
-    if (!Skill3Montage) // 애니메이션이 없으면 실행 취소
-    {
-        UE_LOG(LogTemp, Error, TEXT("PlaySkill3Montage Failed: SkillMontage is NULL"));
-        return;
-    }
-
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 캐릭터와 애님 인스턴스를 가져옴
-    if (!AnimInstance) // 애님 인스턴스가 없으면 실행 취소
-    {
-        UE_LOG(LogTemp, Error, TEXT("PlaySkil3Montage Failed: AnimInstance is NULL"));
-        return;
-    }
-
-    float MontageDuration = AnimInstance->Montage_Play(Skill3Montage, 1.0f); // 스킬 애니메이션 실행
-    if (MontageDuration <= 0.0f)
-    {
-        UE_LOG(LogTemp, Error, TEXT("Montage_Play Failed: %s"), *Skill3Montage->GetName()); // 애니메이션 실행 실패 로그
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Montage_Play Success: %s"), *Skill3Montage->GetName()); // 애니메이션 실행 성공 로그
-
-    // 애니메이션 종료 시 스킬3 상태를 초기화하도록 콜백 함수 설정
-    FOnMontageEnded EndDelegate;
-    EndDelegate.BindUObject(this, &AMainCharacter::ResetSkill3);
-    AnimInstance->Montage_SetEndDelegate(EndDelegate, Skill3Montage);
-}
-
-void AMainCharacter::ResetSkill3(UAnimMontage* Montage, bool bInterrupted)
-{
-    bIsUsingSkill3 = false; // 스킬 사용 상태 해제
-
-    GetWorldTimerManager().SetTimer(Skill3CooldownTimerHandle, this, &AMainCharacter::ResetSkill3Cooldown, Skill3Cooldown, false); // 쿨다운 타이머 시작
-    UE_LOG(LogTemp, Warning, TEXT("Skill3 Cooldown Started!"));
-}
-
-void AMainCharacter::ResetSkill3Cooldown()
-{
-    bCanUseSkill3 = true; // 스킬 사용 가능상태로 변경
-    UE_LOG(LogTemp, Warning, TEXT("Skill3 Cooldown Over! Ready to Use Skill3 Again."));
-}
-
-void AMainCharacter::AimSkill1()
-{
-    UE_LOG(LogTemp, Warning, TEXT("AimSkill1 triggered!"));
-
-    if (bIsUsingAimSkill1) return; // 사용중이면 사용 불가
-    if (!bCanUseAimSkill1) return; // 쿨다운 상태면 사용 불가
-
-    if (bIsDashing || bIsJumping || bIsInDoubleJump) return; // 대쉬, 점프 중일 때는 스킬 사용 불가
-
-    if (bIsAiming)
-    {
-        ExitAimMode();  // 기존 에임모드 강제 종료
-    }
-
-    bIsUsingAimSkill1 = true; // 스킬 사용 상태 활성화
-    bCanUseAimSkill1 = false; // 스킬 쿨다운 시작
-
-    AttachRifleToBack(); // 라이플 등으로
-    AttachKnifeToBack(); // 양손 칼 집어넣기
-
-    // 이동 입력 방향 감지
-    FVector InputDirection = GetCharacterMovement()->GetLastInputVector(); // 현재 캐릭터의 이동 입력 방향을 감지하여 해당 방향으로 회전
-    if (!InputDirection.IsNearlyZero())
-    {
-        InputDirection.Normalize();
-        FRotator NewRotation = InputDirection.Rotation();
-        NewRotation.Pitch = 0.0f; // 피치 값 유지로 고개 숙임 방지
-        SetActorRotation(NewRotation); // 캐릭터를 입력 방향으로 회전
-    }
-
-    if (MachineGun)
-    {
-        // 스킬 시작 전에 다시 부착
-        MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket"));
-        // 트랜스폼 설정
-        MachineGun->SetActorRelativeLocation(FVector(-5.f, -20.f, 0.f)); // 원하는 위치로 수정
-        MachineGun->SetActorRelativeRotation(FRotator(90.f, 180.f, 0.f)); // 원하는 방향으로 수정
-        MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
-
-        MachineGun->SetActorHiddenInGame(false);  // 보이게
-        UE_LOG(LogTemp, Warning, TEXT("MachineGun Shown!"));
-
-        MachineGun->StartFire();
-    }
-
-    PlayAimSkill1Montage(AimSkill1AnimMontage); // 스킬 애니메이션 실행
-
-    GetWorldTimerManager().SetTimer(AimSkill1RepeatTimerHandle, this, &AMainCharacter::RepeatAImSkill1Montage, AimSkill1PlayInterval, true); // 설정된 시간 간격으로 반복재생 시작
-
-    GetWorldTimerManager().SetTimer(AimSkill1CooldownTimerHandle, this, &AMainCharacter::ResetAimSkill1Cooldown, AimSkill1Cooldown, false); // 몽타주가 시작되면 쿨다운 타이머 시작
-}
-
-void AMainCharacter::PlayAimSkill1Montage(UAnimMontage* AimSkill1Montage)
-{
-    if (!AimSkill1Montage) return;
-
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-    if (!AnimInstance) return;
-
-    float PlayRate = 0.8f; // 애니메이션 재생속도를 위한 변수 초기화
-    float MontageDuration = AnimInstance->Montage_Play(AimSkill1Montage, PlayRate); // 애니메이션 재생속도 설정
-
-    if (MontageDuration > 0.0f)
-    {
-        // 섹션 루프 설정 (Start-> Loop -> Loop)
-        AnimInstance->Montage_SetNextSection(FName("Start"), FName("Loop"), AimSkill1Montage);
-        AnimInstance->Montage_SetNextSection(FName("Loop"), FName("Loop"), AimSkill1Montage);
-
-        AimSkill1MontageStartTime = GetWorld()->GetTimeSeconds(); // 시작 시간 기록
-
-        // AimSkill1Duration 경과 후 종료용 타이머 설정, 인자 없는 중계 함수로 호출
-        GetWorldTimerManager().SetTimer(
-            AimSkill1RepeatTimerHandle,
-            this,
-            &AMainCharacter::ResetAimSkill1Timer,
-            AimSkill1Duration,
-            false
-        );
-
-        UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Montage Started with Looping Sections!"));
-    }
-}
-
-void AMainCharacter::RepeatAImSkill1Montage()
-{
-    if (!bIsUsingAimSkill1) return;
-
-    float ElapsedTime = GetWorld()->GetTimeSeconds() - AimSkill1MontageStartTime;
-    if (ElapsedTime >= AimSkill1Duration)
-    {
-        ResetAimSkill1(nullptr, false); // 지속 시간이 끝나면 스킬 종료
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Replaying AimSkill1 Montage. Elapsed: %.2f"), ElapsedTime);
-    PlayAimSkill1Montage(AimSkill1AnimMontage); // 반복 재생
-}
-
-void AMainCharacter::ResetAimSkill1Timer()
-{
-    ResetAimSkill1(nullptr, false);  // 기존 종료 함수 호출
-}
-
-void AMainCharacter::ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted)
-{
-    bIsUsingAimSkill1 = false; // 사용 상태 해제
-
-    AttachRifleToBack(); // 라이플 등으로
-    AttachKnifeToHand(); // 양손 칼 손으로
-
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-    if (AnimInstance && AimSkill1AnimMontage)
-    {
-        AnimInstance->Montage_Stop(0.3f, AimSkill1AnimMontage); // 부드럽게 애니메이션 종료
-        UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Montage Stopped"));
-    }
-
-    if (MachineGun)
-    {
-        // 다시 정확하게 부착하고 숨김
-        MachineGun->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket"));
-        // 트랜스폼 설정
-        MachineGun->SetActorRelativeLocation(FVector(-5.f, -20.f, 0.f)); // 원하는 위치로 수정
-        MachineGun->SetActorRelativeRotation(FRotator(90.f, 180.f, 0.f)); // 원하는 방향으로 수정
-        MachineGun->SetActorRelativeScale3D(FVector(0.3f)); // 스케일 유지
-
-        MachineGun->SetActorHiddenInGame(true);  // 숨김
-        UE_LOG(LogTemp, Warning, TEXT("MachineGun Hidden!"));
-
-        MachineGun->StopFire();
-    }
-
-    GetWorldTimerManager().ClearTimer(AimSkill1RepeatTimerHandle); // 반복 타이머 해제
-    GetWorldTimerManager().SetTimer(AimSkill1CooldownTimerHandle, this, &AMainCharacter::ResetAimSkill1Cooldown, AimSkill1Cooldown, false); // 쿨다운 재설정
-}
-
-
-void AMainCharacter::ResetAimSkill1Cooldown()
-{
-    bCanUseAimSkill1 = true; // 스킬 사용 가능상태로 변경
-    UE_LOG(LogTemp, Warning, TEXT("AimSkill1 Cooldown Over! Ready to Use AimSkill1 Again."));
 }
 
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -1168,8 +747,8 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Triggered, this, &AMainCharacter::Dash);
         EnhancedInputComponent->BindAction(ZoomInAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomIn);
         EnhancedInputComponent->BindAction(ZoomOutAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomOut);
-        EnhancedInputComponent->BindAction(Skill1Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill1);
-        EnhancedInputComponent->BindAction(Skill2Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill2);
-        EnhancedInputComponent->BindAction(Skill3Action, ETriggerEvent::Triggered, this, &AMainCharacter::Skill3);
+        EnhancedInputComponent->BindAction(Skill1Action, ETriggerEvent::Triggered, this, &AMainCharacter::UseSkill1);
+        EnhancedInputComponent->BindAction(Skill2Action, ETriggerEvent::Triggered, this, &AMainCharacter::UseSkill2);
+        EnhancedInputComponent->BindAction(Skill3Action, ETriggerEvent::Triggered, this, &AMainCharacter::UseSkill3);
     }
 }
