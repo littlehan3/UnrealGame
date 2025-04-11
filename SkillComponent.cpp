@@ -32,6 +32,7 @@ void USkillComponent::InitializeSkills(AMainCharacter* InCharacter, AMachineGun*
     Skill2Montage = InCharacter->GetSkill2AnimMontage();
     Skill3Montage = InCharacter->GetSkill3AnimMontage();
     AimSkill1Montage = InCharacter->GetAimSkill1AnimMontage();
+    AimSkill2Montage = InCharacter->GetAimSkill2AnimMontage();
     Skill3ProjectileClass = InCharacter->GetSkill3ProjectileClass();
 }
 
@@ -365,8 +366,62 @@ void USkillComponent::ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted)
     GetWorld()->GetTimerManager().SetTimer(AimSkill1CooldownHandle, this, &USkillComponent::ResetAimSkill1Cooldown, AimSkill1Cooldown, false);
 }
 
-
 void USkillComponent::ResetAimSkill1Cooldown()
 {
     bCanUseAimSkill1 = true;
+}
+
+void USkillComponent::UseAimSkill2()
+{
+    if (!OwnerCharacter || bIsUsingAimSkill2 || !bCanUseAimSkill2) return;
+    if (OwnerCharacter->IsDashing()) return;
+
+    if (OwnerCharacter->IsAiming())
+    {
+        OwnerCharacter->ExitAimMode();  // 기존 에임모드 강제 종료
+    }
+
+    bIsUsingAimSkill2 = true;
+    bCanUseAimSkill2 = false;
+
+    OwnerCharacter->AttachRifleToBack();
+    OwnerCharacter->AttachKnifeToBack();
+    RotateCharacterToInputDirection();
+
+    PlayAimSkill2Montage();
+
+    GetWorld()->GetTimerManager().SetTimer(AimSkill2CooldownHandle, this, &USkillComponent::ResetAimSkill2Cooldown, AimSkill2Cooldown, false);
+}
+
+void USkillComponent::PlayAimSkill2Montage()
+{
+    if (!AimSkill2Montage || !OwnerCharacter) return;
+    UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
+    if (!Anim) return;
+
+    float Duration = Anim->Montage_Play(AimSkill2Montage, 1.0f);
+    if (Duration > 0.0f)
+    {
+        FOnMontageEnded End;
+        End.BindUObject(this, &USkillComponent::ResetAimSkill2);
+        Anim->Montage_SetEndDelegate(End, AimSkill2Montage);
+    }
+}
+
+void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
+{
+    bIsUsingAimSkill2 = false;
+
+    if (OwnerCharacter)
+    {
+        OwnerCharacter->AttachRifleToBack();
+        OwnerCharacter->AttachKnifeToHand();
+    }
+
+    GetWorld()->GetTimerManager().SetTimer(AimSkill2CooldownHandle, this, &USkillComponent::ResetAimSkill2Cooldown, AimSkill2Cooldown, false);
+}
+
+void USkillComponent::ResetAimSkill2Cooldown()
+{
+    bCanUseAimSkill2 = true;
 }

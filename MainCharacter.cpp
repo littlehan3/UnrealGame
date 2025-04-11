@@ -286,7 +286,7 @@ void AMainCharacter::Tick(float DeltaTime)
         AnimInstance->bIsUsingAimSkill1 = (SkillComponent && SkillComponent->IsUsingAimSkill1());
     }
 
-    if (bIsAiming || (SkillComponent && SkillComponent->IsUsingAimSkill1()))
+    if (bIsAiming || (SkillComponent && SkillComponent->IsUsingAimSkill1() || (SkillComponent && SkillComponent->IsUsingAimSkill2())))
     {
         APlayerController* PlayerController = Cast<APlayerController>(GetController());
         if (PlayerController)
@@ -460,7 +460,7 @@ void AMainCharacter::EnterAimMode()
             SkillComponent->IsUsingSkill2() ||
             SkillComponent->IsUsingSkill3() ||
             SkillComponent->IsUsingAimSkill1() ||
-            !SkillComponent->CanUseAimSkill1()))
+            SkillComponent->IsUsingAimSkill2()))             
         return;
 
     if (!bIsAiming)
@@ -685,22 +685,32 @@ void AMainCharacter::UseSkill1()
     {
         if (bIsAiming && SkillComponent->CanUseAimSkill1()) // 에임 중이고, AimSkill1 사용 가능하면
         {
-            UE_LOG(LogTemp, Warning, TEXT("UseSkill1: Aiming 상태에서 AimSkill1 실행"));
-            SkillComponent->UseAimSkill1(); // 머신건 스킬
+            UE_LOG(LogTemp, Warning, TEXT("UseAimSkill1"));
+            SkillComponent->UseAimSkill1(); // 에임 스킬1
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("UseSkill1: 일반 Skill1 실행"));
-            SkillComponent->UseSkill1(); // 일반 스킬
+            UE_LOG(LogTemp, Warning, TEXT("UseSkill1"));
+            SkillComponent->UseSkill1(); // 일반 스킬1
         }
     }
 }
 
 void AMainCharacter::UseSkill2()
 {
+    UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseSkill2 triggered"));
     if (SkillComponent)
     {
-        SkillComponent->UseSkill2();
+        if (bIsAiming && SkillComponent->CanUseAimSkill2()) // 에임 중이고, AimSkill2 사용 가능하면
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UseAimSkill2"));
+            SkillComponent->UseAimSkill2(); // 에임 스킬2
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UseSkill2"));
+            SkillComponent->UseSkill2(); // 일반 스킬2
+        }
     }
 }
 
@@ -709,24 +719,6 @@ void AMainCharacter::UseSkill3()
     if (SkillComponent)
     {
         SkillComponent->UseSkill3();
-    }
-}
-
-void AMainCharacter::UseAimSkill1()
-{
-    UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseAimSkill1 triggered"));
-
-    if (SkillComponent)
-    {
-        if (bIsAiming)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Calling AimSkill1 instead of Skill1"));
-            SkillComponent->UseAimSkill1(); // 직접 SkillComponent로 전달
-        }
-        else
-        {
-            SkillComponent->UseSkill1();
-        }
     }
 }
 
