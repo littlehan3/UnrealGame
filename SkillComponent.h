@@ -11,6 +11,7 @@ class ASkill3Projectile;
 class AMachineGun;
 class AKnife;
 class UBoxComponent;
+class ACannon;
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class LOCOMOTION_API USkillComponent : public UActorComponent
@@ -20,7 +21,7 @@ class LOCOMOTION_API USkillComponent : public UActorComponent
 public:
     USkillComponent();
 
-    void InitializeSkills(AMainCharacter* InCharacter, AMachineGun* InMachineGun, AKnife* InLeftKnife, AKnife* InRightKnife, UBoxComponent* InKickHitBox);
+    void InitializeSkills(AMainCharacter* InCharacter, AMachineGun* InMachineGun, AKnife* InLeftKnife, AKnife* InRightKnife, UBoxComponent* InKickHitBox, ACannon* InCannon);
 
     void UseSkill1();
     void UseSkill2();
@@ -46,6 +47,7 @@ private:
     AKnife* RightKnife;
     AMachineGun* MachineGun;
     UBoxComponent* KickHitBox;
+    ACannon* Cannon;
 
     // ½ºÅ³1
     bool bIsUsingSkill1 = false;
@@ -115,10 +117,17 @@ private:
     bool bIsUsingAimSkill2 = false;
     bool bCanUseAimSkill2 = true;
     float AimSkill2Cooldown = 3.0f;
+    float AimSkill2Duration = 5.0f;
+    float AimSkill2PlayInterval = 0.85f;
+    float AimSkill2MontageStartTime = 0.0f;
     FTimerHandle AimSkill2CooldownHandle;
+    FTimerHandle AimSkill2RepeatHandle;
     UAnimMontage* AimSkill2Montage;
 
+
     void PlayAimSkill2Montage();
+    void RepeatAimSkill2Montage();
+    void ResetAimSkill2Timer();
     void ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted);
     void ResetAimSkill2Cooldown();
     

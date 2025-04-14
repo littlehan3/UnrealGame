@@ -15,6 +15,7 @@ class ARifle;
 class AKnife;
 class AMachineGun;
 class ASkill3Projectile;
+class ACannon;
 
 UCLASS()
 class LOCOMOTION_API AMainCharacter : public ACharacter
@@ -257,4 +258,10 @@ private:
 
     UPROPERTY()
     AMachineGun* MachineGun;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Skill")
+    TSubclassOf<ACannon> CannonClass;
+
+    UPROPERTY()
+    ACannon* Cannon;
 };

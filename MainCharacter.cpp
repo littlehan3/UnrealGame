@@ -12,6 +12,7 @@
 #include "Enemy.h" // Enemy 헤더 추가
 #include "Skill3Projectile.h" // 스킬3 투사체 헤더 추가
 #include "MachineGun.h" // 머신건 헤더 추가
+#include "Cannon.h"
 #include "Kismet/GameplayStatics.h"
 
 
@@ -133,9 +134,19 @@ void AMainCharacter::BeginPlay()
         }
     }
 
+    if (CannonClass)
+    {
+        Cannon = GetWorld()->SpawnActor<ACannon>(CannonClass);
+        if (Cannon)
+        {
+            Cannon->SetActorHiddenInGame(true); // 초기엔 숨겨놓기
+            Cannon->SetOwner(this);
+        }
+    }
+
     if (SkillComponent)
     {
-        SkillComponent->InitializeSkills(this, MachineGun, LeftKnife, RightKnife, KickHitBox);
+        SkillComponent->InitializeSkills(this, MachineGun, LeftKnife, RightKnife, KickHitBox, Cannon);
     }
 }
 
@@ -683,7 +694,7 @@ void AMainCharacter::UseSkill1()
     UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseSkill1 triggered"));
     if (SkillComponent)
     {
-        if (bIsAiming && SkillComponent->CanUseAimSkill1()) // 에임 중이고, AimSkill1 사용 가능하면
+        if (bIsAiming && SkillComponent->CanUseAimSkill1()) // 에임 중이고, 에임스킬1 사용 가능하면
         {
             UE_LOG(LogTemp, Warning, TEXT("UseAimSkill1"));
             SkillComponent->UseAimSkill1(); // 에임 스킬1
@@ -701,7 +712,7 @@ void AMainCharacter::UseSkill2()
     UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseSkill2 triggered"));
     if (SkillComponent)
     {
-        if (bIsAiming && SkillComponent->CanUseAimSkill2()) // 에임 중이고, AimSkill2 사용 가능하면
+        if (bIsAiming && SkillComponent->CanUseAimSkill2()) // 에임 중이고, 에임스킬2 사용 가능하면
         {
             UE_LOG(LogTemp, Warning, TEXT("UseAimSkill2"));
             SkillComponent->UseAimSkill2(); // 에임 스킬2

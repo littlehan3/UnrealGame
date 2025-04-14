@@ -8,6 +8,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
+#include "Cannon.h"
 #include "Animation/AnimInstance.h"
 
 USkillComponent::USkillComponent()
@@ -20,13 +21,14 @@ void USkillComponent::BeginPlay()
     Super::BeginPlay();
 }
 
-void USkillComponent::InitializeSkills(AMainCharacter* InCharacter, AMachineGun* InMachineGun, AKnife* InLeftKnife, AKnife* InRightKnife, UBoxComponent* InKickHitBox)
+void USkillComponent::InitializeSkills(AMainCharacter* InCharacter, AMachineGun* InMachineGun, AKnife* InLeftKnife, AKnife* InRightKnife, UBoxComponent* InKickHitBox, ACannon* InCannon)
 {
     OwnerCharacter = InCharacter;
     MachineGun = InMachineGun;
     LeftKnife = InLeftKnife;
     RightKnife = InRightKnife;
     KickHitBox = InKickHitBox;
+    Cannon = InCannon;
 
     Skill1Montage = InCharacter->GetSkill1AnimMontage();
     Skill2Montage = InCharacter->GetSkill2AnimMontage();
@@ -52,7 +54,7 @@ void USkillComponent::RotateCharacterToInputDirection()
 // 스킬1
 void USkillComponent::UseSkill1()
 {
-    if (!OwnerCharacter || bIsUsingSkill1 || !bCanUseSkill1) return;
+    if (!OwnerCharacter || bIsUsingSkill1 || !bCanUseSkill1 || bIsUsingAimSkill1) return;
     if (OwnerCharacter->IsDashing() || OwnerCharacter->IsAiming() || OwnerCharacter->IsJumping() || OwnerCharacter->IsInDoubleJump() || bIsUsingAimSkill1) return;
 
     bIsUsingSkill1 = true;
@@ -121,7 +123,7 @@ void USkillComponent::ResetSkill1Cooldown()
 // 스킬2
 void USkillComponent::UseSkill2()
 {
-    if (!OwnerCharacter || bIsUsingSkill2 || !bCanUseSkill2) return;
+    if (!OwnerCharacter || bIsUsingSkill2 || !bCanUseSkill2 || bIsUsingAimSkill2) return;
     if (OwnerCharacter->IsDashing() || OwnerCharacter->IsAiming() || OwnerCharacter->IsJumping() || OwnerCharacter->IsInDoubleJump() || bIsUsingAimSkill1) return;
 
     bIsUsingSkill2 = true;
@@ -305,7 +307,7 @@ void USkillComponent::PlayAimSkill1Montage()
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    float Rate = 0.8f;
+    float Rate = 1.0f;
     float Duration = Anim->Montage_Play(AimSkill1Montage, Rate);
 
     if (Duration > 0.0f)
@@ -371,10 +373,11 @@ void USkillComponent::ResetAimSkill1Cooldown()
     bCanUseAimSkill1 = true;
 }
 
+// 에임스킬2
 void USkillComponent::UseAimSkill2()
 {
     if (!OwnerCharacter || bIsUsingAimSkill2 || !bCanUseAimSkill2) return;
-    if (OwnerCharacter->IsDashing()) return;
+    if (OwnerCharacter->IsDashing() || OwnerCharacter->IsJumping() || OwnerCharacter->IsInDoubleJump()) return;
 
     if (OwnerCharacter->IsAiming())
     {
@@ -388,7 +391,22 @@ void USkillComponent::UseAimSkill2()
     OwnerCharacter->AttachKnifeToBack();
     RotateCharacterToInputDirection();
 
+    if (Cannon)
+    {
+        Cannon->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill2Socket"));
+        Cannon->SetActorRelativeLocation(FVector(0.f, 0.f, 0.f));
+        Cannon->SetActorRelativeRotation(FRotator(0.f, 0.f, 0.f));
+        Cannon->SetActorRelativeScale3D(FVector(1.0f));
+        Cannon->SetActorHiddenInGame(false);
+        Cannon->SetShooter(OwnerCharacter);
+        Cannon->FireProjectile();
+    }
+
+    AimSkill2MontageStartTime = GetWorld()->GetTimeSeconds();
+
     PlayAimSkill2Montage();
+
+    GetWorld()->GetTimerManager().SetTimer(AimSkill2RepeatHandle, this, &USkillComponent::RepeatAimSkill2Montage, AimSkill2PlayInterval, true);
 
     GetWorld()->GetTimerManager().SetTimer(AimSkill2CooldownHandle, this, &USkillComponent::ResetAimSkill2Cooldown, AimSkill2Cooldown, false);
 }
@@ -399,13 +417,33 @@ void USkillComponent::PlayAimSkill2Montage()
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    float Duration = Anim->Montage_Play(AimSkill2Montage, 1.0f);
+    float Rate = 2.0f;
+    float Duration = Anim->Montage_Play(AimSkill2Montage, Rate);
+
     if (Duration > 0.0f)
     {
-        FOnMontageEnded End;
-        End.BindUObject(this, &USkillComponent::ResetAimSkill2);
-        Anim->Montage_SetEndDelegate(End, AimSkill2Montage);
+        Anim->Montage_SetNextSection(FName("Start"), FName("Loop"), AimSkill2Montage);
+        Anim->Montage_SetNextSection(FName("Loop"), FName("Loop"), AimSkill2Montage);
+        AimSkill2MontageStartTime = GetWorld()->GetTimeSeconds();
+        GetWorld()->GetTimerManager().SetTimer(AimSkill2RepeatHandle, this, &USkillComponent::ResetAimSkill2Timer, AimSkill2Duration, false);
     }
+}
+
+void USkillComponent::RepeatAimSkill2Montage()
+{
+    if (!bIsUsingAimSkill2 || !OwnerCharacter) return;
+    float Elapsed = GetWorld()->GetTimeSeconds() - AimSkill2MontageStartTime;
+    if (Elapsed >= AimSkill2Duration)
+    {
+        ResetAimSkill2(nullptr, false);
+        return;
+    }
+    PlayAimSkill2Montage();
+}
+
+void USkillComponent::ResetAimSkill2Timer()
+{
+    ResetAimSkill2(nullptr, false);
 }
 
 void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
@@ -418,6 +456,27 @@ void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
         OwnerCharacter->AttachKnifeToHand();
     }
 
+    if (Cannon)
+    {
+        Cannon->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill2Socket"));
+        Cannon->SetActorRelativeLocation(FVector(0.f, 0.f, 0.f));
+        Cannon->SetActorRelativeRotation(FRotator(0.f, 0.f, 0.f));
+        Cannon->SetActorRelativeScale3D(FVector(1.0f));
+        Cannon->SetActorHiddenInGame(true);
+
+    }
+
+    GetWorld()->GetTimerManager().ClearTimer(AimSkill2RepeatHandle);
+
+    if (UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance())
+    {
+        if (AimSkill2Montage)
+        {
+            Anim->Montage_Stop(0.3f, AimSkill2Montage);
+        }
+    }
+
+    GetWorld()->GetTimerManager().ClearTimer(AimSkill2RepeatHandle);
     GetWorld()->GetTimerManager().SetTimer(AimSkill2CooldownHandle, this, &USkillComponent::ResetAimSkill2Cooldown, AimSkill2Cooldown, false);
 }
 
