@@ -34,6 +34,7 @@ public:
     FORCEINLINE UAnimMontage* GetSkill3AnimMontage() const { return Skill3AnimMontage; }
     FORCEINLINE UAnimMontage* GetAimSkill1AnimMontage() const { return AimSkill1AnimMontage; }
     FORCEINLINE UAnimMontage* GetAimSkill2AnimMontage() const { return AimSkill2AnimMontage; }
+    FORCEINLINE UAnimMontage* GetAimSkill2StartAnimMontage() const { return AimSkill2StartAnimMontage; }
 
 	// 스킬3 투사체 클래스 Getter
     FORCEINLINE TSubclassOf<ASkill3Projectile> GetSkill3ProjectileClass() const { return Skill3ProjectileClass; }
@@ -213,6 +214,9 @@ private:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AimSkill2 Animation", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* AimSkill2AnimMontage;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AimSkill2 Animation", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* AimSkill2StartAnimMontage;
 
     float DashCooldown = 1.0f;
     bool bIsDashing = false;

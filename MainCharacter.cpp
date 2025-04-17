@@ -295,6 +295,7 @@ void AMainCharacter::Tick(float DeltaTime)
         AnimInstance->bIsAiming = bIsAiming;
         AnimInstance->AimPitch = AimPitch; // Pitch 값 전달
         AnimInstance->bIsUsingAimSkill1 = (SkillComponent && SkillComponent->IsUsingAimSkill1());
+        AnimInstance->bIsUsingAimSkill2 = (SkillComponent && SkillComponent->IsUsingAimSkill2());
     }
 
     if (bIsAiming || (SkillComponent && SkillComponent->IsUsingAimSkill1() || (SkillComponent && SkillComponent->IsUsingAimSkill2())))
@@ -344,7 +345,8 @@ void AMainCharacter::Tick(float DeltaTime)
 void AMainCharacter::HandleJump()
 {
     if (SkillComponent &&
-        (SkillComponent->IsUsingSkill1() || SkillComponent->IsUsingSkill2() || SkillComponent->IsUsingSkill3()))
+        (SkillComponent->IsUsingSkill1() || SkillComponent->IsUsingSkill2() || SkillComponent->IsUsingSkill3() ||
+            SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2()))
         return;
 
     // 공격 중이거나 대쉬중에 점프 불가

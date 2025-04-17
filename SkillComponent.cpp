@@ -35,6 +35,7 @@ void USkillComponent::InitializeSkills(AMainCharacter* InCharacter, AMachineGun*
     Skill3Montage = InCharacter->GetSkill3AnimMontage();
     AimSkill1Montage = InCharacter->GetAimSkill1AnimMontage();
     AimSkill2Montage = InCharacter->GetAimSkill2AnimMontage();
+    AimSkill2StartMontage = InCharacter->GetAimSkill2StartAnimMontage();
     Skill3ProjectileClass = InCharacter->GetSkill3ProjectileClass();
 }
 
@@ -394,19 +395,15 @@ void USkillComponent::UseAimSkill2()
     if (Cannon)
     {
         Cannon->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill2Socket"));
-        Cannon->SetActorRelativeLocation(FVector(0.f, 0.f, 0.f));
+        Cannon->SetActorRelativeLocation(FVector(0.f, -10.f, 0.f));
         Cannon->SetActorRelativeRotation(FRotator(0.f, 0.f, 0.f));
-        Cannon->SetActorRelativeScale3D(FVector(1.0f));
+        Cannon->SetActorRelativeScale3D(FVector(1.0f, 1.0f, 1.0f));
         Cannon->SetActorHiddenInGame(false);
         Cannon->SetShooter(OwnerCharacter);
         Cannon->FireProjectile();
     }
 
-    AimSkill2MontageStartTime = GetWorld()->GetTimeSeconds();
-
-    PlayAimSkill2Montage();
-
-    GetWorld()->GetTimerManager().SetTimer(AimSkill2RepeatHandle, this, &USkillComponent::RepeatAimSkill2Montage, AimSkill2PlayInterval, true);
+    PlayAimSkill2StartMontage();
 
     GetWorld()->GetTimerManager().SetTimer(AimSkill2CooldownHandle, this, &USkillComponent::ResetAimSkill2Cooldown, AimSkill2Cooldown, false);
 }
@@ -417,33 +414,52 @@ void USkillComponent::PlayAimSkill2Montage()
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    float Rate = 2.0f;
-    float Duration = Anim->Montage_Play(AimSkill2Montage, Rate);
-
+    float Duration = Anim->Montage_Play(AimSkill2Montage, 0.5f);
     if (Duration > 0.0f)
     {
-        Anim->Montage_SetNextSection(FName("Start"), FName("Loop"), AimSkill2Montage);
-        Anim->Montage_SetNextSection(FName("Loop"), FName("Loop"), AimSkill2Montage);
-        AimSkill2MontageStartTime = GetWorld()->GetTimeSeconds();
-        GetWorld()->GetTimerManager().SetTimer(AimSkill2RepeatHandle, this, &USkillComponent::ResetAimSkill2Timer, AimSkill2Duration, false);
+        FOnMontageEnded End;
+        End.BindUObject(this, &USkillComponent::ResetAimSkill2);
+        Anim->Montage_SetEndDelegate(End, AimSkill2Montage);
     }
 }
 
-void USkillComponent::RepeatAimSkill2Montage()
+void USkillComponent::PlayAimSkill2StartMontage()
 {
-    if (!bIsUsingAimSkill2 || !OwnerCharacter) return;
-    float Elapsed = GetWorld()->GetTimeSeconds() - AimSkill2MontageStartTime;
-    if (Elapsed >= AimSkill2Duration)
-    {
-        ResetAimSkill2(nullptr, false);
+    if (!AimSkill2StartMontage || !OwnerCharacter) {
+        PlayAimSkill2Montage(); // 시작 몽타주가 없으면 바로 스킬 몽타주 재생
         return;
     }
-    PlayAimSkill2Montage();
+    UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
+    if (!Anim) return;
+
+    float Duration = Anim->Montage_Play(AimSkill2StartMontage, 0.5f);
+    if (Duration > 0.0f)
+    {
+        // 90% 도달 시점 계산
+        float JumpToTime = Duration * 0.9f;
+
+        // 일정 시간 후 다음 몽타주 재생
+        GetWorld()->GetTimerManager().SetTimer(
+            AimSkill2TransitionHandle, // FTimerHandle 멤버 변수 필요
+            this,
+            &USkillComponent::PlayAimSkill2Montage,
+            JumpToTime,
+            false
+        );
+        
+        //FOnMontageEnded End;
+        //End.BindUObject(this, &USkillComponent::OnAimSkill2StartMontageEnded);
+        //Anim->Montage_SetEndDelegate(End, AimSkill2StartMontage);
+    }
+    else
+    {
+        PlayAimSkill2Montage();
+    }
 }
 
-void USkillComponent::ResetAimSkill2Timer()
+void USkillComponent::OnAimSkill2StartMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-    ResetAimSkill2(nullptr, false);
+    PlayAimSkill2Montage();
 }
 
 void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
@@ -461,22 +477,10 @@ void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
         Cannon->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill2Socket"));
         Cannon->SetActorRelativeLocation(FVector(0.f, 0.f, 0.f));
         Cannon->SetActorRelativeRotation(FRotator(0.f, 0.f, 0.f));
-        Cannon->SetActorRelativeScale3D(FVector(1.0f));
+        Cannon->SetActorRelativeScale3D(FVector(1.0f, 1.0f, 1.0f));
         Cannon->SetActorHiddenInGame(true);
-
     }
 
-    GetWorld()->GetTimerManager().ClearTimer(AimSkill2RepeatHandle);
-
-    if (UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance())
-    {
-        if (AimSkill2Montage)
-        {
-            Anim->Montage_Stop(0.3f, AimSkill2Montage);
-        }
-    }
-
-    GetWorld()->GetTimerManager().ClearTimer(AimSkill2RepeatHandle);
     GetWorld()->GetTimerManager().SetTimer(AimSkill2CooldownHandle, this, &USkillComponent::ResetAimSkill2Cooldown, AimSkill2Cooldown, false);
 }
 

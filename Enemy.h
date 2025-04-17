@@ -5,6 +5,7 @@
 #include "EnemyKatana.h" 
 #include "EnemyAnimInstance.h"
 #include "Animation/AnimInstance.h"
+#include "AimSkill2Projectile.h"
 #include "Enemy.generated.h"
 
 class AEnemyKatana;
@@ -40,6 +41,8 @@ public:
     void EnterInAirStunState(float Duration); // 공중 스턴 상태 진입
 
     bool bIsInAirStun = false; // 공중 스턴 상태 여부
+    
+    void ApplyGravityPull(FVector ExplosionCenter, float PullStrength);
 
 protected:
     virtual void BeginPlay() override;

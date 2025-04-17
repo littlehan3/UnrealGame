@@ -423,3 +423,45 @@ void AEnemy::ExitInAirStunState()
 
     bIsInAirStun = false;
 }
+
+void AEnemy::ApplyGravityPull(FVector ExplosionCenter, float PullStrength)
+{
+    if (bIsDead) return; // 죽은 적은 끌어당기지 않음
+
+    // 폭발 범위 내에서 적을 빨아들이는 로직
+    FVector Direction = ExplosionCenter - GetActorLocation();
+    float Distance = Direction.Size();
+    Direction.Normalize();  // 방향 벡터 정규화
+
+    // 거리에 따라 힘 조절 (가까울수록 더 강하게)
+    float DistanceFactor = FMath::Clamp(1.0f - (Distance / 500.0f), 0.1f, 1.0f);
+    float AdjustedPullStrength = PullStrength * DistanceFactor;
+
+    // 캐릭터가 공중에 있는 상태라면 더 강한 힘 적용
+    if (GetCharacterMovement()->IsFalling())
+    {
+        AdjustedPullStrength *= 1.5f;
+    }
+
+    // 새로운 속도 설정
+    FVector NewVelocity = Direction * AdjustedPullStrength;
+    GetCharacterMovement()->Velocity = NewVelocity;
+
+    // 잠시 네비게이션 이동 비활성화
+    GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+
+    // 일정 시간 후 네비게이션 이동 다시 활성화
+    FTimerHandle ResetMovementHandle;
+    GetWorld()->GetTimerManager().SetTimer(
+        ResetMovementHandle,
+        [this]()
+        {
+            GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
+        },
+        0.5f, // 0.5초 후 원래 이동 모드로 복귀
+        false
+    );
+
+    UE_LOG(LogTemp, Warning, TEXT("Enemy %s pulled toward explosion center with strength %f"),
+        *GetName(), AdjustedPullStrength);
+}

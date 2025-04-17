@@ -118,18 +118,17 @@ private:
     bool bCanUseAimSkill2 = true;
     float AimSkill2Cooldown = 3.0f;
     float AimSkill2Duration = 5.0f;
-    float AimSkill2PlayInterval = 0.85f;
-    float AimSkill2MontageStartTime = 0.0f;
     FTimerHandle AimSkill2CooldownHandle;
-    FTimerHandle AimSkill2RepeatHandle;
     UAnimMontage* AimSkill2Montage;
+    UAnimMontage* AimSkill2StartMontage;
+    FTimerHandle AimSkill2TransitionHandle;
 
-
+    void PlayAimSkill2StartMontage();
+    void OnAimSkill2StartMontageEnded(UAnimMontage* Montage, bool bInterrupted);
     void PlayAimSkill2Montage();
-    void RepeatAimSkill2Montage();
-    void ResetAimSkill2Timer();
     void ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted);
     void ResetAimSkill2Cooldown();
+
     
     // 스킬 사용 시 캐릭터 회전
     void RotateCharacterToInputDirection();
