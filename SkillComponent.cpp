@@ -400,7 +400,7 @@ void USkillComponent::UseAimSkill2()
         Cannon->SetActorRelativeScale3D(FVector(1.0f, 1.0f, 1.0f));
         Cannon->SetActorHiddenInGame(false);
         Cannon->SetShooter(OwnerCharacter);
-        Cannon->FireProjectile();
+        //Cannon->FireProjectile();
     }
 
     PlayAimSkill2StartMontage();
@@ -420,6 +420,11 @@ void USkillComponent::PlayAimSkill2Montage()
         FOnMontageEnded End;
         End.BindUObject(this, &USkillComponent::ResetAimSkill2);
         Anim->Montage_SetEndDelegate(End, AimSkill2Montage);
+        
+        if (Cannon)
+        {
+            Cannon->FireProjectile();
+        }
     }
 }
 

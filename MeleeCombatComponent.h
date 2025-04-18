@@ -24,7 +24,7 @@ public:
     void OnComboMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
     void SetComboMontages(const TArray<UAnimMontage*>& InMontages);
-    
+
     UFUNCTION()
     void ResetCombo();
 

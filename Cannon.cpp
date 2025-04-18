@@ -33,24 +33,23 @@ void ACannon::FireProjectile()
 {
     UE_LOG(LogTemp, Warning, TEXT("FireProjectile CALLED"));
 
-    if (!ProjectileClass)
+    if (!ProjectileClass || !Shooter)
     {
-        UE_LOG(LogTemp, Error, TEXT("ProjectileClass is NULL!"));
+        UE_LOG(LogTemp, Error, TEXT("Missing projectile class or shooter."));
         return;
     }
 
-    if (!Shooter)
-    {
-        UE_LOG(LogTemp, Error, TEXT("Shooter is NULL!"));
-        return;
-    }
+    APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+    if (!PC) return;
 
-    // 캐논 방향 기준으로 반전된 방향으로 발사
-    FVector ShootDirection = -CannonMesh->GetForwardVector();
-    FVector SpawnLocation = GetActorLocation() + ShootDirection * 80.f; // Cannon 액터 자체 위치
+    FVector CameraLocation;
+    FRotator CameraRotation;
+    PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
+
+    FVector ShootDirection = CameraRotation.Vector(); // 화면 중앙 방향
+    FVector SpawnLocation = GetActorLocation() + ShootDirection * -10.f + FVector(0.f, 0.f, -150.f); // 캐논 위치 그대로
     FRotator SpawnRotation = ShootDirection.Rotation();
 
-    // 디버그 표시
     DrawDebugSphere(GetWorld(), SpawnLocation, 15.f, 12, FColor::Green, false, 2.0f);
     DrawDebugDirectionalArrow(GetWorld(), SpawnLocation, SpawnLocation + ShootDirection * 200.f,
         120.f, FColor::Red, false, 2.0f, 0, 3.0f);
