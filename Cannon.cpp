@@ -47,7 +47,7 @@ void ACannon::FireProjectile()
     PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
 
     FVector ShootDirection = CameraRotation.Vector(); // 화면 중앙 방향
-    FVector SpawnLocation = GetActorLocation() + ShootDirection * -10.f + FVector(0.f, 0.f, -150.f); // 캐논 위치 그대로
+    FVector SpawnLocation = GetActorLocation() + ShootDirection * 200.f + FVector(0.f, 0.f, -150.f); // 캐논 위치 그대로
     FRotator SpawnRotation = ShootDirection.Rotation();
 
     DrawDebugSphere(GetWorld(), SpawnLocation, 15.f, 12, FColor::Green, false, 2.0f);
