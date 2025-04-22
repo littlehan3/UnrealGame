@@ -256,3 +256,117 @@ StopMovement()를 통해 불필요한 이동을 최소화
 - 스킬 사운드, 기본 공격 사운드, 발걸음 사운드 추가
 - 사운드 큐의 어테뉴에이션 오버라이드를 활용하여 거리 기반 볼륨 감소 적용
 - 채워지지 않은 사운드 또한 추가 예정
+
+## 4월 22일 업데이트 내용
+
+### 1. 메인캐릭터 클래스 리펙토링
+- 기존의 AMainCharacter 클래스는 캐릭터의 이동, 점프, 대쉬, 무기 관리, 스킬 사용, 콤보 공격 등 모든 게임플레이 로직을 한 클래스에서 직접 처리하기에 다음과 같은 문제 발생
+- 코드가 2천 줄에 가까워지며 한눈에 파악하기 어려움
+- 서로 다른 기능들이 뒤섞여 있어 가독성 및 유지보수성 저하
+- 새로운 기능 추가나 버그 수정 시, 의도치 않은 추가적인 문제 발생
+- 각 기능별로 테스트를하기 어렵고 확장이 불가능.
+-이러한 문제를 해결하기 위해 단일 책임 원칙(SRP)에 따라 기능별로 클래스를 분리하여 각자의 역할과 책임을 명확히 함
+
+### 1-1. AMainCharacter
+- 역할
+- 플레이어 캐릭터의 전체적인 상태와 동작, 입력 처리, 무기/스킬/애니메이션 등 주요 시스템의 중심
+-책임
+- 이동, 점프, 대쉬, 에임 등 캐릭터의 기본 조작 처리
+- 입력 바인딩 및 입력 이벤트 분기 처리
+- 무기(총, 칼 등) 생성, 장착 및 위치 변환 관리
+- 캐릭터의 상태(점프, 대쉬, 에임 등) 관리
+- 각종 애니메이션 몽타주 및 변수 관리
+- 전투/스킬 기능은 별도의 컴포넌트에 위임(MeleeCombatComponent, SkillComponent)
+- 콤보 공격, 스킬 사용 등은 해당 컴포넌트의 메서드를 호출하여 처리
+
+### 1-2. USkillComponent
+- 역할
+- 캐릭터의 다양한 스킬(액티브 스킬, 에임 스킬 등) 사용 및 쿨타임, 효과, 애니메이션, 무기 연동 등 스킬 관련 로직 집중 관리
+- 책임
+- 스킬1, 스킬2, 스킬3, 에임스킬1, 에임스킬2 등 각종 스킬의 사용 조건, 쿨타임, 효과, 애니메이션 실행 및 상태 관리
+- 스킬별로 필요한 무기(머신건, 칼, 캐논 등)와의 연동 및 위치/상태 제어
+- 스킬 효과 적용(범위 내 적 상태이상, 투사체 발사, 무기 발사 등)
+- 스킬 사용 중 캐릭터의 회전, 애니메이션 섹션 분기, 타이머 관리 등 세부 로직 분리
+- 스킬 사용 가능 여부, 사용 중 여부 등 상태값 제공
+- 캐릭터의 상태(대쉬, 점프 등)와 연동하여 스킬 사용 제한
+- 스킬 관련 모든 책임을 MainCharacter에서 분리하여 독립적으로 관리
+
+### 1-3. UMeleeCombatComponent
+- 역할
+- 근접 콤보 공격, 발차기, 칼 공격 등 근접 전투 시스템의 로직 전담
+- 책임
+- 콤보 공격(연속 입력, 몽타주 실행, 콤보 인덱스 관리, 타이머 관리)
+- 콤보별 애니메이션 몽타주 실행 및 종료 처리
+- 칼/발차기 히트박스 활성화 및 비활성화, 충돌 감지 및 데미지 적용
+- 콤보 공격 방향 자동 조정(적 자동 타겟팅 및 캐릭터 회전)
+- 콤보 공격 중 이동(LaunchCharacter 등), 콤보 리셋 타이머 관리
+- 콤보 공격 상태(공격 중 여부, 다음 입력 큐잉 등) 제공
+
+- MainCharacter는 "플레이어의 상태와 입력, 무기 장착 등 전반적인 관리"만 담당
+- SkillComponent는 "스킬 사용 및 관련 로직"만 담당
+- MeleeCombatComponent는 "근접 전투 및 콤보 공격"에만 집중
+
+- 각 컴포넌트가 명확한 책임을 가지며, 코드의 유지보수성, 확장성, 테스트 용이성 향상
+- 이 구조는 "단일 책임 원칙(SRP)"에 충실하며 각 기능별로 독립적인 관리가 가능
+- 각 컴포넌트가 자신만의 명확한 책임을 가지며 서로의 역할을 침범하지 않음
+
+### 2. 에임 모드 스킬 추가 (에임모드 스킬1)
+- 기관총으로 제자리에 선채로 고속으로 연사하는 스킬
+- 플레이어 카메라 피치 각도를 AimPitch 변수로 갱신
+- ABP와 연동하여 해당 스킬의 몽타주 실행시 상체는 Aimpitch 값을 따라 위 아래로 회전
+- Start->Loop->Loop 무한반복
+- (AimSkill1PlayInterval) 에 설정한 시간 간격으로 몽타주 재시작
+- 쿨타임 적용 (AimSkill1Cooldown)
+- 스킬 사용 시 자동으로 칼/라이플 수납
+- 사용 중 이동/점프/다른 스킬 사용 차단
+
+### 3. MachineGun 클래스 추가
+- StartFire()를 호출하면 일정 간격(FireRate)마다 Fire() 함수가 반복 실행되어 자동으로 총알을 발사
+- StopFire()를 호출하면 연사가 중단
+- 탄퍼짐: 각 발사마다 GetFireDirectionWithSpread()를 통해 Pitch/Yaw 축 모두 무작위 탄퍼짐 으로 현실적인 사격 구현
+- Fire() 함수에서 레이캐스트로 탄환 궤적을 계산하고, 적중 시 UGameplayStatics::ApplyPointDamage()로 데미지를 적용
+- 디버그용 선(라인)으로 탄환 궤적을 시각화
+- 파라미터 설정: SetFireParams()로 발사 속도(FireRate), 데미지(BulletDamage), 탄퍼짐(SpreadAngle) 등을 외부에서 조정가능
+
+### 4. 에임 모드 스킬 추가 (에임모드 스킬2)
+- 캐논으로 유도형/비유도형 투사체를 발사하는 스킬
+- 준비 동작: AimSkill2StartMontage (팔 위치 조정), 발사 동작: AimSkill2Montage (캐논 발사) 로 2가지 몽타주가 순서대로 실행되며 AimSkill2Montage가 실행될때 발사
+- 플레이어 카메라 피치 각도를 AimPitch 변수로 갱신
+- ABP와 연동하여 해당 스킬의 몽타주 실행시 상체는 Aimpitch 값을 따라 위 아래로 회전
+- 고각발사시: 투사체가 지정된 고도에 도달한 뒤 멈추고 적을 탐색
+- 저각발사시: 유도 기능이 없는 일반적인 폭발형 투사체기능 수행
+- 폭발한 투사체는 ApplyGravityPull을 사용하여 적을 당김
+- 쿨타임 적용 (AimSkill2Cooldown)
+- 스킬 사용 시 자동으로 칼/라이플 수납
+- 사용 중 점프/다른 스킬 사용 차단
+
+### 5. Cannon 클래스 추가
+- 에임스킬2 투사체 발사 관리 클래스
+- 투사체 발사 위치 보정 FVector SpawnLocation = GetActorLocation() + ShootDirection * 200.f + FVector(0.f, 0.f, -150.f);  Z축 -150.f 추가 보정 (고각/저각 발사 시 위치 차이 보정)
+- 디버그 시각화 (DrawDebugSphere, DrawDebugDirectionalArrow)
+- SetProjectileClass(TSubclassOf<AAimSkill2Projectile> InClass) 로 투사체 클래스 설정
+
+### 6. AimSkill2Projectile 클래스 추가
+- FindClosetEnemy()로 지정된 반경 내 가장 가까운 적 탐색
+- 지정된 반경 내 적이 없을 시 일정시간 후 AutoExplodeIfNoTarget() 자동 폭발
+- UGameplayStatics::ApplyDamage와 UKismetSystemLibrary::SphereTraceMultiForObjects를 활용해 폭발 반경 내 적에게 광역 피해 적용
+- 적을 한 번만 타격하기 위해 TSet<AActor*>를 통해 중복 감지 방지 처리
+- UProjectileMovementComponent를 통한 이동 구현
+- UNiagaraSystem을 활용한 폭발 이펙트 연출
+
+### 7. 근접공격 시각효과 개선
+- 나이아가라 에셋 수정 및 PlaySlashEffectForwad 애님 노티파이 클래스 추가
+- 나이아가라 에셋의 기존 360도 원형 이펙트가 실제 칼 공격 범위(전방)와 불일치
+- 메쉬 형태 변경: Blender를 이용해 원형 메시 → 반원 메쉬로 재모델링
+- 나이아가라 시스템 설정 변경: Mesh Orientation 모듈에 User_ForwardVector, User_RightVector 2개의 새로운 파라메터를 생성하여 바인딩, Local Space True설정으로 캐릭터의 방향 기준으로 회전값 반영
+- 나이아가라에 생성한 파라미터에 User_ForwardVector, User_RightVector를 전달하여 나이아가라 내부 방향을 제어
+- 애님몽타주에서 위치 오프셋(LocationOffset)을 설정가능
+- 오브젝트 풀링으로 (ENCPoolMethod::AutoRelease) 성능 최적화  
+
+### 8. 스킬 사용시 스폰되고 사라지는 MachineGun과 Cannon
+- Destroy 대신 SetActorHiddenInGame 사용
+- 필요할 때만 SetActorHiddenInGame(false)로 표시
+- 사용이 끝나면 SetActorHiddenInGame(true)로 숨김
+- 필요한 오브젝트인 머신건/캐논 1회 생성하고 월드에 남김
+- 메모리 할당/해제 오버헤드 감소: 반복적인 Spawn/Destroy를 피해 GC(가비지 컬렉션) 부하를 최소화
+- 반응 속도 향상: 숨김 처리된 오브젝트를 즉시 재활용하므로 스킬 사용 시 지연이 없음

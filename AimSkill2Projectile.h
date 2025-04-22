@@ -4,6 +4,8 @@
 #include "GameFramework/Actor.h"
 #include "NiagaraSystem.h"
 #include "Components/AudioComponent.h"
+#include "Particles/ParticleSystem.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "AimSkill2Projectile.generated.h"
 
 class UProjectileMovementComponent;
@@ -46,6 +48,9 @@ private:
 
 	UPROPERTY(EditDefaultsOnly)
 	UNiagaraSystem* ExplosionEffect;
+
+	UPROPERTY(VisibleAnywhere)
+	UParticleSystemComponent* CascadeEffect;
 
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
 	USoundBase* ExplosionSound;
