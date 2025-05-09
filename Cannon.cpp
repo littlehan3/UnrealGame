@@ -1,4 +1,4 @@
-#include "Cannon.h" // ±êµ¥½ºÅ©Åé Å×½ºÆ®
+#include "Cannon.h"
 #include "Components/StaticMeshComponent.h"
 #include "AimSkill2Projectile.h"
 #include "Kismet/GameplayStatics.h"
