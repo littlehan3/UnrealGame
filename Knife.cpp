@@ -61,14 +61,16 @@ void AKnife::EnableHitBox(int32 ComboIndex)
 
     RaycastAttack(); // 레이캐스트 실행하여 맞은 적 저장
 
-    if (RaycastHitActor) // 레이캐스트에서 감지된 적이 있는 경우
+    DamagedActors.Empty(); // 중복 히트 방지를 위해 초기화
+
+    if (RaycastHitActors.Num() > 0)
     {
-        HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);// 히트박스 활성화
-        UE_LOG(LogTemp, Warning, TEXT("Knife HitBox Enabled!")); 
+        HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        UE_LOG(LogTemp, Warning, TEXT("Knife HitBox Enabled! Targets: %d"), RaycastHitActors.Num());
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("No valid target detected by Raycast, HitBox remains disabled."));
+        UE_LOG(LogTemp, Warning, TEXT("No valid targets in Raycast."));
     }
 }
 
@@ -76,7 +78,8 @@ void AKnife::EnableHitBox(int32 ComboIndex)
 void AKnife::DisableHitBox()
 {
     HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    RaycastHitActor = nullptr; //레이캐스트에서 감지된 적도 초기화하여 다음 공격에서 새롭게 체크 가능하도록 처리
+    RaycastHitActors.Empty();
+    DamagedActors.Empty();
     UE_LOG(LogTemp, Warning, TEXT("Knife HitBox Disabled!"));
 }
 
@@ -86,42 +89,70 @@ void AKnife::RaycastAttack()
     AActor* OwnerActor = GetOwner();
     if (!OwnerActor) return;
 
-    FVector StartLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 20.0f); // 뒤에 있는 적 히트 방지를 위해 캐릭터로부터 해당거리 만큼 떨어진 곳에서 레이캐스트 시작
-    FVector EndLocation = StartLocation + (OwnerActor->GetActorForwardVector() * 150.0f); // 해당 길이만큼 레이캐스트 발사
+    FVector StartLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 20.0f);
+    float Radius = 180.0f;
+    float Angle = 60.0f;
+    int RayCount = 9;
+    float HalfAngle = Angle / 2.0f;
 
-    FHitResult HitResult;
     FCollisionQueryParams Params;
-    Params.AddIgnoredActor(OwnerActor);  // 자기 자신 무시
+    Params.AddIgnoredActor(OwnerActor);
 
-    bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, ECC_Visibility, Params); // 레이캐스트 실행(적이 감지되면 bHit = true)
+    RaycastHitActors.Empty();
 
-    // 디버그 시각화
-    FColor LineColor = bHit ? FColor::Red : FColor::Green; // 디버그 시각화(빨간색 = 적중, 초록색 = 미적중)
-    DrawDebugLine(GetWorld(), StartLocation, EndLocation, LineColor, false, 1.0f, 0, 3.0f); // 앞쪽으로만 공격 범위 표시
-
-    if (bHit)
+    for (int i = 0; i < RayCount; ++i)
     {
-        DrawDebugSphere(GetWorld(), HitResult.ImpactPoint, 10.0f, 12, FColor::Red, false, 1.0f); // 충돌한 지점을 빨간색 구체로 시각화
-    }
+        float t = float(i) / (RayCount - 1);
+        float AngleOffset = FMath::Lerp(-HalfAngle, HalfAngle, t);
+        FVector Direction = OwnerActor->GetActorForwardVector().RotateAngleAxis(AngleOffset, FVector::UpVector);
+        FVector EndLocation = StartLocation + Direction * Radius;
 
-    RaycastHitActor = bHit ? HitResult.GetActor() : nullptr; // 레이캐스트 적중 여부에 따라 RaycastHitActor 저장 (적이 없으면 nullptr)
+        // Sphere Trace 다중 감지
+        TArray<FHitResult> OutHits;
+        bool bHit = GetWorld()->SweepMultiByChannel(
+            OutHits,
+            StartLocation,
+            EndLocation,
+            FQuat::Identity,
+            ECC_Pawn,
+            FCollisionShape::MakeSphere(20.0f),
+            Params
+        );
+
+        // 디버그 라인 그리기
+        FColor TraceColor = bHit ? FColor::Red : FColor::Green;
+        DrawDebugLine(GetWorld(), StartLocation, EndLocation, TraceColor, false, 1.0f, 0, 2.0f);
+
+        if (bHit)
+        {
+            for (const FHitResult& Hit : OutHits)
+            {
+                AActor* HitActor = Hit.GetActor();
+                if (HitActor && !RaycastHitActors.Contains(HitActor))
+                {
+                    RaycastHitActors.Add(HitActor);
+                    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 10.0f, 12, FColor::Red, false, 1.0f);
+                }
+            }
+        }
+    }
 }
 
-void AKnife::OnHitBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
-UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult) // 히트박스 충돌 감지 (히트박스에 감지된 적이 레이캐스트에 감지된 적과 동일해야 데미지 적용)
+
+void AKnife::OnHitBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-    if (!OtherActor || OtherActor == GetOwner()) return; // 충돌한 액터가 없거나 자기 자신이면 무시
+    if (!OtherActor || OtherActor == GetOwner()) return;
 
-    if (OtherActor == RaycastHitActor) // 레이캐스트에서 감지된 적과 히트박스에서 감지된 적이 동일하다면
+    if (RaycastHitActors.Contains(OtherActor) && !DamagedActors.Contains(OtherActor))
     {
-        UGameplayStatics::ApplyDamage(OtherActor, CurrentDamage, nullptr, this, nullptr); // 데미지 적용
-        UE_LOG(LogTemp, Warning, TEXT("Knife Hit! Applied %f Damage to %s"), CurrentDamage, *OtherActor->GetName()); 
+        UGameplayStatics::ApplyDamage(OtherActor, CurrentDamage, nullptr, this, nullptr);
+        DamagedActors.Add(OtherActor);
 
-        DisableHitBox(); // 히트박스 비활성화 (중복히트 방지)
+        UE_LOG(LogTemp, Warning, TEXT("Knife Hit! Applied %f Damage to %s"), CurrentDamage, *OtherActor->GetName());
     }
     else
     {
-        // 레이캐스트에서 감지되지 않은 적은 무효 처리 (앞쪽 적만 맞도록)
-        UE_LOG(LogTemp, Warning, TEXT("HitBox ignored %s because Raycast didn't detect it"), *OtherActor->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("HitBox ignored %s"), *OtherActor->GetName());
     }
 }

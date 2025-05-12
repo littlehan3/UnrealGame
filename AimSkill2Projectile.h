@@ -66,6 +66,12 @@ private:
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
 	USoundBase* PersistentAreaSound; // 폭발영역 사운드
 
+	UPROPERTY()
+	UAudioComponent* FlightAudioComponent;  // 비행 사운드 오디오 컴포넌트
+
+	UPROPERTY()
+	UAudioComponent* PersistentAreaAudioComponent;  // 폭발 영역 사운드 오디오 컴포넌트
+
 	AActor* Shooter; // 투사체를 발사한 엑터
 
 	float Damage = 10.0f; // 투사체 데미지

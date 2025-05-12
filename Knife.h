@@ -51,7 +51,8 @@ private:
     void RaycastAttack();
 
     // 레이캐스트로 감지된 적을 저장
-    AActor* RaycastHitActor;
+    TArray<AActor*> RaycastHitActors; // 레이캐스트로 감지된 적들
+    TSet<AActor*> DamagedActors; // 중복 히트를 방지하는 집합
 
     // 히트 판정 함수 (충돌 감지)
     UFUNCTION()
