@@ -37,6 +37,7 @@ void USkillComponent::InitializeSkills(AMainCharacter* InCharacter, AMachineGun*
     AimSkill2Montage = InCharacter->GetAimSkill2AnimMontage();
     AimSkill2StartMontage = InCharacter->GetAimSkill2StartAnimMontage();
     Skill3ProjectileClass = InCharacter->GetSkill3ProjectileClass();
+    AimSkill3Montage = InCharacter->GetAimSkill3AnimMontage();
 }
 
 void USkillComponent::RotateCharacterToInputDirection()
@@ -75,7 +76,7 @@ void USkillComponent::PlaySkill1Montage()
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    float Duration = Anim->Montage_Play(Skill1Montage, 1.0f);
+    float Duration = Anim->Montage_Play(Skill1Montage, 1.3f);
     if (Duration > 0.0f)
     {
         FOnMontageEnded End;
@@ -143,7 +144,7 @@ void USkillComponent::PlaySkill2Montage()
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    float Duration = Anim->Montage_Play(Skill2Montage, 1.2f);
+    float Duration = Anim->Montage_Play(Skill2Montage, 1.5f);
     if (Duration > 0.0f)
     {
         FOnMontageEnded End;
@@ -395,9 +396,6 @@ void USkillComponent::UseAimSkill2()
     if (Cannon)
     {
         Cannon->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill2Socket"));
-        Cannon->SetActorRelativeLocation(FVector(0.f, -10.f, 0.f));
-        Cannon->SetActorRelativeRotation(FRotator(0.f, 0.f, 0.f));
-        Cannon->SetActorRelativeScale3D(FVector(1.0f, 1.0f, 1.0f));
         Cannon->SetActorHiddenInGame(false);
         Cannon->SetShooter(OwnerCharacter);
         //Cannon->FireProjectile();
@@ -480,9 +478,7 @@ void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
     if (Cannon)
     {
         Cannon->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill2Socket"));
-        Cannon->SetActorRelativeLocation(FVector(0.f, 0.f, 0.f));
-        Cannon->SetActorRelativeRotation(FRotator(0.f, 0.f, 0.f));
-        Cannon->SetActorRelativeScale3D(FVector(1.0f, 1.0f, 1.0f));
+        // 블루프린트에서 확인한 상대 위치 및 회전 값
         Cannon->SetActorHiddenInGame(true);
     }
 
@@ -492,4 +488,59 @@ void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
 void USkillComponent::ResetAimSkill2Cooldown()
 {
     bCanUseAimSkill2 = true;
+}
+
+void USkillComponent::UseAimSkill3()
+{
+    if (!OwnerCharacter || bIsUsingAimSkill3 || !bCanUseAimSkill3) return;
+    if (OwnerCharacter->IsDashing() || OwnerCharacter->IsJumping() || OwnerCharacter->IsInDoubleJump()) return;
+
+    if (OwnerCharacter->IsAiming())
+    {
+        OwnerCharacter->ExitAimMode();  // 기존 에임모드 강제 종료
+    }
+
+    bIsUsingAimSkill3 = true;
+    bCanUseAimSkill3 = false;
+
+    OwnerCharacter->AttachRifleToBack();
+    OwnerCharacter->AttachKnifeToBack();
+    RotateCharacterToInputDirection();
+
+    PlayAimSkill3Montage();
+
+    GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
+}
+
+void USkillComponent::PlayAimSkill3Montage()
+{
+    if (!AimSkill3Montage || !OwnerCharacter) return;
+    UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
+    if (!Anim) return;
+
+    float Duration = Anim->Montage_Play(AimSkill3Montage, 1.0f);
+    if (Duration > 0.0f)
+    {
+        FOnMontageEnded End;
+        End.BindUObject(this, &USkillComponent::ResetAimSkill3);
+        Anim->Montage_SetEndDelegate(End, AimSkill3Montage);
+    }
+}
+
+void USkillComponent::ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted)
+{
+    bIsUsingAimSkill3 = false;
+
+    if (OwnerCharacter)
+    {
+        OwnerCharacter->AttachRifleToBack();
+        OwnerCharacter->AttachKnifeToHand();
+    }
+
+    GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
+}
+
+void USkillComponent::ResetAimSkill3Cooldown()
+{
+    bCanUseAimSkill3 = true;
 }

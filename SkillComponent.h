@@ -28,6 +28,7 @@ public:
     void UseSkill3();
     void UseAimSkill1();
     void UseAimSkill2();
+    void UseAimSkill3();
 
     bool IsUsingSkill1() const { return bIsUsingSkill1; }
     bool IsUsingSkill2() const { return bIsUsingSkill2; }
@@ -36,6 +37,8 @@ public:
     bool CanUseAimSkill1() const { return bCanUseAimSkill1; }
     bool IsUsingAimSkill2() const { return bIsUsingAimSkill2; }
     bool CanUseAimSkill2() const { return bCanUseAimSkill2; }
+    bool IsUsingAimSkill3() const { return bIsUsingAimSkill3; }
+    bool CanUseAimSkill3() const { return bCanUseAimSkill3;  }
 
 protected:
     virtual void BeginPlay() override;
@@ -129,6 +132,16 @@ private:
     void ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted);
     void ResetAimSkill2Cooldown();
 
+    // 에임스킬3
+    bool bIsUsingAimSkill3 = false;
+    bool bCanUseAimSkill3 = true;
+    float AimSkill3Cooldown = 3.0f;
+    FTimerHandle AimSkill3CooldownHandle;
+    UAnimMontage* AimSkill3Montage;
+
+    void PlayAimSkill3Montage();
+    void ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted);
+    void ResetAimSkill3Cooldown();
     
     // 스킬 사용 시 캐릭터 회전
     void RotateCharacterToInputDirection();

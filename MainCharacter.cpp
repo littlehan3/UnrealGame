@@ -729,9 +729,19 @@ void AMainCharacter::UseSkill2()
 
 void AMainCharacter::UseSkill3()
 {
+    UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseSkill3 triggered"));
     if (SkillComponent)
     {
-        SkillComponent->UseSkill3();
+        if (bIsAiming && SkillComponent->CanUseAimSkill3()) // 에임 중이고, 에임스킬3 사용 가능하면
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UseAimSkill3"));
+            SkillComponent->UseAimSkill3(); // 에임 스킬3
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UseSkill3"));
+            SkillComponent->UseSkill3(); // 일반 스킬3
+        }
     }
 }
 
