@@ -155,13 +155,13 @@ void USkillComponent::PlaySkill2Montage()
 
 void USkillComponent::DrawSkill2Range()
 {
-    if (!bIsUsingSkill2) return; 
+    if (!bIsUsingSkill2) return;
 
     UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());
 
-    FVector SkillCenter = OwnerCharacter->GetActorLocation(); 
-    float DebugDuration = 0.1f; 
-    float DebugRadius = 200.0f; 
+    FVector SkillCenter = OwnerCharacter->GetActorLocation();
+    float DebugDuration = 0.1f;
+    float DebugRadius = 200.0f;
 
     DrawDebugSphere(GetWorld(), SkillCenter, DebugRadius, 32, FColor::Blue, false, DebugDuration, 0, 3.0f); // 스킬범위 표시
 
@@ -418,7 +418,7 @@ void USkillComponent::PlayAimSkill2Montage()
         FOnMontageEnded End;
         End.BindUObject(this, &USkillComponent::ResetAimSkill2);
         Anim->Montage_SetEndDelegate(End, AimSkill2Montage);
-        
+
         if (Cannon)
         {
             Cannon->FireProjectile();
@@ -449,7 +449,7 @@ void USkillComponent::PlayAimSkill2StartMontage()
             JumpToTime,
             false
         );
-        
+
         //FOnMontageEnded End;
         //End.BindUObject(this, &USkillComponent::OnAimSkill2StartMontageEnded);
         //Anim->Montage_SetEndDelegate(End, AimSkill2StartMontage);

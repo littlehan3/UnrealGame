@@ -38,7 +38,7 @@ public:
     bool IsUsingAimSkill2() const { return bIsUsingAimSkill2; }
     bool CanUseAimSkill2() const { return bCanUseAimSkill2; }
     bool IsUsingAimSkill3() const { return bIsUsingAimSkill3; }
-    bool CanUseAimSkill3() const { return bCanUseAimSkill3;  }
+    bool CanUseAimSkill3() const { return bCanUseAimSkill3; }
 
 protected:
     virtual void BeginPlay() override;
@@ -142,7 +142,7 @@ private:
     void PlayAimSkill3Montage();
     void ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted);
     void ResetAimSkill3Cooldown();
-    
+
     // 스킬 사용 시 캐릭터 회전
     void RotateCharacterToInputDirection();
 };

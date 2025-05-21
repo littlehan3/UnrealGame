@@ -37,10 +37,10 @@ public:
     FORCEINLINE UAnimMontage* GetAimSkill2StartAnimMontage() const { return AimSkill2StartAnimMontage; }
     FORCEINLINE UAnimMontage* GetAimSkill3AnimMontage() const { return AimSkill3AnimMontage; }
 
-	// 스킬3 투사체 클래스 Getter
+    // 스킬3 투사체 클래스 Getter
     FORCEINLINE TSubclassOf<ASkill3Projectile> GetSkill3ProjectileClass() const { return Skill3ProjectileClass; }
 
-	// 캐릭터 상태 Getter
+    // 캐릭터 상태 Getter
     FORCEINLINE bool IsDashing() const { return bIsDashing; }
     FORCEINLINE bool IsAiming() const { return bIsAiming; }
     FORCEINLINE bool IsJumping() const { return bIsJumping; }
@@ -60,8 +60,8 @@ public:
     UFUNCTION()
     void UseSkill3();
 
-	//UFUNCTION()
-	//void UseAimSkill1();
+    //UFUNCTION()
+    //void UseAimSkill1();
 
     //UFUNCTION()
     //void UseAimSkill2();
@@ -272,5 +272,12 @@ private:
 
     UPROPERTY()
     ACannon* Cannon;
+
+    // 점프 공격 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* JumpAttackMontage;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* DoubleJumpAttackMontage;
 
 };

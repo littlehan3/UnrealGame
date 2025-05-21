@@ -43,6 +43,12 @@ public:
     UFUNCTION()
     bool IsAttacking() const { return bIsAttacking; }
 
+    // 점프 공격 몽타주 설정 함수
+    void SetJumpAttackMontages(UAnimMontage* InJumpAttackMontage, UAnimMontage* InDoubleJumpAttackMontage);
+
+    // 점프 공격 실행 함수
+    void TriggerJumpAttack(bool bIsDoubleJump);
+
 protected:
     virtual void BeginPlay() override;
 
@@ -69,4 +75,11 @@ private:
     TArray<UAnimMontage*> ComboMontages;
 
     bool bComboQueued = false; // 누르고 있는 입력 처리
+
+    UPROPERTY()
+    UAnimMontage* JumpAttackMontage;
+
+    // 더블 점프 공격 몽타주
+    UPROPERTY()
+    UAnimMontage* DoubleJumpAttackMontage;
 };

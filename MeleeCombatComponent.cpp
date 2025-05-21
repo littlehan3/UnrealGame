@@ -3,6 +3,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Knife.h"
 #include "Enemy.h"
+#include "MainCharacter.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
@@ -38,6 +39,27 @@ void UMeleeCombatComponent::SetComboMontages(const TArray<UAnimMontage*>& InMont
 void UMeleeCombatComponent::TriggerComboAttack()
 {
     if (!OwnerCharacter) return;
+
+    // 캐릭터의 점프 상태 확인
+    bool bIsJumping = OwnerCharacter->GetCharacterMovement()->IsFalling();
+    bool bIsInDoubleJump = false;
+
+    // MainCharacter 클래스에서 더블 점프 상태 가져오기
+    if (OwnerCharacter->IsA(AMainCharacter::StaticClass()))
+    {
+        AMainCharacter* MainChar = Cast<AMainCharacter>(OwnerCharacter);
+        if (MainChar)
+        {
+            bIsInDoubleJump = MainChar->IsInDoubleJump();
+        }
+    }
+
+    // 점프 중이라면 점프 공격 실행
+    if (bIsJumping)
+    {
+        TriggerJumpAttack(bIsInDoubleJump);
+        return;
+    }
 
     // 이미 공격 중이면 입력만 큐에 저장
     if (bIsAttacking)
@@ -255,4 +277,43 @@ void UMeleeCombatComponent::HandleKickOverlap(UPrimitiveComponent* OverlappedCom
     float KickDamage = 35.0f;
     UGameplayStatics::ApplyDamage(OtherActor, KickDamage, nullptr, OwnerCharacter, nullptr);
     DisableKickHitBox();
+}
+
+void UMeleeCombatComponent::SetJumpAttackMontages(UAnimMontage* InJumpAttackMontage, UAnimMontage* InDoubleJumpAttackMontage)
+{
+    JumpAttackMontage = InJumpAttackMontage;
+    DoubleJumpAttackMontage = InDoubleJumpAttackMontage;
+}
+
+void UMeleeCombatComponent::TriggerJumpAttack(bool bIsDoubleJump)
+{
+    if (!OwnerCharacter) return;
+
+    // 이미 공격 중이면 무시
+    if (bIsAttacking) return;
+
+    bIsAttacking = true;
+
+    // 적 방향으로 회전
+    AdjustAttackDirection();
+
+    // 킥 히트박스 활성화
+    EnableKickHitBox();
+
+    // 점프 상태에 따라 적절한 몽타주 재생
+    UAnimMontage* MontageToPlay = bIsDoubleJump ? DoubleJumpAttackMontage : JumpAttackMontage;
+
+    if (MontageToPlay)
+    {
+        UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
+        if (AnimInstance)
+        {
+            if (AnimInstance->Montage_Play(MontageToPlay, 1.0f) > 0.f)
+            {
+                FOnMontageEnded EndDelegate;
+                EndDelegate.BindUObject(this, &UMeleeCombatComponent::OnComboMontageEnded);
+                AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
+            }
+        }
+    }
 }

@@ -122,6 +122,7 @@ void AMainCharacter::BeginPlay()
         Montages.Add(ComboAttackMontage5);
 
         MeleeCombatComponent->SetComboMontages(Montages);
+        MeleeCombatComponent->SetJumpAttackMontages(JumpAttackMontage, DoubleJumpAttackMontage);
     }
 
     if (MachineGunClass)
@@ -473,7 +474,7 @@ void AMainCharacter::EnterAimMode()
             SkillComponent->IsUsingSkill2() ||
             SkillComponent->IsUsingSkill3() ||
             SkillComponent->IsUsingAimSkill1() ||
-            SkillComponent->IsUsingAimSkill2()))             
+            SkillComponent->IsUsingAimSkill2()))
         return;
 
     if (!bIsAiming)
@@ -506,7 +507,7 @@ void AMainCharacter::ComboAttack()
 {
     if (!MeleeCombatComponent || !SkillComponent) return;
 
-    if (bIsJumping || bIsInDoubleJump || bIsDashing || SkillComponent->IsUsingAimSkill1())
+    if (bIsDashing || SkillComponent->IsUsingAimSkill1())
     {
         return;
     }
