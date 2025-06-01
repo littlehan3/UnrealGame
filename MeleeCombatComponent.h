@@ -49,6 +49,26 @@ public:
     // 점프 공격 실행 함수
     void TriggerJumpAttack(bool bIsDoubleJump);
 
+    void OnCharacterLanded();
+
+    FORCEINLINE bool IsJumpAttacked() const { return bIsJumpAttacked; }
+    FORCEINLINE bool CanGroundAction() const { return bCanGroundAction; }
+    FORCEINLINE bool CanAirAction() const { return bCanAirAction; }
+
+    // 큐잉 함수들 추가
+    void QueueJumpAttack() { if (!bJumpAttackQueued) bJumpAttackQueued = true; }
+    void QueueComboAttack() { if (!bComboQueued) bComboQueued = true; }
+
+    // 큐 상태 확인 함수들 추가
+    bool IsJumpAttackQueued() const { return bJumpAttackQueued; }
+    bool IsComboAttackQueued() const { return bComboQueued; }
+
+    void ClearAllQueues();
+    void ClearComboAttackQueue();
+    void ClearJumpAttackQueue();
+
+    bool CanStartComboAttack() const { return !bJumpAttackCooldownActive && bCanGroundAction; }
+
 protected:
     virtual void BeginPlay() override;
 
@@ -74,12 +94,29 @@ private:
     UPROPERTY()
     TArray<UAnimMontage*> ComboMontages;
 
-    bool bComboQueued = false; // 누르고 있는 입력 처리
-
     UPROPERTY()
     UAnimMontage* JumpAttackMontage;
 
     // 더블 점프 공격 몽타주
     UPROPERTY()
     UAnimMontage* DoubleJumpAttackMontage;
+
+    UFUNCTION()
+    void OnJumpAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
+    bool bIsJumpAttacked = false; // 점프공격 실행 여부
+    bool bCanGroundAction = true; // 지상액션(콤보) 가능 여부
+    bool bCanAirAction = true; // 공중 액션 (점프, 점프공격) 가능 여부
+
+    bool bComboQueued = false; // 누르고 있는 입력 처리
+    bool bJumpAttackQueued = false; // 점프공격 큐잉
+
+    FTimerHandle InputCooldownHandle;
+    bool bInputBlocked = false;
+    float InputCooldownTime = 0.1f;
+    void ResetInputCooldown();
+
+    FTimerHandle JumpAttackCooldownHandle;
+    bool bJumpAttackCooldownActive = false;
+    float JumpAttackCooldownTime = 0.3f;
 };

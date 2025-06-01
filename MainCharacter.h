@@ -60,12 +60,6 @@ public:
     UFUNCTION()
     void UseSkill3();
 
-    //UFUNCTION()
-    //void UseAimSkill1();
-
-    //UFUNCTION()
-    //void UseAimSkill2();
-
     void AttachRifleToBack();
     void AttachRifleToHand();
     void AttachKnifeToBack();
@@ -280,4 +274,7 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* DoubleJumpAttackMontage;
 
+    bool bIsJumpAttacked = false; // 점프공격 실행 여부
+    bool bCanGroundAction = true; // 지상액션(콤보) 가능 여부
+    bool bCanAirAction = true; // 공중 액션 (점프, 점프공격) 가능 여부
 };

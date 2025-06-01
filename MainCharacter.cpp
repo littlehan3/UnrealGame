@@ -350,6 +350,13 @@ void AMainCharacter::HandleJump()
             SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2()))
         return;
 
+    if (MeleeCombatComponent && !MeleeCombatComponent->CanAirAction())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Jump Blocked - Air action Disabled"));
+
+        return;
+    }
+
     // 공격 중이거나 대쉬중에 점프 불가
     if (bIsDashing)
     {
@@ -369,6 +376,13 @@ void AMainCharacter::HandleJump()
 
 void AMainCharacter::HandleDoubleJump()
 {
+    if (MeleeCombatComponent && MeleeCombatComponent->IsJumpAttacked()) // 공중액션 불가능시 점프 차단
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Double Jump Blocked Jump Attack Used"));
+
+        return;
+    }
+
     LaunchCharacter(FVector(0, 0, 1000), false, true);
     bCanDoubleJump = false;
     bIsInDoubleJump = true;
@@ -388,6 +402,17 @@ void AMainCharacter::HandleDoubleJump()
 void AMainCharacter::Landed(const FHitResult& Hit)
 {
     Super::Landed(Hit);
+
+    if (MeleeCombatComponent)
+    {
+        MeleeCombatComponent->OnCharacterLanded();
+        // 착지 시 점프공격 큐 클리어
+        if (MeleeCombatComponent->IsJumpAttackQueued())
+        {
+            MeleeCombatComponent->ClearJumpAttackQueue();
+            UE_LOG(LogTemp, Warning, TEXT("Jump attack queue cleared on landing"));
+        }
+    }
 
     // 착지 상태 활성화
     bIsLanding = true;
@@ -447,6 +472,29 @@ void AMainCharacter::FireWeapon()
             SkillComponent->IsUsingAimSkill1()))
         return;
 
+    // 점프 상태 체크
+    if (GetCharacterMovement()->IsFalling())
+    {
+        if (MeleeCombatComponent)
+        {
+            if (MeleeCombatComponent->IsAttacking())
+            {
+                MeleeCombatComponent->QueueJumpAttack(); // 함수 사용
+                return;
+            }
+            MeleeCombatComponent->TriggerJumpAttack(IsInDoubleJump());
+        }
+            return;
+        }
+
+        // 점프 공격 실행
+       // if (MeleeCombatComponent)
+        //{
+            // 클래스 멤버를 직접 사용하거나 함수 호출 결과를 바로 전달
+           // MeleeCombatComponent->TriggerJumpAttack(IsInDoubleJump());
+        //}
+        //return;
+    //}
 
     if (bIsAiming && Rifle)
     {
@@ -758,13 +806,13 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
         EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &AMainCharacter::EnterAimMode);
         EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AMainCharacter::ExitAimMode);
-        EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &AMainCharacter::FireWeapon);
-        EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Triggered, this, &AMainCharacter::ReloadWeapon);
-        EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Triggered, this, &AMainCharacter::Dash);
+        EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &AMainCharacter::FireWeapon);
+        EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AMainCharacter::ReloadWeapon);
+        EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &AMainCharacter::Dash);
         EnhancedInputComponent->BindAction(ZoomInAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomIn);
         EnhancedInputComponent->BindAction(ZoomOutAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomOut);
-        EnhancedInputComponent->BindAction(Skill1Action, ETriggerEvent::Triggered, this, &AMainCharacter::UseSkill1);
-        EnhancedInputComponent->BindAction(Skill2Action, ETriggerEvent::Triggered, this, &AMainCharacter::UseSkill2);
-        EnhancedInputComponent->BindAction(Skill3Action, ETriggerEvent::Triggered, this, &AMainCharacter::UseSkill3);
+        EnhancedInputComponent->BindAction(Skill1Action, ETriggerEvent::Started, this, &AMainCharacter::UseSkill1);
+        EnhancedInputComponent->BindAction(Skill2Action, ETriggerEvent::Started, this, &AMainCharacter::UseSkill2);
+        EnhancedInputComponent->BindAction(Skill3Action, ETriggerEvent::Started, this, &AMainCharacter::UseSkill3);
     }
 }
