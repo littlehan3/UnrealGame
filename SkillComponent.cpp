@@ -492,51 +492,129 @@ void USkillComponent::ResetAimSkill2Cooldown()
 
 void USkillComponent::UseAimSkill3()
 {
-    if (!OwnerCharacter || bIsUsingAimSkill3 || !bCanUseAimSkill3) return;
-    if (OwnerCharacter->IsDashing() || OwnerCharacter->IsJumping() || OwnerCharacter->IsInDoubleJump()) return;
-
-    if (OwnerCharacter->IsAiming())
-    {
-        OwnerCharacter->ExitAimMode();  // 기존 에임모드 강제 종료
-    }
+    if (!OwnerCharacter || bIsUsingAimSkill3 || !bCanUseAimSkill3 || !AimSkill3ProjectileClass) return;
 
     bIsUsingAimSkill3 = true;
     bCanUseAimSkill3 = false;
 
-    OwnerCharacter->AttachRifleToBack();
-    OwnerCharacter->AttachKnifeToBack();
-    RotateCharacterToInputDirection();
+    // 캐릭터 앞 AimSkill3Distance만큼 라인 트레이스
+    FVector StartLoc = OwnerCharacter->GetActorLocation();
+    FVector EndLoc = StartLoc + OwnerCharacter->GetActorForwardVector() * AimSkill3Distance;
+
+    FHitResult HitResult;
+    FVector TargetLocation = EndLoc;
+    if (GetWorld()->LineTraceSingleByChannel(HitResult, StartLoc, EndLoc, ECC_Visibility))
+    {
+        TargetLocation = HitResult.ImpactPoint;
+    }
+
+    if (bDrawDebugRange)
+    {
+        DrawDebugSphere(GetWorld(), TargetLocation, AimSkill3Radius, 32, FColor::Orange, false, 3.0f);
+    }
+
+    CachedAimSkill3Target = TargetLocation;
 
     PlayAimSkill3Montage();
-
-    GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
 }
 
 void USkillComponent::PlayAimSkill3Montage()
 {
     if (!AimSkill3Montage || !OwnerCharacter) return;
+
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    float Duration = Anim->Montage_Play(AimSkill3Montage, 1.0f);
-    if (Duration > 0.0f)
+    Anim->Montage_Play(AimSkill3Montage);
+
+    FOnMontageEnded EndDelegate;
+    EndDelegate.BindUObject(this, &USkillComponent::OnAimSkill3MontageEnded);
+    Anim->Montage_SetEndDelegate(EndDelegate, AimSkill3Montage);
+}
+
+void USkillComponent::OnAimSkill3MontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    if (!bInterrupted)
     {
-        FOnMontageEnded End;
-        End.BindUObject(this, &USkillComponent::ResetAimSkill3);
-        Anim->Montage_SetEndDelegate(End, AimSkill3Montage);
+        SpawnAimSkill3Projectiles(CachedAimSkill3Target);
+    }
+    bIsUsingAimSkill3 = false;
+    GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
+}
+
+void USkillComponent::SpawnAimSkill3Projectiles(const FVector& TargetLocation)
+{
+    if (!OwnerCharacter || !AimSkill3ProjectileClass) return;
+
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    FVector Forward = OwnerCharacter->GetActorForwardVector();
+    FVector Start = OwnerCharacter->GetActorLocation();
+
+    float TotalLength = AimSkill3Distance;
+    int32 Num = NumProjectiles;
+    float Step = (Num > 1) ? (TotalLength / (Num - 1)) : 0.f;
+
+    for (int32 i = 0; i < Num; ++i)
+    {
+        // 각 투사체의 지상 타겟 위치 계산 (전방 일정 간격)
+        FVector GroundTarget = Start + Forward * (Step * i);
+
+        // 땅의 높이 맞추기 (라인 트레이스)
+        FHitResult Hit;
+        FVector TraceStart = GroundTarget + FVector(0, 0, 500);
+        FVector TraceEnd = GroundTarget - FVector(0, 0, 2000);
+        if (World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility))
+        {
+            GroundTarget = Hit.ImpactPoint;
+        }
+
+        // 디버그 원(구체) 표시
+        if (bDrawDebugRange)
+        {
+            DrawDebugCircle(
+                World,
+                GroundTarget,
+                AimSkill3Radius,
+                32,
+                FColor::Cyan,
+                false,
+                2.0f,
+                0,
+                10.0f,
+                FVector(1, 0, 0), // X축 기준 회전
+                FVector(0, 1, 0), // Y축 기준 회전
+                false           // Z축 평면에 그림
+            );
+        }
+
+        // 투사체를 하늘 위에서 스폰
+        FVector SpawnLoc = GroundTarget + FVector(0, 0, 1000);
+        FRotator SpawnRot = FRotator(-90, 0, 0);
+
+        FActorSpawnParameters Params;
+        Params.Owner = OwnerCharacter;
+        Params.Instigator = OwnerCharacter->GetInstigator();
+
+        AAimSkill3Projectile* Proj = World->SpawnActor<AAimSkill3Projectile>(
+            AimSkill3ProjectileClass, SpawnLoc, SpawnRot, Params);
+
+        if (Proj)
+        {
+            Proj->SetExplosionParams(Skill3Damage, AimSkill3Radius);
+            Proj->FireInDirection(FVector(0, 0, -1));
+        }
     }
 }
 
 void USkillComponent::ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted)
 {
-    bIsUsingAimSkill3 = false;
-
-    if (OwnerCharacter)
+    if (!bInterrupted)
     {
-        OwnerCharacter->AttachRifleToBack();
-        OwnerCharacter->AttachKnifeToHand();
+        SpawnAimSkill3Projectiles(CachedAimSkill3Target);
     }
-
+    bIsUsingAimSkill3 = false;
     GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
 }
 

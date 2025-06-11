@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "AimSkill3Projectile.h"
 #include "SkillComponent.generated.h"
 
 class AMainCharacter;
@@ -12,6 +13,7 @@ class AMachineGun;
 class AKnife;
 class UBoxComponent;
 class ACannon;
+class AAimSkill3Projectile;
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class LOCOMOTION_API USkillComponent : public UActorComponent
@@ -39,6 +41,9 @@ public:
     bool CanUseAimSkill2() const { return bCanUseAimSkill2; }
     bool IsUsingAimSkill3() const { return bIsUsingAimSkill3; }
     bool CanUseAimSkill3() const { return bCanUseAimSkill3; }
+
+    UPROPERTY(EditAnywhere, Category = "Skill")
+    TSubclassOf<AAimSkill3Projectile> AimSkill3ProjectileClass;
 
 protected:
     virtual void BeginPlay() override;
@@ -139,7 +144,18 @@ private:
     FTimerHandle AimSkill3CooldownHandle;
     UAnimMontage* AimSkill3Montage;
 
+    float AimSkill3Distance = 1000.0f;
+    float AimSkill3Radius = 500.0f;
+    int32 NumProjectiles = 5;
+    bool bDrawDebugRange = true;
+    FVector CachedAimSkill3Target;
+
+    //UPROPERTY(EditAnywhere, Category = "Skill")
+    //TSubclassOf<AAimSkill3Projectile> AimSkill3ProjectileClass;
+
     void PlayAimSkill3Montage();
+    void OnAimSkill3MontageEnded(UAnimMontage* Montage, bool bInterrupted);
+    void SpawnAimSkill3Projectiles(const FVector& TargetLocation);
     void ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted);
     void ResetAimSkill3Cooldown();
 

@@ -437,7 +437,7 @@ void AMainCharacter::ResetLandingState()
 
 void AMainCharacter::Move(const FInputActionValue& Value)
 {
-    if (SkillComponent && SkillComponent->IsUsingAimSkill1()) return;
+    if (SkillComponent && (SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2())) return;
 
     FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -484,17 +484,17 @@ void AMainCharacter::FireWeapon()
             }
             MeleeCombatComponent->TriggerJumpAttack(IsInDoubleJump());
         }
-            return;
-        }
+        return;
+    }
 
-        // 점프 공격 실행
-       // if (MeleeCombatComponent)
-        //{
-            // 클래스 멤버를 직접 사용하거나 함수 호출 결과를 바로 전달
-           // MeleeCombatComponent->TriggerJumpAttack(IsInDoubleJump());
-        //}
-        //return;
+    // 점프 공격 실행
+   // if (MeleeCombatComponent)
+    //{
+        // 클래스 멤버를 직접 사용하거나 함수 호출 결과를 바로 전달
+       // MeleeCombatComponent->TriggerJumpAttack(IsInDoubleJump());
     //}
+    //return;
+//}
 
     if (bIsAiming && Rifle)
     {
