@@ -144,20 +144,26 @@ private:
     FTimerHandle AimSkill3CooldownHandle;
     UAnimMontage* AimSkill3Montage;
 
-    float AimSkill3Distance = 1000.0f;
-    float AimSkill3Radius = 500.0f;
+    float AimSkill3Distance = 1500.0f;
+    float AimSkill3Radius = 300.0f;
     int32 NumProjectiles = 5;
     bool bDrawDebugRange = true;
     FVector CachedAimSkill3Target;
 
-    //UPROPERTY(EditAnywhere, Category = "Skill")
-    //TSubclassOf<AAimSkill3Projectile> AimSkill3ProjectileClass;
-
     void PlayAimSkill3Montage();
     void OnAimSkill3MontageEnded(UAnimMontage* Montage, bool bInterrupted);
-    void SpawnAimSkill3Projectiles(const FVector& TargetLocation);
+
+    UFUNCTION()
+    void SpawnAimSkill3Projectiles();
+
     void ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted);
     void ResetAimSkill3Cooldown();
+    void DrawAimSkill3Range(const FVector& TargetLocation);
+
+    TArray<FVector> AimSkill3DropPoints;
+
+    FTimerHandle AimSkill3DropTimeHandle;
+    float AimSkill3ProjectileDelay = 3.0f; // 투사체 낙하까지의 시간(초)
 
     // 스킬 사용 시 캐릭터 회전
     void RotateCharacterToInputDirection();

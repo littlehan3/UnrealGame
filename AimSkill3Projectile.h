@@ -45,10 +45,10 @@ private:
     UNiagaraSystem* ExplosionEffect;
 
     UPROPERTY(EditAnywhere)
-    float Damage = 100.f;
+    float Damage = 500.f;
 
     UPROPERTY(EditAnywhere)
-    float ExplosionRadius = 500.f;
+    float ExplosionRadius = 300.f;
 
     bool bExploded = false;
 };

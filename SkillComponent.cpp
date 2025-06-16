@@ -508,12 +508,17 @@ void USkillComponent::UseAimSkill3()
         TargetLocation = HitResult.ImpactPoint;
     }
 
-    if (bDrawDebugRange)
-    {
-        DrawDebugSphere(GetWorld(), TargetLocation, AimSkill3Radius, 32, FColor::Orange, false, 3.0f);
-    }
+    DrawAimSkill3Range(TargetLocation);
 
     CachedAimSkill3Target = TargetLocation;
+
+    GetWorld()->GetTimerManager().SetTimer(
+        AimSkill3DropTimeHandle,
+        this,
+        &USkillComponent::SpawnAimSkill3Projectiles,
+        AimSkill3ProjectileDelay,
+        false
+    );
 
     PlayAimSkill3Montage();
 }
@@ -525,7 +530,7 @@ void USkillComponent::PlayAimSkill3Montage()
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    Anim->Montage_Play(AimSkill3Montage);
+    Anim->Montage_Play(AimSkill3Montage, 1.3f);
 
     FOnMontageEnded EndDelegate;
     EndDelegate.BindUObject(this, &USkillComponent::OnAimSkill3MontageEnded);
@@ -534,17 +539,15 @@ void USkillComponent::PlayAimSkill3Montage()
 
 void USkillComponent::OnAimSkill3MontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-    if (!bInterrupted)
-    {
-        SpawnAimSkill3Projectiles(CachedAimSkill3Target);
-    }
     bIsUsingAimSkill3 = false;
     GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
 }
 
-void USkillComponent::SpawnAimSkill3Projectiles(const FVector& TargetLocation)
+void USkillComponent::DrawAimSkill3Range(const FVector& TargetLocation)
 {
-    if (!OwnerCharacter || !AimSkill3ProjectileClass) return;
+    if (!bDrawDebugRange || !OwnerCharacter) return;
+
+    AimSkill3DropPoints.Empty(); // 배열 초기화
 
     UWorld* World = GetWorld();
     if (!World) return;
@@ -554,43 +557,67 @@ void USkillComponent::SpawnAimSkill3Projectiles(const FVector& TargetLocation)
 
     float TotalLength = AimSkill3Distance;
     int32 Num = NumProjectiles;
-    float Step = (Num > 1) ? (TotalLength / (Num - 1)) : 0.f;
+    //float Step = (Num > 1) ? (TotalLength / (Num - 1)) : 0.f;
+    float Step = TotalLength / Num;
 
     for (int32 i = 0; i < Num; ++i)
     {
-        // 각 투사체의 지상 타겟 위치 계산 (전방 일정 간격)
-        FVector GroundTarget = Start + Forward * (Step * i);
+        //FVector GroundTarget = Start + Forward * (Step * i);
+        FVector GroundTarget = Start + Forward * (Step * (i + 1)); // 캐릭터 앞쪽부터 시작
 
-        // 땅의 높이 맞추기 (라인 트레이스)
+        // 지면 높이 보정
         FHitResult Hit;
         FVector TraceStart = GroundTarget + FVector(0, 0, 500);
         FVector TraceEnd = GroundTarget - FVector(0, 0, 2000);
         if (World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility))
         {
-            GroundTarget = Hit.ImpactPoint;
+            //GroundTarget = Hit.ImpactPoint;
+            GroundTarget.Z = 10;
         }
-
-        // 디버그 원(구체) 표시
-        if (bDrawDebugRange)
+        else
         {
-            DrawDebugCircle(
-                World,
-                GroundTarget,
-                AimSkill3Radius,
-                32,
-                FColor::Cyan,
-                false,
-                2.0f,
-                0,
-                10.0f,
-                FVector(1, 0, 0), // X축 기준 회전
-                FVector(0, 1, 0), // Y축 기준 회전
-                false           // Z축 평면에 그림
-            );
+            GroundTarget.Z = 10;
         }
 
-        // 투사체를 하늘 위에서 스폰
-        FVector SpawnLoc = GroundTarget + FVector(0, 0, 1000);
+        AimSkill3DropPoints.Add(GroundTarget);
+
+        // 하늘색 원 즉시 표시
+        DrawDebugCircle(
+            World,
+            GroundTarget,
+            AimSkill3Radius,
+            32,
+            FColor::Cyan,
+            false,
+            6.0f, // 지속시간
+            0,
+            10.0f,
+            FVector(1, 0, 0),
+            FVector(0, 1, 0),
+            false
+        );
+    }
+}
+
+void USkillComponent::SpawnAimSkill3Projectiles()
+{
+    if (!OwnerCharacter || !AimSkill3ProjectileClass) return;
+
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    //FVector Forward = OwnerCharacter->GetActorForwardVector();
+    //FVector Start = OwnerCharacter->GetActorLocation();
+
+    //float TotalLength = AimSkill3Distance;
+    //int32 Num = NumProjectiles;
+    //float Step = TotalLength / Num;
+
+    int32 Num = AimSkill3DropPoints.Num();
+    for (int32 i = 0; i < Num; ++i)
+    {
+        FVector GroundTarget = AimSkill3DropPoints[i];
+        FVector SpawnLoc = GroundTarget + FVector(0, 0, 2000);
         FRotator SpawnRot = FRotator(-90, 0, 0);
 
         FActorSpawnParameters Params;
@@ -610,10 +637,10 @@ void USkillComponent::SpawnAimSkill3Projectiles(const FVector& TargetLocation)
 
 void USkillComponent::ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted)
 {
-    if (!bInterrupted)
-    {
-        SpawnAimSkill3Projectiles(CachedAimSkill3Target);
-    }
+    //if (!bInterrupted)
+    //{
+        //SpawnAimSkill3Projectiles(CachedAimSkill3Target);
+    //}
     bIsUsingAimSkill3 = false;
     GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
 }
