@@ -16,7 +16,7 @@ void AEnemyAIController::BeginPlay()
 
     if (ControlledPawn)
     {
-        UE_LOG(LogTemp, Warning, TEXT("AIController is Possessing: %s"), *ControlledPawn->GetName());
+        //UE_LOG(LogTemp, Warning, TEXT("AIController is Possessing: %s"), *ControlledPawn->GetName());
 
         // AI가 NavMesh 위에 있는지 확인
         UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
@@ -25,11 +25,11 @@ void AEnemyAIController::BeginPlay()
             FNavLocation OutLocation;
             if (NavSys->ProjectPointToNavigation(ControlledPawn->GetActorLocation(), OutLocation))
             {
-                UE_LOG(LogTemp, Warning, TEXT("AI is on a valid NavMesh!"));
+                //UE_LOG(LogTemp, Warning, TEXT("AI is on a valid NavMesh!"));
             }
             else
             {
-                UE_LOG(LogTemp, Error, TEXT("AI is NOT on a valid NavMesh! AI cannot move."));
+                //UE_LOG(LogTemp, Error, TEXT("AI is NOT on a valid NavMesh! AI cannot move."));
             }
         }
     }
@@ -120,12 +120,12 @@ void AEnemyAIController::NormalAttack()
 
     if (bIsAttacking) return; // 현재 공격 중이면 중복 실행 방지
 
-    UE_LOG(LogTemp, Warning, TEXT("NormalAttack() called. Current NormalAttackCount: %d"), NormalAttackCount);
+    //UE_LOG(LogTemp, Warning, TEXT("NormalAttack() called. Current NormalAttackCount: %d"), NormalAttackCount);
 
     // 강공격 체크: 일반 공격 3회 후 강공격 실행
     if (NormalAttackCount >= 3)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Triggering StrongAttack. Resetting NormalAttackCount."));
+        //UE_LOG(LogTemp, Warning, TEXT("Triggering StrongAttack. Resetting NormalAttackCount."));
         StrongAttack();
         return;
     }
@@ -137,7 +137,7 @@ void AEnemyAIController::NormalAttack()
         // 현재 애니메이션이 진행 중이라면 새로운 공격 차단
         if (AnimInstance && AnimInstance->IsAnyMontagePlaying())
         {
-            UE_LOG(LogTemp, Warning, TEXT("NormalAttack() blocked: Animation still playing."));
+            //UE_LOG(LogTemp, Warning, TEXT("NormalAttack() blocked: Animation still playing."));
             return;
         }
 
@@ -145,7 +145,7 @@ void AEnemyAIController::NormalAttack()
         EnemyCharacter->PlayNormalAttackAnimation();
         NormalAttackCount++; // 일반 공격 횟수 카운트 증가
 
-        UE_LOG(LogTemp, Warning, TEXT("Normal Attack performed. Updated NormalAttackCount: %d"), NormalAttackCount);
+        //UE_LOG(LogTemp, Warning, TEXT("Normal Attack performed. Updated NormalAttackCount: %d"), NormalAttackCount);
 
         bCanAttack = false; // 공격 후 쿨다운 적용
         GetWorld()->GetTimerManager().SetTimer(NormalAttackTimerHandle, this, &AEnemyAIController::ResetAttack, AttackCooldown, false);
@@ -154,7 +154,7 @@ void AEnemyAIController::NormalAttack()
 
 void AEnemyAIController::ResetAttack()
 {
-    UE_LOG(LogTemp, Warning, TEXT("ResetAttack() called. Before Reset: NormalAttackCount = %d"), NormalAttackCount);
+    //UE_LOG(LogTemp, Warning, TEXT("ResetAttack() called. Before Reset: NormalAttackCount = %d"), NormalAttackCount);
 
     bCanAttack = true; // 공격 쿨다운 코기화
     bIsStrongAttacking = false; // 강 공격 종료
@@ -167,7 +167,7 @@ void AEnemyAIController::ResetAttack()
         bCanStrongAttack = false;
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("ResetAttack() completed. After Reset: NormalAttackCount = %d"), NormalAttackCount);
+    //UE_LOG(LogTemp, Warning, TEXT("ResetAttack() completed. After Reset: NormalAttackCount = %d"), NormalAttackCount);
 }
 
 void AEnemyAIController::StrongAttack()
@@ -177,7 +177,7 @@ void AEnemyAIController::StrongAttack()
 
     if (bIsAttacking || bIsStrongAttacking) return; // 현재 공격 중이면 실행 금지
 
-    UE_LOG(LogTemp, Warning, TEXT("StrongAttack() called. Resetting NormalAttackCount to 0"));
+    //UE_LOG(LogTemp, Warning, TEXT("StrongAttack() called. Resetting NormalAttackCount to 0"));
 
     if (EnemyCharacter)
     {
@@ -200,7 +200,7 @@ void AEnemyAIController::TryDodge()
     if (EnemyCharacter->bIsInAirStun) return; // 스턴 상태면 닷지 금지
     if (!EnemyCharacter) return;
 
-    UE_LOG(LogTemp, Warning, TEXT("TryDodge() called. NormalAttackCount before dodge: %d"), NormalAttackCount);
+    //UE_LOG(LogTemp, Warning, TEXT("TryDodge() called. NormalAttackCount before dodge: %d"), NormalAttackCount);
 
     bIsDodging = true;
     bCanDodge = false; //연속 닷지방지
@@ -214,7 +214,7 @@ void AEnemyAIController::TryDodge()
     // 회피 후 일정 시간 동안 회피 불가상태 유지
     GetWorld()->GetTimerManager().SetTimer(DodgeCooldownTimerHandle, this, &AEnemyAIController::ResetDodgeCoolDown, DodgeCooldown, false);
 
-    UE_LOG(LogTemp, Warning, TEXT("Dodge executed. NormalAttackCount after dodge: %d"), NormalAttackCount);
+    //UE_LOG(LogTemp, Warning, TEXT("Dodge executed. NormalAttackCount after dodge: %d"), NormalAttackCount);
 }
 
 void AEnemyAIController::ResetDodge()

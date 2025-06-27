@@ -1,4 +1,11 @@
 #include "EnemyKatana.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/BoxComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "MainCharacter.h"
+#include "Engine/World.h"
+#include "DrawDebugHelpers.h"
+#include "Enemy.h"
 
 // Sets default values
 AEnemyKatana::AEnemyKatana()
@@ -9,31 +16,172 @@ AEnemyKatana::AEnemyKatana()
     // 카타나 메시 초기화 및 RootComponent로 설정
     KatanaMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("KatanaMesh"));
     RootComponent = KatanaMesh;
-
     KatanaMesh->SetSimulatePhysics(false); // 시작할 때 물리 시뮬레이션 비활성화
     KatanaMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // 충돌 활성화
+
+    HitBox = CreateDefaultSubobject<UBoxComponent>(TEXT("HitBox"));
+    HitBox->SetupAttachment(KatanaMesh);
+    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 기본적으로 비활성화
+    HitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
+    HitBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // 플레이어만 감지
+
+    HitBox->OnComponentBeginOverlap.AddDynamic(this, &AEnemyKatana::OnHitBoxOverlap);
 }
 
 // Called when the game starts or when spawned
 void AEnemyKatana::BeginPlay()
 {
     Super::BeginPlay();
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), EnemyActorsCache);
 }
 
-// Called every frame
-void AEnemyKatana::Tick(float DeltaTime)
+void AEnemyKatana::Tick(float DeltaTime) 
 {
     Super::Tick(DeltaTime);
+    //UE_LOG(LogTemp, Warning, TEXT("Katana Tick: %d"), bIsAttacking); // Tick 활성화 확인
+
+    if (bIsAttacking)
+    {
+        //UE_LOG(LogTemp, Warning, TEXT("Performing Raycast Attack")); // 공격 실행 확인
+        PerformRaycastAttack();
+    }
+}
+
+void AEnemyKatana::StartAttack()
+{
+    OverlapHitActors.Empty();
+    RaycastHitActors.Empty();
+    DamagedActors.Empty();
+    bIsAttacking = true;
+}
+
+void AEnemyKatana::EndAttack()
+{
+    bIsAttacking = false;
+    bIsStrongAttack = false;
+    OverlapHitActors.Empty();
+    RaycastHitActors.Empty();
+    DamagedActors.Empty();
+}
+
+void AEnemyKatana::EnableAttackHitDetection(bool bStrongAttack)
+{
+    bIsAttacking = true; // 공격 상태 활성화 추가
+    bIsStrongAttack = bStrongAttack;
+    OverlapHitActors.Empty();
+    RaycastHitActors.Empty();
+    DamagedActors.Empty();
+
+    HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+
+    UE_LOG(LogTemp, Warning, TEXT("StrongAttack Active: %d"), bIsStrongAttack); // 로그 추가
+}
+
+void AEnemyKatana::DisableAttackHitDetection()
+{
+    bIsAttacking = false;
+    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    OverlapHitActors.Empty();
+    RaycastHitActors.Empty();
+    DamagedActors.Empty();
+}
+
+void AEnemyKatana::OnHitBoxOverlap(
+    UPrimitiveComponent* OverlappedComponent,
+    AActor* OtherActor,
+    UPrimitiveComponent* OtherComp,
+    int32 OtherBodyIndex,
+    bool bFromSweep,
+    const FHitResult& SweepResult)
+{
+    if (!OtherActor) return;
+    OverlapHitActors.Add(OtherActor);
+    //UE_LOG(LogTemp, Warning, TEXT("카타나 오버랩 감지: %s"), *OtherActor->GetName());
+    TryApplyDamage(OtherActor);
+}
+
+void AEnemyKatana::PerformRaycastAttack()
+{
+    FVector Start = KatanaMesh->GetComponentLocation();
+    FVector End = Start + KatanaMesh->GetForwardVector() * 120.0f;
+
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
+    if (GetOwner())
+    {
+        Params.AddIgnoredActor(GetOwner()); // 소유자 무시
+
+        // 소유자가 속한 적 그룹 전체 무시
+        TArray<AActor*> EnemyActors;
+        UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), EnemyActors);
+        for (AActor* Enemy : EnemyActorsCache)
+        {
+            Params.AddIgnoredActor(Enemy);
+        }
+    }
+
+    TArray<FHitResult> OutHits;
+    bool bHit = GetWorld()->SweepMultiByChannel(
+        OutHits,
+        Start,
+        End,
+        FQuat::Identity,
+        ECC_Pawn,
+        FCollisionShape::MakeSphere(30.0f),
+        Params
+    );
+
+    // 디버그 라인 및 구체 시각화
+    DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 5.0f, SDPG_Foreground, 3.0f);
+    DrawDebugSphere(GetWorld(), Start, 30.0f, 12, FColor::Green, false, 5.0f, SDPG_Foreground, 3.0f);
+    DrawDebugSphere(GetWorld(), End, 30.0f, 12, FColor::Blue, false, 5.0f, SDPG_Foreground, 3.0f);
+
+    if (bHit)
+    {
+        for (const FHitResult& Hit : OutHits)
+        {
+            if (Hit.GetActor())
+            {
+                RaycastHitActors.Add(Hit.GetActor());
+                //UE_LOG(LogTemp, Warning, TEXT("카타나 레이캐스트 감지: %s"), *Hit.GetActor()->GetName());
+                TryApplyDamage(Hit.GetActor());
+            }
+        }
+    }
+}
+
+void AEnemyKatana::TryApplyDamage(AActor* OtherActor)
+{
+    if (!OtherActor || DamagedActors.Contains(OtherActor)) return;
+
+    // 변수명 변경: Owner -> KatanaOwner
+    AActor* KatanaOwner = GetOwner();
+    if (OtherActor == KatanaOwner)
+        return;
+
+    // 다른 적 캐릭터인지 확인
+    if (OtherActor->IsA(AEnemy::StaticClass()))
+        return;
+
+    // 플레이어만 데미지 적용
+    if (RaycastHitActors.Contains(OtherActor) || OverlapHitActors.Contains(OtherActor))
+    {
+        float DamageAmount = bIsStrongAttack ? 50.0f : 20.0f;
+        UGameplayStatics::ApplyDamage(OtherActor, DamageAmount, nullptr, this, nullptr);
+        DamagedActors.Add(OtherActor);
+
+        UE_LOG(LogTemp, Warning, TEXT("AttackType: %s, Damage: %f"),
+            bIsStrongAttack ? TEXT("StrongAttack") : TEXT("NormalAttack"),
+            DamageAmount);
+    }
 }
 
 void AEnemyKatana::HideKatana()
 {
     SetActorHiddenInGame(true);  // 렌더링 숨김
     SetActorEnableCollision(false); // 충돌 제거
-    SetActorTickEnabled(false); // Tick 비활성화
+    //SetActorTickEnabled(false); // Tick 비활성화
 
     // 2초 후 삭제 (메모리에서 완적히 삭제하기 위한 보완) 자동 가비지 컬렉션 유도
     SetLifeSpan(2.0f);
-
-    UE_LOG(LogTemp, Warning, TEXT("Katana %s is now hidden and will be destroyed soon!"), *GetName());
 }

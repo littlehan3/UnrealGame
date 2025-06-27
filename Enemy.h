@@ -44,6 +44,12 @@ public:
     
     void ApplyGravityPull(FVector ExplosionCenter, float PullStrength);
 
+    // 공격 시작/종료 함수
+    void StartAttack(bool bStrongAttack); // true: 강공격, false: 일반공격
+    void EndAttack();
+
+    bool bIsStrongAttack = false; // 현재 공격이 강공격인지 여부
+
 protected:
     virtual void BeginPlay() override;
 
@@ -82,8 +88,6 @@ private:
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")
     TSubclassOf<AEnemyKatana> KatanaClass;
 
-    AEnemyKatana* EquippedKatana;
-
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     TArray<UAnimMontage*> NormalAttackMontages; // 일반 공격 몽타주를 저장하는 배열
 
@@ -115,4 +119,7 @@ private:
     FTimerHandle StunTimerHandle; // 스턴 상태 해제를 위한 타이머
 	void HideEnemy(); // 적 숨기기
     void OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 에어본 상태에서 히트시 상태를 관리하기 위한 함수
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (AllowPrivateAccess = "true"))
+    AEnemyKatana* EquippedKatana; // 무기 참조 (BeginPlay 등에서 할당)
 };

@@ -19,7 +19,7 @@ AEnemy::AEnemy()
 
     if (!AIControllerClass)
     {
-        UE_LOG(LogTemp, Error, TEXT("AEnemy: AIControllerClass is NULL!"));
+        //UE_LOG(LogTemp, Error, TEXT("AEnemy: AIControllerClass is NULL!"));
     }
 }
 
@@ -31,11 +31,11 @@ void AEnemy::BeginPlay()
     AAIController* AICon = Cast<AAIController>(GetController());
     if (AICon)
     {
-        UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned: %s"), *AICon->GetName());
+        //UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned: %s"), *AICon->GetName());
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("AEnemy AIController is NULL!"));
+        //UE_LOG(LogTemp, Error, TEXT("AEnemy AIController is NULL!"));
     }
 
     SetUpAI();  // AI 설정 함수 호출
@@ -62,7 +62,7 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
 {
     if (bIsDead)  // 이미 죽은 상태면 데미지 무시
     {
-        UE_LOG(LogTemp, Warning, TEXT("Enemy is already dead! Ignoring further damage."));
+        //UE_LOG(LogTemp, Warning, TEXT("Enemy is already dead! Ignoring further damage."));
         return 0.0f;
     }
 
@@ -238,7 +238,7 @@ void AEnemy::PlayNormalAttackAnimation()
     // 애니메이션 실행 중이라면 공격 실행 금지
     if (AnimInstance && AnimInstance->IsAnyMontagePlaying())
     {
-        UE_LOG(LogTemp, Warning, TEXT("PlayNormalAttackAnimation() blocked: Animation still playing."));
+        //UE_LOG(LogTemp, Warning, TEXT("PlayNormalAttackAnimation() blocked: Animation still playing."));
         return;
     }
 
@@ -279,12 +279,14 @@ void AEnemy::PlayStrongAttackAnimation()
 {
     if (!EnemyAnimInstance || !StrongAttackMontage) return;
 
+    bIsStrongAttack = true;
+
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 
     // 애니메이션 실행 중이라면 강공격 실행 금지
     if (AnimInstance && AnimInstance->IsAnyMontagePlaying())
     {
-        UE_LOG(LogTemp, Warning, TEXT("PlayStrongAttackAnimation() blocked: Animation still playing."));
+        //UE_LOG(LogTemp, Warning, TEXT("PlayStrongAttackAnimation() blocked: Animation still playing."));
         return;
     }
 
@@ -319,6 +321,7 @@ void AEnemy::PlayDodgeAnimation(bool bDodgeLeft)
         UE_LOG(LogTemp, Error, TEXT("Selected dodge montage is NULL!"));
     }
 }
+
 float AEnemy::GetDodgeLeftDuration() const
 {
     return (DodgeLeftMontage) ? DodgeLeftMontage->GetPlayLength() : 1.0f;
@@ -464,4 +467,23 @@ void AEnemy::ApplyGravityPull(FVector ExplosionCenter, float PullStrength)
 
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s pulled toward explosion center with strength %f"),
         *GetName(), AdjustedPullStrength);
+}
+
+void AEnemy::StartAttack(bool bStrongAttack)
+{
+    bIsStrongAttack = bStrongAttack;
+    if (EquippedKatana)
+    {
+        //EquippedKatana->StartAttack();
+        EquippedKatana->EnableAttackHitDetection(bIsStrongAttack);
+    }
+}
+
+void AEnemy::EndAttack()
+{
+    if (EquippedKatana)
+    {
+        //EquippedKatana->EndAttack();
+        EquippedKatana->DisableAttackHitDetection();
+    }
 }

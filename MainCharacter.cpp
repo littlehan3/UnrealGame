@@ -60,6 +60,8 @@ AMainCharacter::AMainCharacter()
 
     SkillComponent = CreateDefaultSubobject<USkillComponent>(TEXT("SkillComponent"));
 
+    CurrentHealth = MaxHealth;
+    bIsDead = false;
 }
 
 void AMainCharacter::BeginPlay()
@@ -792,6 +794,32 @@ void AMainCharacter::UseSkill3()
             SkillComponent->UseSkill3(); // 일반 스킬3
         }
     }
+}
+
+float AMainCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+    if (bIsDead) return 0.0f;
+
+    float DamageApplied = FMath::Min(CurrentHealth, DamageAmount);
+    CurrentHealth -= DamageApplied;
+
+    UE_LOG(LogTemp, Warning, TEXT("MainCharacter: %f 데미지, 남은 체력: %f"), DamageApplied, CurrentHealth);
+
+    if (CurrentHealth <= 0.0f)
+    {
+        Die();
+    }
+
+    return DamageApplied;
+}
+
+void AMainCharacter::Die()
+{
+    if (bIsDead) return;
+    bIsDead = true;
+
+    // 사망 애니메이션, 입력 차단 등 추가
+    UE_LOG(LogTemp, Warning, TEXT("MainCharacter 사망!"));
 }
 
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

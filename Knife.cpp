@@ -153,6 +153,6 @@ void AKnife::OnHitBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActor* O
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("HitBox ignored %s"), *OtherActor->GetName());
+        //UE_LOG(LogTemp, Warning, TEXT("HitBox ignored %s"), *OtherActor->GetName());
     }
 }

@@ -412,7 +412,7 @@ void USkillComponent::PlayAimSkill2Montage()
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    float Duration = Anim->Montage_Play(AimSkill2Montage, 0.5f);
+    float Duration = Anim->Montage_Play(AimSkill2Montage, 1.0f);
     if (Duration > 0.0f)
     {
         FOnMontageEnded End;
@@ -496,6 +496,11 @@ void USkillComponent::UseAimSkill3()
 
     bIsUsingAimSkill3 = true;
     bCanUseAimSkill3 = false;
+
+    if (OwnerCharacter->IsAiming())
+    {
+        OwnerCharacter->ExitAimMode();  // 기존 에임모드 강제 종료
+    }
 
     // 캐릭터 앞 AimSkill3Distance만큼 라인 트레이스
     FVector StartLoc = OwnerCharacter->GetActorLocation();

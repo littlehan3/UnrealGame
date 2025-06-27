@@ -65,6 +65,19 @@ public:
     void AttachKnifeToBack();
     void AttachKnifeToHand();
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
+    float MaxHealth = 100.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
+    float CurrentHealth;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
+    bool bIsDead = false;
+
+    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+    void Die();
+
 protected:
     virtual void BeginPlay() override;
 
