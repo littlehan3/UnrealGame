@@ -803,7 +803,26 @@ float AMainCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
     float DamageApplied = FMath::Min(CurrentHealth, DamageAmount);
     CurrentHealth -= DamageApplied;
 
-    UE_LOG(LogTemp, Warning, TEXT("MainCharacter: %f 데미지, 남은 체력: %f"), DamageApplied, CurrentHealth);
+    UE_LOG(LogTemp, Warning, TEXT("MainCharacter took: %f Damage, Health remaining: %f"), DamageApplied, CurrentHealth);
+
+    if (NormalHitSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, NormalHitSound, GetActorLocation());
+    }
+
+    if (NormalHitMontages.Num() > 0)
+    {
+        int32 RandomIndex = FMath::RandRange(0, NormalHitMontages.Num() - 1);
+        UAnimMontage* SelectedMontage = NormalHitMontages[RandomIndex];
+        if (SelectedMontage)
+        {
+            UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+            if (AnimInstance)
+            {
+                AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+            }
+        }
+    }
 
     if (CurrentHealth <= 0.0f)
     {
@@ -817,6 +836,31 @@ void AMainCharacter::Die()
 {
     if (bIsDead) return;
     bIsDead = true;
+
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (PC)
+    {
+        DisableInput(PC);
+    }
+
+    if (DieSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, DieSound, GetActorLocation());
+    }
+
+    if (DieMontages.Num() > 0)
+    {
+        int32 RandomIndex = FMath::RandRange(0, DieMontages.Num() - 1);
+        UAnimMontage* SelectedMontage = DieMontages[RandomIndex];
+        if (SelectedMontage)
+        {
+            UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+            if (AnimInstance)
+            {
+                AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+            }
+        }
+    }
 
     // 사망 애니메이션, 입력 차단 등 추가
     UE_LOG(LogTemp, Warning, TEXT("MainCharacter 사망!"));

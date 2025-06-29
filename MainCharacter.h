@@ -290,4 +290,23 @@ private:
     bool bIsJumpAttacked = false; // 점프공격 실행 여부
     bool bCanGroundAction = true; // 지상액션(콤보) 가능 여부
     bool bCanAirAction = true; // 공중 액션 (점프, 점프공격) 가능 여부
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "React", meta = (AllowPrivateAccess = "true"))
+    TArray<UAnimMontage*> NormalHitMontages; // 노말 히트 몽타주 저장하는 배열
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "React", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* BigHitMontage; // 빅 히트 몽타주
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "React", meta = (AllowPrivateAccess = "true"))
+    TArray<UAnimMontage*> DieMontages; // 사망 몽타주 저장하는 배열
+
+    UPROPERTY(EditAnywhere, Category = "SoundEffects")
+    USoundBase* NormalHitSound;
+
+    UPROPERTY(EditAnywhere, Category = "SoundEffects")
+    USoundBase* BigHitSound;
+
+    UPROPERTY(EditAnywhere, Category = "SoundEffects")
+    USoundBase* DieSound;
+
 };
