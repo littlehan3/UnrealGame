@@ -836,6 +836,12 @@ void AMainCharacter::Die()
 {
     if (bIsDead) return;
     bIsDead = true;
+    ExitAimMode();
+
+    if (SkillComponent)
+    {
+        SkillComponent->CancelAllSkills();
+    }
 
     APlayerController* PC = Cast<APlayerController>(GetController());
     if (PC)

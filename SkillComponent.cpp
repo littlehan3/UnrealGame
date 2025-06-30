@@ -611,13 +611,6 @@ void USkillComponent::SpawnAimSkill3Projectiles()
     UWorld* World = GetWorld();
     if (!World) return;
 
-    //FVector Forward = OwnerCharacter->GetActorForwardVector();
-    //FVector Start = OwnerCharacter->GetActorLocation();
-
-    //float TotalLength = AimSkill3Distance;
-    //int32 Num = NumProjectiles;
-    //float Step = TotalLength / Num;
-
     int32 Num = AimSkill3DropPoints.Num();
     for (int32 i = 0; i < Num; ++i)
     {
@@ -627,14 +620,14 @@ void USkillComponent::SpawnAimSkill3Projectiles()
 
         FActorSpawnParameters Params;
         Params.Owner = OwnerCharacter;
-        Params.Instigator = OwnerCharacter->GetInstigator();
+        Params.Instigator = OwnerCharacter;
 
         AAimSkill3Projectile* Proj = World->SpawnActor<AAimSkill3Projectile>(
             AimSkill3ProjectileClass, SpawnLoc, SpawnRot, Params);
 
         if (Proj)
         {
-            Proj->SetExplosionParams(Skill3Damage, AimSkill3Radius);
+            //Proj->SetExplosionParams(Skill3Damage, AimSkill3Radius);
             Proj->FireInDirection(FVector(0, 0, -1));
         }
     }
@@ -653,4 +646,34 @@ void USkillComponent::ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted)
 void USkillComponent::ResetAimSkill3Cooldown()
 {
     bCanUseAimSkill3 = true;
+}
+
+void USkillComponent::CancelAllSkills()
+{
+    // 에임스킬1 취소 (머신건)
+    if (bIsUsingAimSkill1)
+    {
+        bIsUsingAimSkill1 = false;
+        if (MachineGun)
+        {
+            MachineGun->StopFire(); // 발사 중지
+            MachineGun->SetActorHiddenInGame(true); // 오브젝트 숨김
+        }
+        GetWorld()->GetTimerManager().ClearAllTimersForObject(this); // 관련 타이머 제거
+    }
+
+    // 에임스킬2 취소 (캐논)
+    if (bIsUsingAimSkill2)
+    {
+        bIsUsingAimSkill2 = false;
+        if (Cannon)
+        {
+            Cannon->SetActorHiddenInGame(true); // 오브젝트 숨김
+        }
+        GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
+    }
+
+    // 기타 스킬 상태 초기화
+    bIsUsingSkill1 = bIsUsingSkill2 = bIsUsingSkill3 = false;
+    bIsUsingAimSkill3 = false;
 }

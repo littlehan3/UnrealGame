@@ -84,11 +84,16 @@ void AAimSkill3Projectile::Explode()
     }
 
     // 데미지 적용 시 InstigatorController 널 체크
-    AController* InstigatorCtrl = GetInstigatorController();
     UWorld* World = GetWorld();
     if (World)
     {
         TArray<AActor*> Ignored;
+        if (AActor* InstigatorActor = GetInstigator())
+        {
+            Ignored.Add(InstigatorActor);
+        }
+        
+        AController* InstigatorCtrl = GetInstigatorController();
         UGameplayStatics::ApplyRadialDamage(
             World,
             Damage,

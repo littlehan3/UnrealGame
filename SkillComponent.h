@@ -45,6 +45,8 @@ public:
     UPROPERTY(EditAnywhere, Category = "Skill")
     TSubclassOf<AAimSkill3Projectile> AimSkill3ProjectileClass;
 
+    void CancelAllSkills();
+
 protected:
     virtual void BeginPlay() override;
 
