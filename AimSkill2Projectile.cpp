@@ -36,7 +36,7 @@ void AAimSkill2Projectile::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (Shooter)
+	if (Shooter && CollisionComponent)
 	{
 		CollisionComponent->IgnoreActorWhenMoving(Shooter, true); // 발사자와의 충돌 무시
 	}
@@ -370,4 +370,20 @@ AActor* AAimSkill2Projectile::FindClosestEnemy()
 	}
 
 	return ClosestEnemy;
+}
+
+void AAimSkill2Projectile::SetShooter(AActor* InShooter)
+{
+	Shooter = InShooter;
+	if (CollisionComponent && Shooter)
+	{
+		CollisionComponent->IgnoreActorWhenMoving(Shooter, true);
+		TArray<UPrimitiveComponent*> Components;
+		Shooter->GetComponents<UPrimitiveComponent>(Components);
+		for (auto Comp : Components)
+		{
+			CollisionComponent->IgnoreComponentWhenMoving(Comp, true);
+			//UE_LOG(LogTemp, Warning, TEXT("Setshooter ignorence called"));
+		}
+	}
 }

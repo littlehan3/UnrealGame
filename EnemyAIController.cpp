@@ -232,6 +232,8 @@ void AEnemyAIController::JumpAttack()
     AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
     if (!EnemyCharacter) return;
 
+    if (bIsJumpAttacking) return;
+
     bIsJumpAttacking = true; // 점프 공격 사용 상태 설정
     bCanAttack = false; // 점프 공격 중 다른 공격 불가
 

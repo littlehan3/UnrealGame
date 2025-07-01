@@ -25,7 +25,7 @@ protected:
 private:
     APawn* PlayerPawn;  // 플레이어 참조
     UPROPERTY(EditDefaultsOnly, Category = "AI")
-    float DetectionRadius = 800.0f;  // 플레이어 감지 범위
+    float DetectionRadius = 1000.0f;  // 플레이어 감지 범위
 
     UPROPERTY(EditDefaultsOnly, Category = "AI")
     float StopChasingRadius = 1200.0f;  // 플레이어를 쫓다가 멈추는 범위
@@ -37,7 +37,7 @@ private:
     float AttackCooldown = 2.0f; // 공격 쿨타임
 
     UPROPERTY(EditDefaultsOnly, Category = "AI")
-    float DodgeChance = 0.5f; // 회피확률
+    float DodgeChance = 0.3f; // 회피확률
 
     UPROPERTY(EditDefaultsOnly, Category = "AI")
     float DodgeCooldown = 5.0f; // 연속 닷지 방지 쿨타임
@@ -46,9 +46,9 @@ private:
     bool bIsDodging = false; // 닷지 여부
     bool bCanDodge = true; // 닷기 가능 여부 
     bool bCanStrongAttack = true; // 강공격 가능 여부
-    bool bIsStrongAttacking = false; // 강공격 여부
-    bool bIsJumpAttacking = false; // 점프 공격 여부
-    bool bIsAttacking = false; // 공격 진행중 여부
+    bool bIsStrongAttacking = false; // 강공격 진행 여부
+    bool bIsJumpAttacking = false; // 점프 공격 진행 여부
+    bool bIsAttacking = false; // 공격 진행 여부
 
     int32 NormalAttackCount = 0; // 일반 공격 횟수 카운트
 

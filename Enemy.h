@@ -45,10 +45,13 @@ public:
     void ApplyGravityPull(FVector ExplosionCenter, float PullStrength);
 
     // 공격 시작/종료 함수
-    void StartAttack(bool bStrongAttack); // true: 강공격, false: 일반공격
+    void StartAttack(EAttackType AttackType); // true: 강공격, false: 일반공격
     void EndAttack();
 
-    bool bIsStrongAttack = false; // 현재 공격이 강공격인지 여부
+    bool bIsStrongAttack = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    AEnemyKatana* EquippedKatana; // 무기 참조 
 
 protected:
     virtual void BeginPlay() override;
@@ -101,7 +104,7 @@ private:
     UAnimMontage* DodgeRightMontage; // 오른쪽 닷지 몽타주
 
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
-    UAnimMontage* JumpAttackMontage; // 점프 공격 애니메이션
+    TArray<UAnimMontage*> JumpAttackMontages; // 점프 공격 애니메이션
 
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* HitReactionMontage; // 피격 애니메이션
@@ -120,6 +123,7 @@ private:
 	void HideEnemy(); // 적 숨기기
     void OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 에어본 상태에서 히트시 상태를 관리하기 위한 함수
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (AllowPrivateAccess = "true"))
-    AEnemyKatana* EquippedKatana; // 무기 참조 (BeginPlay 등에서 할당)
+    UPROPERTY()
+    UAnimMontage* LastPlayedJumpAttackMontage;
+
 };

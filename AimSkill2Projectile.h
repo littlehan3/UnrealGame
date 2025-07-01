@@ -18,14 +18,14 @@ class LOCOMOTION_API AAimSkill2Projectile : public AActor
 	GENERATED_BODY()
 
 public:
-	AAimSkill2Projectile(); // 
+	AAimSkill2Projectile(); 
 	virtual void Tick(float DeltaTime) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	void FireInDirection(const FVector& ShootDirection); // 특정 방향으로 투사체 발사하는 함수
 	void SetDamage(float InDamage) { Damage = InDamage; } // 투사체 데미지 설정 함수
-	void SetShooter(AActor* InShooter) { Shooter = InShooter; } // 발사자 설정 함수
+	void SetShooter(AActor* InShooter); //{ Shooter = InShooter; } // 발사자 설정 함수
 
 protected:
 	UFUNCTION()

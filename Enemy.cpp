@@ -12,6 +12,8 @@
 AEnemy::AEnemy()
 {
     PrimaryActorTick.bCanEverTick = true;
+    LastPlayedJumpAttackMontage = nullptr;
+    bCanAttack = true;
 
     AIControllerClass = AEnemyAIController::StaticClass(); // AI 컨트롤러 설정
 
@@ -311,6 +313,8 @@ void AEnemy::PlayDodgeAnimation(bool bDodgeLeft)
 
     UAnimMontage* SelectedMontage = (bDodgeLeft) ? DodgeLeftMontage : DodgeRightMontage;
 
+    if (AnimInstance && AnimInstance->IsAnyMontagePlaying()) return;
+
     if (SelectedMontage && AnimInstance)
     {
         UE_LOG(LogTemp, Warning, TEXT("Enemy is dodging with montage: %s"), *SelectedMontage->GetName());
@@ -334,15 +338,49 @@ float AEnemy::GetDodgeRightDuration() const
 
 void AEnemy::PlayJumpAttackAnimation()
 {
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-    if (!AnimInstance || !JumpAttackMontage) return;
+    if (!EnemyAnimInstance || JumpAttackMontages.Num() == 0) return;
 
-    AnimInstance->Montage_Play(JumpAttackMontage, 1.0f);
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+    if (AnimInstance && AnimInstance->IsAnyMontagePlaying()) return;
+  
+    int32 RandomIndex = FMath::RandRange(0, JumpAttackMontages.Num() - 1);
+    UAnimMontage* SelectedMontage = JumpAttackMontages[RandomIndex];
+
+    if (SelectedMontage)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Enemy is playing attack montage: %s"), *SelectedMontage->GetName());
+
+        float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+        if (PlayResult == 0.0f)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Montage_Play failed! Check slot settings."));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
+        }
+
+        // 공격 실행 후 AI 이동 정지
+        AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+        if (AICon)
+        {
+            AICon->StopMovement();
+            UE_LOG(LogTemp, Warning, TEXT("Enemy stopped moving to attack!"));
+        }
+
+        bCanAttack = false;
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("Selected Montage is NULL!"));
+        LastPlayedJumpAttackMontage = nullptr;
+    }
 }
 
 float AEnemy::GetJumpAttackDuration() const
 {
-    return (JumpAttackMontage) ? JumpAttackMontage->GetPlayLength() : 1.0f;
+    return (LastPlayedJumpAttackMontage) ? LastPlayedJumpAttackMontage->GetPlayLength() : 1.0f;
 }
 
 void AEnemy::EnterInAirStunState(float Duration)
@@ -469,13 +507,12 @@ void AEnemy::ApplyGravityPull(FVector ExplosionCenter, float PullStrength)
         *GetName(), AdjustedPullStrength);
 }
 
-void AEnemy::StartAttack(bool bStrongAttack)
+void AEnemy::StartAttack(EAttackType AttackType)
 {
-    bIsStrongAttack = bStrongAttack;
     if (EquippedKatana)
     {
         //EquippedKatana->StartAttack();
-        EquippedKatana->EnableAttackHitDetection(bIsStrongAttack);
+        EquippedKatana->EnableAttackHitDetection(AttackType);
     }
 }
 

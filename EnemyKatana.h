@@ -1,6 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+UENUM(BlueprintType)
+enum class EAttackType : uint8
+{
+    Normal,
+    Strong,
+    Jump
+};
 #include "GameFramework/Actor.h"
 #include "EnemyKatana.generated.h"
 
@@ -26,7 +33,7 @@ public:
     TSet<AActor*> RaycastHitActors;
     TSet<AActor*> DamagedActors;
 
-    void EnableAttackHitDetection(bool bStrongAttack);
+    void EnableAttackHitDetection(EAttackType AttackType);
     void DisableAttackHitDetection();
 
     void PerformRaycastAttack(); // 공격 프레임마다 AnimNotify 등에서 호출
@@ -59,4 +66,6 @@ private:
     void TryApplyDamage(AActor* OtherActor);
     
     TArray<AActor*> EnemyActorsCache;
+
+    EAttackType CurrentAttackType;
 };

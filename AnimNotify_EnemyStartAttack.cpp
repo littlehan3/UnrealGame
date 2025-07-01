@@ -5,6 +5,6 @@ void UAnimNotify_EnemyStartAttack::Notify(USkeletalMeshComponent* MeshComp, UAni
 {
     if (AEnemy* Enemy = Cast<AEnemy>(MeshComp->GetOwner()))
     {
-        Enemy->StartAttack(Enemy->bIsStrongAttack);
+        Enemy->StartAttack(AttackType);
     }
 }
