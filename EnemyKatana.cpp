@@ -16,16 +16,6 @@ AEnemyKatana::AEnemyKatana()
     // 카타나 메시 초기화 및 RootComponent로 설정
     KatanaMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("KatanaMesh"));
     RootComponent = KatanaMesh;
-    KatanaMesh->SetSimulatePhysics(false); // 시작할 때 물리 시뮬레이션 비활성화
-    KatanaMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // 충돌 활성화
-
-    HitBox = CreateDefaultSubobject<UBoxComponent>(TEXT("HitBox"));
-    HitBox->SetupAttachment(KatanaMesh);
-    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 기본적으로 비활성화
-    HitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
-    HitBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // 플레이어만 감지
-
-    HitBox->OnComponentBeginOverlap.AddDynamic(this, &AEnemyKatana::OnHitBoxOverlap);
 }
 
 // Called when the game starts or when spawned
@@ -42,38 +32,32 @@ void AEnemyKatana::Tick(float DeltaTime)
 
     if (bIsAttacking)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Performing Raycast Attack")); // 공격 실행 확인
+        //UE_LOG(LogTemp, Warning, TEXT("Performing Raycast Attack")); // 공격 실행 확인
         PerformRaycastAttack();
     }
 }
 
 void AEnemyKatana::StartAttack()
 {
-    OverlapHitActors.Empty();
+    bIsAttacking = true;
     RaycastHitActors.Empty();
     DamagedActors.Empty();
-    bIsAttacking = true;
 }
 
 void AEnemyKatana::EndAttack()
 {
     bIsAttacking = false;
     bIsStrongAttack = false;
-    OverlapHitActors.Empty();
     RaycastHitActors.Empty();
     DamagedActors.Empty();
-    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void AEnemyKatana::EnableAttackHitDetection(EAttackType AttackType)
 {
     bIsAttacking = true; // 공격 상태 활성화 추가
     CurrentAttackType = AttackType;
-    OverlapHitActors.Empty();
     RaycastHitActors.Empty();
     DamagedActors.Empty();
-
-    HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 
     UE_LOG(LogTemp, Warning, TEXT("StrongAttack Active: %d"), bIsStrongAttack); // 로그 추가
 }
@@ -81,84 +65,75 @@ void AEnemyKatana::EnableAttackHitDetection(EAttackType AttackType)
 void AEnemyKatana::DisableAttackHitDetection()
 {
     bIsAttacking = false;
-    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    OverlapHitActors.Empty();
     RaycastHitActors.Empty();
     DamagedActors.Empty();
-}
-
-void AEnemyKatana::OnHitBoxOverlap(
-    UPrimitiveComponent* OverlappedComponent,
-    AActor* OtherActor,
-    UPrimitiveComponent* OtherComp,
-    int32 OtherBodyIndex,
-    bool bFromSweep,
-    const FHitResult& SweepResult)
-{
-    if (!OtherActor) return;
-    OverlapHitActors.Add(OtherActor);
-    //UE_LOG(LogTemp, Warning, TEXT("카타나 오버랩 감지: %s"), *OtherActor->GetName());
-    TryApplyDamage(OtherActor);
 }
 
 void AEnemyKatana::PerformRaycastAttack()
 {
     FVector Start = KatanaMesh->GetComponentLocation();
-    FVector End = Start + KatanaMesh->GetForwardVector() * 120.0f;
+    FVector Forward = KatanaMesh->GetForwardVector();
+    float TotalDistance = 120.0f;
+    int NumSteps = 5;
+    float StepLength = TotalDistance / NumSteps;
 
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this);
     if (GetOwner())
     {
-        Params.AddIgnoredActor(GetOwner()); // 소유자 무시
+        Params.AddIgnoredActor(GetOwner());
 
         // 소유자가 속한 적 그룹 전체 무시
         TArray<AActor*> EnemyActors;
         UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), EnemyActors);
-        for (AActor* Enemy : EnemyActorsCache)
+        for (AActor* Enemy : EnemyActors)
         {
             Params.AddIgnoredActor(Enemy);
         }
     }
 
-    TArray<FHitResult> OutHits;
-    bool bHit = GetWorld()->SweepMultiByChannel(
-        OutHits,
-        Start,
-        End,
-        FQuat::Identity,
-        ECC_Pawn,
-        FCollisionShape::MakeSphere(30.0f),
-        Params
-    );
+    // Sweep 전체 경로에 파란색 선만 한 번만 그림
+    FVector SweepLineEnd = Start + Forward * TotalDistance;
+    DrawDebugLine(GetWorld(), Start, SweepLineEnd, FColor::Green, false, 5.0f, SDPG_Foreground, 3.0f);
 
-    // 디버그 라인 및 구체 시각화
-    // 기본적으로 파란색
-     DrawDebugLine(GetWorld(), Start, End, FColor::Blue, false, 5.0f, SDPG_Foreground, 3.0f);
-     DrawDebugSphere(GetWorld(), Start, 30.0f, 12, FColor::Blue, false, 5.0f, SDPG_Foreground, 3.0f);
-     DrawDebugSphere(GetWorld(), End, 30.0f, 12, FColor::Blue, false, 5.0f, SDPG_Foreground, 3.0f);
-
-    if (bHit)
+    for (int i = 0; i < NumSteps; ++i)
     {
-        for (const FHitResult& Hit : OutHits)
-        {
-            if (Hit.GetActor())
-            {
-                RaycastHitActors.Add(Hit.GetActor());
-                //UE_LOG(LogTemp, Warning, TEXT("카타나 레이캐스트 감지: %s"), *Hit.GetActor()->GetName());
-                TryApplyDamage(Hit.GetActor());
+        FVector SweepStart = Start + Forward * StepLength * i;
+        FVector SweepEnd = Start + Forward * StepLength * (i + 1);
 
-                // 메인캐릭터와 충돌했을 때만 빨간색 구체 디버그 표시
-                if (Hit.GetActor()->IsA(AMainCharacter::StaticClass()))
+        TArray<FHitResult> OutHits;
+        bool bHit = GetWorld()->SweepMultiByChannel(
+            OutHits,
+            SweepStart,
+            SweepEnd,
+            FQuat::Identity,
+            ECC_Pawn,
+            FCollisionShape::MakeSphere(30.0f),
+            Params
+        );
+
+        if (bHit)
+        {
+            for (const FHitResult& Hit : OutHits)
+            {
+                if (Hit.GetActor())
                 {
-                    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12, FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);
+                    RaycastHitActors.Add(Hit.GetActor());
+                    ApplyDamage(Hit.GetActor());
+
+                    // 맞았을 때만 빨간색 구 표시
+                    if (Hit.GetActor()->IsA(AMainCharacter::StaticClass()))
+                    {
+                        DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12, FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);
+                        return;
+                    }
                 }
             }
         }
     }
 }
 
-void AEnemyKatana::TryApplyDamage(AActor* OtherActor)
+void AEnemyKatana::ApplyDamage(AActor* OtherActor)
 {
     if (!OtherActor || DamagedActors.Contains(OtherActor)) return;
 
@@ -171,7 +146,7 @@ void AEnemyKatana::TryApplyDamage(AActor* OtherActor)
         return;
 
     // 플레이어만 데미지 적용
-    if (RaycastHitActors.Contains(OtherActor) || OverlapHitActors.Contains(OtherActor))
+    if (RaycastHitActors.Contains(OtherActor))
     {
         float DamageAmount = 0.0f;
         FString AttackTypeStr;

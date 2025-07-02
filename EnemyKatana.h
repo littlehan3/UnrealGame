@@ -1,6 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "EnemyKatana.generated.h"
+
 UENUM(BlueprintType)
 enum class EAttackType : uint8
 {
@@ -8,8 +11,6 @@ enum class EAttackType : uint8
     Strong,
     Jump
 };
-#include "GameFramework/Actor.h"
-#include "EnemyKatana.generated.h"
 
 class AEnemy;
 
@@ -25,11 +26,7 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UStaticMeshComponent* KatanaMesh;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Components")
-    class UBoxComponent* HitBox;
-
     // 판정 데이터
-    TSet<AActor*> OverlapHitActors;
     TSet<AActor*> RaycastHitActors;
     TSet<AActor*> DamagedActors;
 
@@ -50,22 +47,22 @@ protected:
     // Called when the game starts or when spawned
     virtual void BeginPlay() override;
 
-    UFUNCTION()
-    void OnHitBoxOverlap(
-        UPrimitiveComponent* OverlappedComponent,
-        AActor* OtherActor,
-        UPrimitiveComponent* OtherComp,
-        int32 OtherBodyIndex,
-        bool bFromSweep,
-        const FHitResult& SweepResult);
-
 private:
     bool bIsAttacking = false;
     bool bIsStrongAttack = false;
 
-    void TryApplyDamage(AActor* OtherActor);
+    void ApplyDamage(AActor* OtherActor);
     
     TArray<AActor*> EnemyActorsCache;
 
     EAttackType CurrentAttackType;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KatanaTransform", meta = (AllowPrivateAccess = "true"))
+    FVector KatanaRelativeLocation = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KatanaTransform", meta = (AllowPrivateAccess = "true"))
+    FRotator KatanaRelativeRotation = FRotator::ZeroRotator;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KatanaTransform", meta = (AllowPrivateAccess = "true"))
+    FVector KatanaRelativeScale = FVector(1.0f, 1.0f, 1.0f);
 };
