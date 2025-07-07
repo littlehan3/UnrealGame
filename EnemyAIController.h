@@ -8,6 +8,14 @@
 class AEnemy; //포인터만 사용하므로 전방선언
 class AEnemyAnimInstance;
 
+UENUM(BlueprintType)
+enum class EEnemyAIState : uint8
+{
+	Idle,
+	MoveToCircle,
+	ChasePlayer
+};
+
 UCLASS()
 class LOCOMOTION_API AEnemyAIController : public AAIController
 {
@@ -42,6 +50,17 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	float DodgeCooldown = 5.0f; // 연속 닷지 방지 쿨타임
 
+	UPROPERTY(EditDefaultsOnly, Category = "AI")
+	float CircleRadius = 250.0f; // 원 반지름
+
+	UPROPERTY(EditDefaultsOnly, Category = "AI")
+	float CircleArriveThreshold = 60.0f; // 원 위치 도달 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "AI")
+	float ChaseStartDistance = 320.0f; // 추적 시작 거리
+
+	EEnemyAIState CurrentState = EEnemyAIState::Idle;
+
 	bool bCanAttack = true; // 일반공격 가능 여부
 	bool bIsDodging = false; // 닷지 여부
 	bool bCanDodge = true; // 닷기 가능 여부
@@ -64,9 +83,15 @@ private:
 	FTimerHandle DodgeTimerHandle; // 닷지 쿨타임 타이머
 	FTimerHandle DodgeCooldownTimerHandle; // 닷지 쿨다운 타이머
 	FTimerHandle JumpAttackTimerHandle; // 점프공격 타이머
+	FTimerHandle CirclePositionTimerHandle;
 
 	void MoveToDistributedLocation();
 	void CalculateCirclePosition();
+	void UpdateAIState(float DistanceToPlayer);
+	void SetAIState(EEnemyAIState NewState);
+
 	FVector CachedTargetLocation;
 	bool bHasCachedTarget = false;
+
+	void OnCirclePositionTimer();
 };

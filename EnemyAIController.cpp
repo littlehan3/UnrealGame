@@ -7,136 +7,171 @@
 #include "EnemyAnimInstance.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
+
+AEnemyAIController::AEnemyAIController()
+{
+	PrimaryActorTick.bCanEverTick = true;
+}
+
 void AEnemyAIController::BeginPlay()
 {
 	Super::BeginPlay();
 
 	PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	APawn* ControlledPawn = GetPawn();
 
-	if (ControlledPawn)
-	{
-		//UE_LOG(LogTemp, Warning, TEXT("AIController is Possessing: %s"), *ControlledPawn->GetName());
-
-		// AI가 NavMesh 위에 있는지 확인
-		UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
-		if (NavSys)
-		{
-			FNavLocation OutLocation;
-			if (NavSys->ProjectPointToNavigation(ControlledPawn->GetActorLocation(), OutLocation))
-			{
-				//UE_LOG(LogTemp, Warning, TEXT("AI is on a valid NavMesh!"));
-			}
-			else
-			{
-				//UE_LOG(LogTemp, Error, TEXT("AI is NOT on a valid NavMesh! AI cannot move."));
-			}
-		}
-	}
+	// 원 위치 주기적 갱신 타이머 (0.7초마다)
+	GetWorld()->GetTimerManager().SetTimer(CirclePositionTimerHandle, this, &AEnemyAIController::OnCirclePositionTimer, 0.7f, true);
 }
 
 void AEnemyAIController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
 
+	AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
 	if (!EnemyCharacter || EnemyCharacter->bIsDead)
 	{
 		StopMovement();
 		return;
 	}
-
 	if (EnemyCharacter->bIsInAirStun)
 	{
-		StopMovement(); // 스턴 상태에서는 AI 이동 중지
+		StopMovement();
 		return;
 	}
-
-	if (!PlayerPawn) // 플레이어 NULL 체크
+	if (!PlayerPawn)
 	{
 		PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
 		if (!PlayerPawn) return;
 	}
+	if (!GetPawn() || bIsDodging) return;
 
-	if (!GetPawn()) return; // AI 캐릭터가 NULL이면 실행 중지
-	if (bIsDodging) return;
-
-	// 플레이어와 AI의 거리 계산
 	float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
-	if (DistanceToPlayer > 350.0f)
-	{
-		MoveToLocation(CachedTargetLocation, 5.0f);
-	}
-	else
-	{
-		MoveToActor(PlayerPawn, 5.0f);
-	}
+	UpdateAIState(DistanceToPlayer);
 
-	// AI가 항상 플레이어를 바라보도록 설정
-	FRotator LookAtRotation = (PlayerPawn->GetActorLocation() - GetPawn()->GetActorLocation()).Rotation();
-	LookAtRotation.Pitch = 0.0f;
-	LookAtRotation.Roll = 0.0f;
-	GetPawn()->SetActorRotation(FMath::RInterpTo(GetPawn()->GetActorRotation(), LookAtRotation, DeltaTime, 5.0f));
-
-	if (DistanceToPlayer <= DetectionRadius)
+	switch (CurrentState)
 	{
+	case EEnemyAIState::MoveToCircle:
 		if (!bHasCachedTarget)
-		{
 			CalculateCirclePosition();
-		}
 
-		// 목표 위치까지 거리 체크 (너무 멀면 이동)
-		float DistToTarget = FVector::Dist(GetPawn()->GetActorLocation(), CachedTargetLocation);
-		if (DistToTarget > 50.0f)
+		if (FVector::Dist(GetPawn()->GetActorLocation(), CachedTargetLocation) > CircleArriveThreshold)
 		{
 			MoveToLocation(CachedTargetLocation, 5.0f);
 		}
 		else
 		{
 			StopMovement();
+			SetAIState(EEnemyAIState::Idle);
 		}
+		// (필요시 MoveToCircle 상태에서도 공격/회피 조건을 넣을 수 있음)
+		break;
+
+	case EEnemyAIState::ChasePlayer:
+	{
+		MoveToActor(PlayerPawn, 5.0f);
+
+		// 공격/회피 조건 체크
+		float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
 
 		if (!bIsJumpAttacking)
-		{
 			JumpAttack();
-		}
-		else if (DistanceToPlayer <= AttackRange && bCanAttack)
+
+		if (DistToPlayer <= AttackRange && bCanAttack)
 		{
 			if (NormalAttackCount == 3)
-			{
 				StrongAttack();
-			}
 			else
 			{
 				if (FMath::FRand() <= DodgeChance && bCanDodge)
-				{
 					TryDodge();
-				}
 				else
-				{
 					NormalAttack();
-				}
 			}
 		}
-		else
-		{
-			MoveToDistributedLocation();
-			//MoveToActor(PlayerPawn, 5.0f);
-		}
+		break;
 	}
-	else if (DistanceToPlayer > StopChasingRadius)
-	{
+
+	case EEnemyAIState::Idle:
 		StopMovement();
+		break;
+	}
+
+	// 항상 플레이어 바라보기
+	FRotator LookAtRotation = (PlayerPawn->GetActorLocation() - GetPawn()->GetActorLocation()).Rotation();
+	LookAtRotation.Pitch = 0.0f;
+	LookAtRotation.Roll = 0.0f;
+	GetPawn()->SetActorRotation(FMath::RInterpTo(GetPawn()->GetActorRotation(), LookAtRotation, DeltaTime, 5.0f));
+}
+
+void AEnemyAIController::UpdateAIState(float DistanceToPlayer)
+{
+	if (DistanceToPlayer > StopChasingRadius)
+	{
+		SetAIState(EEnemyAIState::Idle);
 		bHasCachedTarget = false;
 		bIsJumpAttacking = false;
 		NormalAttackCount = 0;
+		return;
+	}
+
+	if (DistanceToPlayer <= ChaseStartDistance)
+	{
+		SetAIState(EEnemyAIState::ChasePlayer);
+	}
+	else
+	{
+		SetAIState(EEnemyAIState::MoveToCircle);
 	}
 }
 
-AEnemyAIController::AEnemyAIController()
+void AEnemyAIController::SetAIState(EEnemyAIState NewState)
 {
-	PrimaryActorTick.bCanEverTick = true;
+	if (CurrentState != NewState)
+	{
+		StopMovement();
+		CurrentState = NewState;
+		if (CurrentState == EEnemyAIState::MoveToCircle)
+			CalculateCirclePosition();
+	}
+}
+
+void AEnemyAIController::OnCirclePositionTimer()
+{
+	if (CurrentState == EEnemyAIState::MoveToCircle)
+		CalculateCirclePosition();
+}
+
+void AEnemyAIController::CalculateCirclePosition()
+{
+	AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
+	if (!EnemyCharacter || !PlayerPawn) return;
+
+	TArray<AActor*> AllEnemies;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), AllEnemies);
+
+	int32 MyIndex = AllEnemies.IndexOfByKey(EnemyCharacter);
+	int32 TotalEnemies = AllEnemies.Num();
+
+	float Angle = 0.0f;
+	if (TotalEnemies > 0)
+	{
+		Angle = 2 * PI * (MyIndex / (float)TotalEnemies);
+	}
+	float Radius = 200.0f;
+	FVector Offset = FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0) * Radius;
+	FVector TargetLocation = PlayerPawn->GetActorLocation() + Offset;
+
+	// 네비게이션 메시 위로 보정
+	FNavLocation NavLoc;
+	UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
+	if (NavSys && NavSys->ProjectPointToNavigation(TargetLocation, NavLoc, FVector(50, 50, 100)))
+	{
+		TargetLocation = NavLoc.Location;
+	}
+
+	CachedTargetLocation = TargetLocation;
+	bHasCachedTarget = true;
 }
 
 void AEnemyAIController::NormalAttack()
@@ -325,38 +360,6 @@ void AEnemyAIController::MoveToDistributedLocation()
 
 	// 6. 이동 명령
 	MoveToLocation(TargetLocation, 5.0f);
-}
-
-void AEnemyAIController::CalculateCirclePosition()
-{
-	AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
-	if (!EnemyCharacter || !PlayerPawn) return;
-
-	TArray<AActor*> AllEnemies;
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), AllEnemies);
-
-	int32 MyIndex = AllEnemies.IndexOfByKey(EnemyCharacter);
-	int32 TotalEnemies = AllEnemies.Num();
-
-	float Angle = 0.0f;
-	if (TotalEnemies > 0)
-	{
-		Angle = 2 * PI * (MyIndex / (float)TotalEnemies);
-	}
-	float Radius = 200.0f;
-	FVector Offset = FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0) * Radius;
-	FVector TargetLocation = PlayerPawn->GetActorLocation() + Offset;
-
-	// 네비게이션 메시 위로 보정
-	FNavLocation NavLoc;
-	UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
-	if (NavSys && NavSys->ProjectPointToNavigation(TargetLocation, NavLoc, FVector(50, 50, 100)))
-	{
-		TargetLocation = NavLoc.Location;
-	}
-
-	CachedTargetLocation = TargetLocation;
-	bHasCachedTarget = true;
 }
 
 void AEnemyAIController::StopAI()
