@@ -151,24 +151,27 @@ void AEnemyKatana::ApplyDamage(AActor* OtherActor)
         float DamageAmount = 0.0f;
         FString AttackTypeStr;
 
+        AEnemy* EnemyOwner = Cast<AEnemy>(KatanaOwner); // Enemy 클래스에만 bIsEliteEnemy가 있으니까 카타나 오너를 Enemy로 캐스팅
+        bool bIsElite = (EnemyOwner && EnemyOwner->bIsEliteEnemy); // 앨리트 적 여부
+
         switch (CurrentAttackType)
         {
         case EAttackType::Normal:
-            DamageAmount = 20.0f;
+            DamageAmount = bIsElite ? 30.0f : 20.0f; // 앨리트와 일반 데미지 구분
             AttackTypeStr = TEXT("NormalAttack");
             break;
         case EAttackType::Strong:
-            DamageAmount = 50.0f;
+            DamageAmount = bIsElite ? 60.0f : 50.0f; 
             AttackTypeStr = TEXT("StrongAttack");
             break;
         case EAttackType::Jump: 
-            DamageAmount = 30.0f;
+            DamageAmount = bIsElite ? 40.0f : 30.0f;
             AttackTypeStr = TEXT("JumpAttack");
             break;
         }
 
         UGameplayStatics::ApplyDamage(OtherActor, DamageAmount, nullptr, this, nullptr);
-        UE_LOG(LogTemp, Warning, TEXT("AttackType: %s, Damage: %f"), *AttackTypeStr, DamageAmount);
+        UE_LOG(LogTemp, Warning, TEXT("AttackType: %s, Damage: %f IsElite: %d"), *AttackTypeStr, DamageAmount, bIsElite);
 
         DamagedActors.Add(OtherActor);
     }

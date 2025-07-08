@@ -9,6 +9,7 @@ UEnemyAnimInstance::UEnemyAnimInstance()
     Direction = 0.0f;
     bIsInAir = false;
     bIsDead = false;
+    bIsEliteEnemy = false;
 }
 
 void UEnemyAnimInstance::NativeInitializeAnimation()
@@ -27,6 +28,8 @@ void UEnemyAnimInstance::NativeUpdateAnimation(float DeltaTime)
     }
 
     if (!EnemyCharacter) return;
+
+    bIsEliteEnemy = EnemyCharacter->bIsEliteEnemy;
 
     if (bIsDead)
     {

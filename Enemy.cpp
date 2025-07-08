@@ -23,11 +23,14 @@ AEnemy::AEnemy()
     {
         //UE_LOG(LogTemp, Error, TEXT("AEnemy: AIControllerClass is NULL!"));
     }
+
+    GetCharacterMovement()->MaxWalkSpeed = 300.0f; // 기본 이동속도 세팅
 }
 
 void AEnemy::BeginPlay()
 {
     Super::BeginPlay();
+
     SetCanBeDamaged(true);
 
     AAIController* AICon = Cast<AAIController>(GetController());
@@ -42,7 +45,16 @@ void AEnemy::BeginPlay()
 
     SetUpAI();  // AI 설정 함수 호출
 
-    EnemyAnimInstance = Cast<UEnemyAnimInstance>(GetMesh()->GetAnimInstance()); //  애님 인스턴스 설정
+    EnemyAnimInstance = Cast<UEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+
+    // 앨리트 적 확률 판정
+    float EliteChance = 0.1f;
+    if (FMath::FRand() < EliteChance)
+    {
+        bIsEliteEnemy = true;
+        ApplyEliteSettings();
+        ApplyBaseWalkSpeed();
+    }
 
     // KatanaClass가 설정되어 있다면 Katana 스폰 및 부착
     if (KatanaClass)
@@ -50,6 +62,7 @@ void AEnemy::BeginPlay()
         EquippedKatana = GetWorld()->SpawnActor<AEnemyKatana>(KatanaClass);
         if (EquippedKatana)
         {
+            EquippedKatana->SetOwner(this);
             USkeletalMeshComponent* MeshComp = GetMesh();
             if (MeshComp)
             {
@@ -58,6 +71,19 @@ void AEnemy::BeginPlay()
             }
         }
     }
+}
+
+void AEnemy::ApplyEliteSettings()
+{
+    Health = 200.0f;
+
+}
+
+void AEnemy::ApplyBaseWalkSpeed() 
+{
+    GetCharacterMovement()->MaxWalkSpeed = bIsEliteEnemy ? 500.0f : 300.0f; // 앨리트 일시 500 아닐시 300
+    GetCharacterMovement()->MaxAcceleration = 5000.0f; // 즉시 최대속도 도달
+    GetCharacterMovement()->BrakingFrictionFactor = 10.0f;
 }
 
 float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -78,7 +104,7 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
         UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation());
     }
 
-    if (EnemyAnimInstance && HitReactionMontage) // 히트 시 애니메이션 재생
+    if (!bIsStrongAttack && EnemyAnimInstance && HitReactionMontage) // 히트 시 애니메이션 재생 (강공격중엔 히트몽타주 재생안함)
     {
         EnemyAnimInstance->Montage_Play(HitReactionMontage, 1.0f);
 
@@ -88,7 +114,7 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
         EnemyAnimInstance->Montage_SetEndDelegate(EndDelegate, HitReactionMontage);
     }
 
-    if (Health <= 0.0f)
+    if (Health <= 0.0f) // 체력이 0 이하일 경우 사망 (강공격중에도 호출)
     {
         Die();
     }
@@ -186,7 +212,11 @@ void AEnemy::StopActions()
         GetWorld()->GetTimerManager().ClearTimer(StunTimerHandle); // 스턴 해제 타이머 취소
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("All actions stopped for dead enemy."));
+    // 카타나 공격판정 중지
+    if (EquippedKatana)
+    {
+        EquippedKatana->DisableAttackHitDetection();
+    }
 }
 
 void AEnemy::HideEnemy()
@@ -261,6 +291,11 @@ void AEnemy::PlayNormalAttackAnimation()
             UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
         }
 
+        if (bIsEliteEnemy && EnemyAnimInstance && SelectedMontage) // 앨리트 적인 경우
+        {
+            EnemyAnimInstance->Montage_SetPlayRate(SelectedMontage, 1.5f); // 몽타주 배속
+        }
+
         // 공격 실행 후 AI 이동 정지
         AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
         if (AICon)
@@ -295,6 +330,11 @@ void AEnemy::PlayStrongAttackAnimation()
     UE_LOG(LogTemp, Warning, TEXT("Enemy is performing StrongAttack: %s"), *StrongAttackMontage->GetName());
     AnimInstance->Montage_Play(StrongAttackMontage, 1.0f);
 
+    if (bIsEliteEnemy && EnemyAnimInstance) // 앨리트 적인 경우
+    {
+        EnemyAnimInstance->Montage_SetPlayRate(StrongAttackMontage, 1.5f); // 몽타주 배속
+    }
+
     if (StrongAttackSound)
     {
         UGameplayStatics::PlaySoundAtLocation(this, StrongAttackSound, GetActorLocation());
@@ -324,6 +364,26 @@ void AEnemy::PlayDodgeAnimation(bool bDodgeLeft)
     {
         UE_LOG(LogTemp, Error, TEXT("Selected dodge montage is NULL!"));
     }
+}
+
+void AEnemy::SetRootMotionEnable(bool bEnable)
+{
+    if (EnemyAnimInstance)
+        EnemyAnimInstance->SetRootMotionMode(bEnable ? ERootMotionMode::RootMotionFromMontagesOnly : ERootMotionMode::NoRootMotionExtraction);
+}
+
+void AEnemy::OnDodgeLaunchNotify(bool bDodgeLeft)
+{
+    SetRootMotionEnable(false); // 루트모션 비활성화
+    FVector LaunchDir = bDodgeLeft ? -GetActorRightVector() : GetActorRightVector();
+    float LaunchStrength = 1000.0f;
+    LaunchCharacter(LaunchDir * LaunchStrength, true, true);
+    UE_LOG(LogTemp, Warning, TEXT("Dodge Launch! Direction: %s, Strength: %f"), *LaunchDir.ToString(), LaunchStrength);
+}
+
+void AEnemy::OnDodgeLaunchEndNotify()
+{
+    SetRootMotionEnable(true); // 루트모션 활성화
 }
 
 float AEnemy::GetDodgeLeftDuration() const
@@ -359,6 +419,10 @@ void AEnemy::PlayJumpAttackAnimation()
         else
         {
             UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
+        }
+        if (bIsEliteEnemy && EnemyAnimInstance && SelectedMontage) // 앨리트 적인 경우
+        {
+            EnemyAnimInstance->Montage_SetPlayRate(SelectedMontage, 1.5f); // 몽타주 배속
         }
 
         // 공격 실행 후 AI 이동 정지
@@ -396,6 +460,12 @@ void AEnemy::EnterInAirStunState(float Duration)
     {
         UE_LOG(LogTemp, Warning, TEXT("Stopping AI manually..."));
         AICon->StopMovement();
+    }
+
+    // 카타나 공격판정 중지
+    if (EquippedKatana)
+    {
+        EquippedKatana->DisableAttackHitDetection();
     }
 
     // 적을 위로 띄우기 (LaunchCharacter 먼저 실행)
@@ -441,6 +511,7 @@ void AEnemy::ExitInAirStunState()
     // 중력 복구 및 낙하 상태로 변경
     GetCharacterMovement()->SetMovementMode(MOVE_Falling);
     GetCharacterMovement()->GravityScale = 1.5f; // 조금 더 빠르게 낙하
+    ApplyBaseWalkSpeed();
 
     // AI 이동 다시 활성화
     AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());

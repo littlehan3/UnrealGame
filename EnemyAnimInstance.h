@@ -27,7 +27,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Animation")
     bool GetIsDead() const { return bIsDead; }
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+    UFUNCTION(BlueprintCallable, Category = "Animation")
+    bool GetIsEliteEnemy() const { return bIsEliteEnemy; }
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation")
     bool bIsDead;
 
 protected:
@@ -46,6 +49,9 @@ private:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
     bool bIsInAir;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+    bool bIsEliteEnemy;
 
     // 방향 계산 함수 
     float CalculateDirection(const FVector& Velocity, const FRotator& BaseRotation);

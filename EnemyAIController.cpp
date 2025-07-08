@@ -64,7 +64,7 @@ void AEnemyAIController::Tick(float DeltaTime)
 			StopMovement();
 			SetAIState(EEnemyAIState::Idle);
 		}
-		// (필요시 MoveToCircle 상태에서도 공격/회피 조건을 넣을 수 있음)
+		// 필요시 MoveToCircle 상태에서도 공격,회피 조건
 		break;
 
 	case EEnemyAIState::ChasePlayer:
@@ -131,6 +131,14 @@ void AEnemyAIController::SetAIState(EEnemyAIState NewState)
 	{
 		StopMovement();
 		CurrentState = NewState;
+
+		// 상태 전환 시마다 이속 재설정
+		AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
+		if (EnemyCharacter)
+		{
+			EnemyCharacter->ApplyBaseWalkSpeed();
+		}
+
 		if (CurrentState == EEnemyAIState::MoveToCircle)
 			CalculateCirclePosition();
 	}

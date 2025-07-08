@@ -33,10 +33,10 @@ protected:
 private:
 	APawn* PlayerPawn; // 플레이어 참조
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float DetectionRadius = 1000.0f; // 플레이어 감지 범위
+	float DetectionRadius = 2000.0f; // 플레이어 감지 범위
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StopChasingRadius = 1200.0f; // 플레이어를 쫓다가 멈추는 범위
+	float StopChasingRadius = 3000.0f; // 플레이어를 쫓다가 멈추는 범위
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	float AttackRange = 200.0f; // 공격 범위
@@ -51,7 +51,7 @@ private:
 	float DodgeCooldown = 5.0f; // 연속 닷지 방지 쿨타임
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float CircleRadius = 250.0f; // 원 반지름
+	float CircleRadius = 500.0f; // 원 반지름
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	float CircleArriveThreshold = 60.0f; // 원 위치 도달 거리

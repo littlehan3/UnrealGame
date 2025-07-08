@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 회복, 강화 시스템 적용시 확장예정
 
 #pragma once
 

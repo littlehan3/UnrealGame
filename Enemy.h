@@ -53,6 +53,15 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
     AEnemyKatana* EquippedKatana; // 무기 참조 
 
+    void OnDodgeLaunchNotify(bool bDodgeLeft);
+    void SetRootMotionEnable(bool bEnable);
+    void OnDodgeLaunchEndNotify();
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "EnemyType")
+    bool bIsEliteEnemy = false; // 앨리트 적 여부
+
+    void ApplyBaseWalkSpeed();
+
 protected:
     virtual void BeginPlay() override;
 
@@ -125,5 +134,7 @@ private:
 
     UPROPERTY()
     UAnimMontage* LastPlayedJumpAttackMontage;
+
+    void ApplyEliteSettings();
 
 };
