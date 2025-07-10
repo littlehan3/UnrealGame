@@ -76,7 +76,6 @@ void AEnemy::BeginPlay()
 void AEnemy::ApplyEliteSettings()
 {
     Health = 200.0f;
-
 }
 
 void AEnemy::ApplyBaseWalkSpeed() 
@@ -141,7 +140,6 @@ void AEnemy::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
     }
 }
 
-
 void AEnemy::Die()
 {
     if (bIsDead) return;
@@ -194,9 +192,8 @@ void AEnemy::StopActions()
 {
     AAIController* AICon = Cast<AAIController>(GetController());
 
-    // 모든 입력 및 이동 차단
-    GetCharacterMovement()->DisableMovement();
-    GetCharacterMovement()->StopMovementImmediately();
+    GetCharacterMovement()->DisableMovement(); // 모든 이동 차단
+    GetCharacterMovement()->StopMovementImmediately(); // 모든 이동 즉시차단
 
     // 모든 공격 중지
     if (EnemyAnimInstance)
@@ -242,7 +239,7 @@ void AEnemy::SetUpAI()
     GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_NavWalking);
 }
 
-// AI 이동
+// AI 컨트롤러 확인
 void AEnemy::PostInitializeComponents()
 {
     Super::PostInitializeComponents();
@@ -252,11 +249,11 @@ void AEnemy::PostInitializeComponents()
             AAIController* AICon = Cast<AAIController>(GetController());
             if (AICon)
             {
-                UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned Later: %s"), *AICon->GetName());
+                //UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned Later: %s"), *AICon->GetName());
             }
             else
             {
-                UE_LOG(LogTemp, Error, TEXT("AEnemy AIController STILL NULL!"));
+                //UE_LOG(LogTemp, Error, TEXT("AEnemy AIController STILL NULL!"));
             }
         });
 }

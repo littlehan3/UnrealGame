@@ -18,7 +18,7 @@ class LOCOMOTION_API AEnemy : public ACharacter
 public:
     AEnemy();
 
-    virtual void PostInitializeComponents() override; // AI 이동
+    virtual void PostInitializeComponents() override; // AI 컨트롤러 확인 함수
 
     void PlayNormalAttackAnimation(); // 일반 공격 애니메이션 실행 함수
     void PlayDodgeAnimation(bool bDodgeLeft); // 닷지 애니메이션 실행
@@ -31,11 +31,11 @@ public:
 
     bool bIsDead = false;
 
-    virtual float TakeDamage(
-        float DamageAmount,
-        struct FDamageEvent const& DamageEvent,
-        class AController* EventInstigator,
-        AActor* DamageCauser
+    virtual float TakeDamage( // 데미지를 입었을때 호출되는 함수 (AActor의 TakeDamage 오버라이드)
+        float DamageAmount, // 입은 데미지 양
+        struct FDamageEvent const& DamageEvent, // 데미지 이벤트 정보 
+        class AController* EventInstigator, // 데미지를 가한 컨트롤러
+        AActor* DamageCauser // 데미지를 유발한 엑터
     ) override;
 
     void EnterInAirStunState(float Duration); // 공중 스턴 상태 진입

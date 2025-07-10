@@ -27,6 +27,25 @@ void AEnemyAIController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	//APawn* ControlledPawn = GetPawn(); // 폰이 존재할때마다 디버그를 그림
+	//if (!ControlledPawn) return;
+
+	//FVector PawnLocation = ControlledPawn->GetActorLocation();
+
+	// 빨간색: 공격 범위
+	//DrawDebugSphere(GetWorld(), PawnLocation, AttackRange, 32, FColor::Red, false, -1.0f, 0, 2.0f);
+
+	// 파란색: 원 위치 도달 거리
+	//DrawDebugSphere(GetWorld(), PawnLocation, CircleArriveThreshold, 32, FColor::Blue, false, -1.0f, 0, 2.0f);
+
+	// 초록색: 추적 시작 거리
+	//DrawDebugSphere(GetWorld(), PawnLocation, ChaseStartDistance, 32, FColor::Green, false, -1.0f, 0, 2.0f);
+
+	// 하늘색: 플레이어 기준으로 하늘색 원 반지름
+	if (PlayerPawn)
+	{
+		DrawDebugSphere(GetWorld(), PlayerPawn->GetActorLocation(), CircleRadius, 32, FColor::Cyan, false, -1.0f, 0, 2.0f);
+	}
 
 	AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
 	if (!EnemyCharacter || EnemyCharacter->bIsDead)

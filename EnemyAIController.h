@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "AIController.h"
 #include "NavigationSystem.h"
+#include "DrawDebugHelpers.h"
 #include "EnemyAIController.generated.h"
 
 class AEnemy; //포인터만 사용하므로 전방선언
@@ -32,8 +33,6 @@ protected:
 
 private:
 	APawn* PlayerPawn; // 플레이어 참조
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float DetectionRadius = 2000.0f; // 플레이어 감지 범위
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	float StopChasingRadius = 3000.0f; // 플레이어를 쫓다가 멈추는 범위
