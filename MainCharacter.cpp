@@ -349,7 +349,7 @@ void AMainCharacter::HandleJump()
 {
     if (SkillComponent &&
         (SkillComponent->IsUsingSkill1() || SkillComponent->IsUsingSkill2() || SkillComponent->IsUsingSkill3() ||
-            SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2()))
+            SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2()) || SkillComponent->IsUsingAimSkill3())
         return;
 
     if (MeleeCombatComponent && !MeleeCombatComponent->CanAirAction())
@@ -367,9 +367,11 @@ void AMainCharacter::HandleJump()
 
     if (!bIsJumping)
     {
-        Jump();
+        LaunchCharacter(FVector(0, 0, 500), false, true);
+        //Jump();
         bIsJumping = true;
     }
+
     else if (bCanDoubleJump)
     {
         HandleDoubleJump();
@@ -385,7 +387,7 @@ void AMainCharacter::HandleDoubleJump()
         return;
     }
 
-    LaunchCharacter(FVector(0, 0, 1000), false, true);
+    LaunchCharacter(FVector(0, 0, 1200), false, true);
     bCanDoubleJump = false;
     bIsInDoubleJump = true;
 
@@ -474,9 +476,26 @@ void AMainCharacter::FireWeapon()
             SkillComponent->IsUsingAimSkill1()))
         return;
 
+    if (bIsAiming && Rifle)
+    {
+        Rifle->Fire();
+    }
+    else
+    {
+        // 에임 모드가 아닐 때 콤보 공격을 시작
+        ComboAttack();
+    }
+ 
     // 점프 상태 체크
     if (GetCharacterMovement()->IsFalling())
     {
+        // *에임모드 중에는 점프공격 비활성화
+        if (bIsAiming)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Jump Attack Blocked - Aim Mode Active"));
+            return; // 에임모드 중에는 점프공격 실행하지 않음
+        }
+
         if (MeleeCombatComponent)
         {
             if (MeleeCombatComponent->IsAttacking())
@@ -487,25 +506,6 @@ void AMainCharacter::FireWeapon()
             MeleeCombatComponent->TriggerJumpAttack(IsInDoubleJump());
         }
         return;
-    }
-
-    // 점프 공격 실행
-   // if (MeleeCombatComponent)
-    //{
-        // 클래스 멤버를 직접 사용하거나 함수 호출 결과를 바로 전달
-       // MeleeCombatComponent->TriggerJumpAttack(IsInDoubleJump());
-    //}
-    //return;
-//}
-
-    if (bIsAiming && Rifle)
-    {
-        Rifle->Fire();
-    }
-    else
-    {
-        // 에임 모드가 아닐 때 콤보 공격을 시작
-        ComboAttack();
     }
 }
 
@@ -529,6 +529,7 @@ void AMainCharacter::EnterAimMode()
 
     if (!bIsAiming)
     {
+        PreviousZoom = TargetZoom; // 현재 타겟 줌 값을 저장
         bIsAiming = true;
         TargetZoom = AimZoom; // 에임 모드 진입 시 즉시 줌 변경
         UE_LOG(LogTemp, Warning, TEXT("Entered Aim Mode"));
@@ -544,7 +545,7 @@ void AMainCharacter::ExitAimMode()
     if (bIsAiming)
     {
         bIsAiming = false;
-        TargetZoom = DefaultZoom; // 기본 줌 값으로 복귀
+        TargetZoom = PreviousZoom; // 기본값 대신 이전 줌 값으로 복귀
         UE_LOG(LogTemp, Warning, TEXT("Exited Aim Mode"));
         CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
 
@@ -574,6 +575,10 @@ void AMainCharacter::ComboAttack()
 void AMainCharacter::Dash()
 {
     if (!bCanDash || bIsDashing || !Controller || bIsJumping || bIsInDoubleJump) return;
+
+    if (SkillComponent &&
+        (SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2()))
+        return;
 
     FVector DashDirection = FVector::ZeroVector;
     FVector InputVector = GetCharacterMovement()->GetLastInputVector();
@@ -731,6 +736,13 @@ void AMainCharacter::ZoomIn()
     if (bIsAiming) return; // 에임 모드일 때는 줌 불가능
 
     TargetZoom = FMath::Clamp(TargetZoom - ZoomStep, MinZoom, MaxZoom);
+
+    // 에임모드가 아닐 때만 PreviousZoom 업데이트
+    if (!bIsAiming)
+    {
+        PreviousZoom = TargetZoom;
+    }
+
     UE_LOG(LogTemp, Warning, TEXT("Zoom In: %f"), CurrentZoom);
 }
 
@@ -739,6 +751,13 @@ void AMainCharacter::ZoomOut()
     if (bIsAiming) return; // 에임 모드일 때는 줌 불가능
 
     TargetZoom = FMath::Clamp(TargetZoom + ZoomStep, MinZoom, MaxZoom);
+
+    // 에임모드가 아닐 때만 PreviousZoom 업데이트
+    if (!bIsAiming)
+    {
+        PreviousZoom = TargetZoom;
+    }
+
     UE_LOG(LogTemp, Warning, TEXT("Zoom Out: %f"), CurrentZoom);
 }
 

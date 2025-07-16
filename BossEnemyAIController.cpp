@@ -26,6 +26,21 @@ void ABossEnemyAIController::Tick(float DeltaTime)
 
     if (!GetPawn() || !PlayerPawn) return;
 
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
+    if (!Boss) return;
+
+    // 전신공격 중일 때는 상태 업데이트를 제한
+    if (Boss->bIsFullBodyAttacking)
+    {
+        // 전신공격 중에는 NormalAttack 상태를 유지
+        if (CurrentState != EBossEnemyAIState::NormalAttack)
+        {
+            SetBossAIState(EBossEnemyAIState::NormalAttack);
+        }
+        DrawDebugInfo();
+        return; // 다른 행동은 수행하지 않음
+    }
+
     float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
     UpdateBossAIState(DistToPlayer);
 
@@ -90,6 +105,16 @@ void ABossEnemyAIController::UpdateBossAIState(float DistanceToPlayer)
 void ABossEnemyAIController::BossMoveToPlayer()
 {
     if (!PlayerPawn || !GetPawn()) return;
+
+    // 전신공격 중일 때는 이동하지 않음
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
+    if (Boss && Boss->bIsFullBodyAttacking)
+    {
+        StopMovement();
+        UE_LOG(LogTemp, Warning, TEXT("Cannot move during full body attack"));
+        return;
+    }
+
     MoveToActor(PlayerPawn, 5.0f);
     LookAtPlayer(GetWorld()->GetDeltaSeconds());
 }
@@ -98,11 +123,16 @@ void ABossEnemyAIController::BossNormalAttack()
 {
     if (!bCanBossAttack) return;
 
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
+    if (!Boss) return;
+
+    // 피격 중이거나 사망한 경우 또는 전신공격 중인 경우 공격하지 않음
+    if (Boss->bIsBossHit || Boss->bIsBossDead || Boss->bIsFullBodyAttacking) return;
+
     float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
 
     LookAtPlayer(GetWorld()->GetDeltaSeconds());
 
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
     if (Boss && Boss->bCanBossAttack)
     {
         if (DistanceToPlayer <= BossStandingAttackRange) // 0-200 범위
@@ -114,7 +144,7 @@ void ABossEnemyAIController::BossNormalAttack()
         }
         else if (DistanceToPlayer > BossStandingAttackRange && DistanceToPlayer <= BossMovingAttackRange) // 201-250 범위
         {
-            // 이동 공격 - 상체만 애니메이션
+            // 이동 공격 - 상체만 애니메이션, 이동가능
             Boss->PlayBossUpperBodyAttack();
             UE_LOG(LogTemp, Warning, TEXT("Moving Attack - Distance: %f"), DistanceToPlayer);
         }

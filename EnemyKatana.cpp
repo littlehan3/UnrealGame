@@ -179,10 +179,56 @@ void AEnemyKatana::ApplyDamage(AActor* OtherActor)
 
 void AEnemyKatana::HideKatana()
 {
-    SetActorHiddenInGame(true);  // 렌더링 숨김
-    SetActorEnableCollision(false); // 충돌 제거
-    //SetActorTickEnabled(false); // Tick 비활성화
+    UE_LOG(LogTemp, Warning, TEXT("Hiding Katana Memory Cleanup"));
 
-    // 2초 후 삭제 (메모리에서 완적히 삭제하기 위한 보완) 자동 가비지 컬렉션 유도
-    SetLifeSpan(2.0f);
+    // 1. 이벤트 및 타이머 정리 (최우선)
+    GetWorld()->GetTimerManager().ClearAllTimersForObject(this); // 모든 타이머 해제로 콜백 함수 호출 차단
+
+    // 2. 상태 플래그 정리
+    bIsAttacking = false; // 공격 상태 초기화
+    bIsStrongAttack = false; // 강공격 상태 초기화
+
+    // 3. 배열 데이터 정리
+    RaycastHitActors.Empty(); // 히트 액터 목록 완전 삭제
+    DamagedActors.Empty(); // 데미지 액터 목록 완전 삭제
+    EnemyActorsCache.Empty(); // 캐시된 적 목록 완전 삭제
+
+    // 4. 소유자 관계 해제 (컴포넌트 정리 전)
+    SetOwner(nullptr); // 순환 참조 방지를 위해 소유자 관계 먼저 해제
+
+    // 5. 컴포넌트 시스템 정리
+    if (KatanaMesh && IsValid(KatanaMesh) && !KatanaMesh->IsBeingDestroyed())
+    {
+        // 렌더링 시스템 비활성화
+        KatanaMesh->SetVisibility(false);
+        KatanaMesh->SetHiddenInGame(true);
+
+        // 물리 시스템 비활성화
+        KatanaMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        KatanaMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+
+        // 업데이트 시스템 비활성화
+        KatanaMesh->SetComponentTickEnabled(false);
+
+        // 참조 해제
+        KatanaMesh->SetStaticMesh(nullptr);
+
+        // 컴포넌트 완전 제거 (무기는 별도 컴포넌트이므로 안전)
+        KatanaMesh->DestroyComponent();
+    }
+
+    // 6. 액터 레벨 시스템 정리
+    SetActorHiddenInGame(true); // 액터 렌더링 비활성화
+    SetActorEnableCollision(false); // 액터 충돌 비활성화
+    SetActorTickEnabled(false); // 액터 틱 비활성화
+
+    // 7. 현재 프레임 처리 완료 후 다음 프레임에 안전하게 엑터 제거 (크래쉬 방지)
+    GetWorld()->GetTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<AEnemyKatana>(this)]() // 스마트 포인터 WeakObjectPtr로 약한 참조를 사용하여 안전하게 지연 실행
+        {
+            if (WeakThis.IsValid() && !WeakThis->IsActorBeingDestroyed()) // 약한 참조한 엑터가 유효하고 파괴되지 않았다면
+            {
+                WeakThis->Destroy(); // 액터 완전 제거
+                UE_LOG(LogTemp, Warning, TEXT("EnemyKatana Successfully Destroyed."));
+            }
+        });
 }

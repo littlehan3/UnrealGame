@@ -357,6 +357,16 @@ void UMeleeCombatComponent::SetJumpAttackMontages(UAnimMontage* InJumpAttackMont
 
 void UMeleeCombatComponent::TriggerJumpAttack(bool bIsDoubleJump)
 {
+    // MainCharacter 참조를 통해 에임모드 상태 확인
+    if (AMainCharacter* MainChar = Cast<AMainCharacter>(OwnerCharacter))
+    {
+        if (MainChar->IsAiming())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Jump Attack Blocked in MeleeCombatComponent - Aim Mode Active"));
+            return;
+        }
+    }
+
     if (!OwnerCharacter || !OwnerCharacter->GetCharacterMovement()->IsFalling())
         return; // 지상에서는 점프 공격 불가
 

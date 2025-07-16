@@ -7,6 +7,7 @@
 #include "EnemyAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
+#include "ObjectPoolManager.h"
 
 
 AEnemy::AEnemy()
@@ -16,6 +17,7 @@ AEnemy::AEnemy()
     bCanAttack = true;
 
     AIControllerClass = AEnemyAIController::StaticClass(); // AI 컨트롤러 설정
+    AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned; //스폰 시에도 AI 컨트롤러 자동 할당
 
     GetMesh()->SetAnimInstanceClass(UEnemyAnimInstance::StaticClass()); // 애님 인스턴스 설정으로 보장
 
@@ -30,8 +32,24 @@ AEnemy::AEnemy()
 void AEnemy::BeginPlay()
 {
     Super::BeginPlay();
-
     SetCanBeDamaged(true);
+
+    // Actor Tick 빈도 제한 (60fps → 20fps)
+    SetActorTickInterval(0.05f);
+
+    //// AI 완전 비활성화 테스트
+    //SetActorTickEnabled(false);
+    //if (AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController()))
+    //{
+    //    AICon->SetActorTickEnabled(false);
+    //}
+    
+    // AI 컨트롤러 강제 할당
+    if (!GetController())
+    {
+        SpawnDefaultController();
+        UE_LOG(LogTemp, Warning, TEXT("Enemy AI Controller manually spawned"));
+    }
 
     AAIController* AICon = Cast<AAIController>(GetController());
     if (AICon)
@@ -145,47 +163,66 @@ void AEnemy::Die()
     if (bIsDead) return;
 
     bIsDead = true;
+
     StopActions();
-
+    
     float HideTime = 0.0f;
-
+    
     if (bIsInAirStun && InAirStunDeathMontage) // 공중에서 사망 시
-    {
-        float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
-		EnemyAnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f); // 애니메이션 재생속도 조절
-        HideTime = AirDeathDuration * 0.35f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
-    }
+        {
+            float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
+            EnemyAnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f); // 애니메이션 재생속도 조절
+            HideTime = AirDeathDuration * 0.35f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
+        }
     else if (EnemyAnimInstance && DeadMontage) // 일반 사망 시
     {
-        float DeathAnimDuration = DeadMontage->GetPlayLength();
-        EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
-        HideTime = DeathAnimDuration * 0.6f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
+            float DeathAnimDuration = DeadMontage->GetPlayLength();
+            EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
+            HideTime = DeathAnimDuration * 0.6f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
     }
     else
     {
-        // 사망 애니메이션이 없을 경우 즉시 사라지게 함
-        HideEnemy();
-        return;
+            // 사망 애니메이션이 없을 경우 즉시 사라지게 함
+            HideEnemy();
+            return;
     }
 
-    // 일정 시간 후 사라지도록 설정
-    GetWorld()->GetTimerManager().SetTimer(DeathTimerHandle, this, &AEnemy::HideEnemy, HideTime, false);
+        // 일정 시간 후 사라지도록 설정
+        GetWorld()->GetTimerManager().SetTimer(DeathTimerHandle, this, &AEnemy::HideEnemy, HideTime, false);
 
-    // AI 컨트롤러 중지
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon)
+        // AI 컨트롤러 중지
+        AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+        if (AICon)
+        {
+            AICon->StopAI();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("AIController is NULL! Can not stop AI."));
+        }
+
+        // 이동 비활성화
+        GetCharacterMovement()->DisableMovement();
+        GetCharacterMovement()->StopMovementImmediately();
+        SetActorTickEnabled(false); // AI Tick 중지
+
+}
+
+
+void AEnemy::InstantDeath()
+{
+    if (bIsDead)
     {
-        AICon->StopAI();
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("AIController is NULL! Can not stop AI."));
+        return; // 이미 죽은 상태면 리턴
     }
 
-    // 이동 비활성화
-    GetCharacterMovement()->DisableMovement();
-    GetCharacterMovement()->StopMovementImmediately();
-    SetActorTickEnabled(false); // AI Tick 중지
+    UE_LOG(LogTemp, Warning, TEXT("Enemy %s killed instantly for boss spawn"), *GetName());
+
+    // 현재 체력을 0으로 설정
+    Health = 0.0f;
+
+    // 기존 Die() 함수 호출 (자연스러운 사망 처리)
+    Die();
 }
 
 void AEnemy::StopActions()
@@ -218,19 +255,89 @@ void AEnemy::StopActions()
 
 void AEnemy::HideEnemy()
 {
-    if (!bIsDead) return;
+    if (!bIsDead) return; // 사망하지 않았으면 리턴
 
-    SetActorHiddenInGame(true);  // 렌더링 숨김
-    SetActorEnableCollision(false); // 충돌 제거
-    SetActorTickEnabled(false); // AI 전체 Tick 비활성화
+    UE_LOG(LogTemp, Warning, TEXT("Hiding Enemy - Memory Cleanup"));
 
-    // 카타나도 함께 숨기기
-    if (EquippedKatana)
+    // GameMode에 Enemy 파괴 알림
+    if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
     {
-        EquippedKatana->HideKatana();
+        GameMode->OnEnemyDestroyed(this);
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("Enemy %s and katana disappeared mid-death animation!"), *GetName());
+    // 1. 이벤트 및 델리게이트 정리 (최우선)
+    GetWorld()->GetTimerManager().ClearAllTimersForObject(this); // 모든 타이머 해제
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 애님 인스턴스 참조 받아옴
+    if (AnimInstance && IsValid(AnimInstance)) // 애님 인스턴스 유효성 검사
+    {
+        // 애니메이션 이벤트 바인딩 완전 해제
+        AnimInstance->OnMontageEnded.RemoveAll(this); // 몽타주 종료 이벤트 바인딩 해제
+        AnimInstance->OnMontageBlendingOut.RemoveAll(this); // 몽타주 블랜드 아웃 이벤트 바인딩 해체
+        AnimInstance->OnMontageStarted.RemoveAll(this); // 몽타주 시작 이벤트 바인딩 해제
+    }
+
+    // 2. AI 시스템 완전 정리
+    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController()); // AI 컨트롤러 참조 받아옴
+    if (AICon && IsValid(AICon)) // AI 컨트롤러 유효성 검사
+    {
+        AICon->StopAI(); // AI 로직 중단
+        AICon->UnPossess(); // 컨트롤러-폰 관계 해제
+        AICon->Destroy(); // AI 컨트롤러 완전 제거
+    }
+
+    // 3. 무기 시스템 정리 (AI 정리 후 안전하게)
+    if (EquippedKatana && IsValid(EquippedKatana)) // 무기 유효성 검사
+    {
+        EquippedKatana->HideKatana(); // AI가 정리 후 무기를 제거하는 HideKatana 함수 호출
+        EquippedKatana = nullptr; // 무기 참조 해제
+    }
+
+    // 4. 무브먼트 시스템 정리
+    UCharacterMovementComponent* MovementComp = GetCharacterMovement(); // 캐릭터 무브먼트 컴포넌트 참조 받아옴
+    if (MovementComp && IsValid(MovementComp)) // 무브먼트 컴포넌트 유효성 검사
+    {
+        MovementComp->DisableMovement(); // 이동 비활성화
+        MovementComp->StopMovementImmediately(); // 현재 이동 즉시 중단
+        MovementComp->SetMovementMode(EMovementMode::MOVE_None); // Move모드 None 설정으로 네비게이션에서 제외
+        MovementComp->SetComponentTickEnabled(false); // 무브먼트 컴포넌트 Tick 비활성화
+    }
+
+    // 5. 메쉬 컴포넌트 정리
+    USkeletalMeshComponent* MeshComp = GetMesh(); // 메쉬 컴포넌트 참조 받아옴
+    if (MeshComp && IsValid(MeshComp)) // 메쉬 컴포넌트 유효성 검사
+    {
+        // 렌더링 시스템 비활성화
+        MeshComp->SetVisibility(false); // 메쉬 가시성 비활성화
+        MeshComp->SetHiddenInGame(true); // 게임 내 숨김 처리
+
+        // 물리 시스템 비활성화
+        MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision); // NoCollision 설정으로 충돌검사 비활성화
+        MeshComp->SetCollisionResponseToAllChannels(ECR_Ignore); // ECR_Ignore 설정으로 충돌응답 무시
+
+        // 업데이트 시스템 비활성화
+        MeshComp->SetComponentTickEnabled(false); // Tick 비활성화
+
+        // 애니메이션 참조 해제
+        MeshComp->SetAnimInstanceClass(nullptr); // ABP 참조 해제
+        MeshComp->SetSkeletalMesh(nullptr); // 스켈레탈 메쉬 참조 해제
+    }
+
+    // 6. 액터 레벨 시스템 정리
+    SetActorHiddenInGame(true); // 액터 렌더링 비활성화
+    SetActorEnableCollision(false); // 액터 충돌 비활성화
+    SetActorTickEnabled(false); // 액터 Tick 비활성화
+    SetCanBeDamaged(false); // 데미지 처리 비활성화
+
+    // 7. 현재 프레임 처리 완료 후 다음 프레임에 안전하게 엑터 제거 (크래쉬 방지)
+    GetWorld()->GetTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<AEnemy>(this)]() // 스마트 포인터 WeakObjectPtr로 약한 참조를 사용하여 안전하게 지연 실행
+        {
+            if (WeakThis.IsValid() && !WeakThis->IsActorBeingDestroyed()) // 약한 참조한 엑터가 유효하고 파괴되지 않았다면
+            {
+                WeakThis->Destroy(); // 액터 완전 제거
+                UE_LOG(LogTemp, Warning, TEXT("Enemy Successfully Destroyed"));
+            }
+        });
 }
 
 // AI가 NavMesh에서 이동할 수 있도록 설정

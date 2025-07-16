@@ -232,7 +232,6 @@ private:
     float DashCooldown = 1.0f;
     bool bIsDashing = false;
     bool bCanDash = true;
-
     FTimerHandle DashCooldownTimerHandle;
 
     void Dash();
@@ -248,6 +247,7 @@ private:
     float ZoomInterpSpeed = 10.0f;
     float CurrentZoom = DefaultZoom;
     float TargetZoom = DefaultZoom;
+    float PreviousZoom = DefaultZoom; // 에임모드 진입 전 줌 값 저장하는 변수
 
     void ZoomIn();
     void ZoomOut();

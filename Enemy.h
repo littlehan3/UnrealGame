@@ -6,6 +6,7 @@
 #include "EnemyAnimInstance.h"
 #include "Animation/AnimInstance.h"
 #include "AimSkill2Projectile.h"
+#include "MainGameModeBase.h"
 #include "Enemy.generated.h"
 
 class AEnemyKatana;
@@ -62,6 +63,13 @@ public:
 
     void ApplyBaseWalkSpeed();
 
+    UFUNCTION(BlueprintCallable)
+    void InstantDeath(); // 보스 등장 시 즉시 사망
+
+    // 체력을 public으로 변경
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+    float Health = 100.0f;
+
 protected:
     virtual void BeginPlay() override;
 
@@ -81,7 +89,7 @@ private:
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* DodgeSound;
 
-    float Health = 100.0f;
+    //float Health = 100.0f;
 
     bool bCanAttack = false; // 공격가능 상태 추적을 위한 변수
 

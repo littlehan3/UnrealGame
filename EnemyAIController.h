@@ -93,4 +93,8 @@ private:
 	bool bHasCachedTarget = false;
 
 	void OnCirclePositionTimer();
+
+	// 성능 최적화를 위한 새로운 변수들
+	float RotationUpdateTimer = 0.0f;
+	int32 StaticAngleOffset = 0;
 };
