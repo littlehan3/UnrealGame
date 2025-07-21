@@ -38,6 +38,20 @@ public:
 	void OnBossAttackTeleportEnded(); // 공격용 텔레포트 종료 알림
 	void OnBossRangedAttackEnded(); // 원거리 공격 종료 알림
 
+	// 스텔스 공격 관련 함수들
+	UFUNCTION()
+	bool CanExecuteStealthAttack() const;
+
+	UFUNCTION()
+	bool IsInOptimalStealthRange() const;
+
+	UFUNCTION()
+	bool IsExecutingStealthAttack() const;
+
+	// 스텔스 단계별 AI 제어 함수들
+	UFUNCTION()
+	void HandleStealthPhaseTransition(int32 NewPhase);
+
 protected:
 	virtual void BeginPlay() override; // Beginplay 오버라이드로 초기화
 	virtual void Tick(float DeltaTime) override; // Tick 오버라이드로 프레임별 갱신
@@ -72,4 +86,13 @@ private:
 	void UpdateBossAIState(float DistanceToPlayer); // 상태 업데이트 함수
 	void DrawDebugInfo(); // 디버그 시각화 함수
 
+	// 스텔스 공격 설정값들
+	UPROPERTY(EditDefaultsOnly, Category = "AI")
+	float StealthAttackOptimalRange = 600.0f;    // 스텔스 공격 최적 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "AI")
+	float StealthAttackMinRange = 200.0f;        // 스텔스 공격 최소 거리
+
+	// AI 상태 관리
+	bool bIsAIDisabledForStealth = false;        // 스텔스 중 AI 비활성화 여부
 };

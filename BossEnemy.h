@@ -33,6 +33,26 @@ public:
 	bool bShouldUseRangedAfterTeleport = false; // 텔레포트 후 원거리 공격 사용 여부 
 	bool bIsInvincible = false; // 무적상태 여부
 
+	void PlayBossStealthAttackAnimation(); // 1단계 스텔스 시작 에니메이션 실행 함수
+	void StartStealthDivePhase(); // 2단계 스텔스 진입 함수
+	void StartStealthInvisiblePhase(); // 3단계 스텔스 함수
+	FVector CalculateRandomTeleportLocation(); // 4단계 스텔스 텔레포트 위치 계산 함수
+	void ExecuteStealthKick(); // 5단계 스텔스 킥 함수
+	void ExecuteStealthKickRaycast(); // 스텔스 킥 레이캐스트 함수
+	void LaunchPlayerIntoAir(APawn* PlayerPawn, float LaunchHeight); // 스텔스 킥 에어본 함수
+	void ExecuteStealthFinish(); // 6단계 스텔스 피니쉬 함수
+	void ExecuteStealthFinishRaycast(); // 스텔스 피니쉬 레이캐스트 함수
+	void EndStealthAttack(); // 스텔스 공격 종료 함수
+	bool bCanUseStealthAttack = true;        // 스텔스 공격 사용 가능 여부
+	bool bIsStealthStarting = false;             // 스텔스 시작 중
+	bool bIsStealthDiving = false;               // 뛰어드는 중
+	bool bIsStealthInvisible = false;            // 완전 투명 상태
+	bool bIsStealthKicking = false;              // 킥 공격 중
+	bool bIsStealthFinishing = false;            // 피니쉬 공격 중
+
+	UFUNCTION()
+	void OnStealthCooldownEnd();             // 스텔스 쿨타임 종료
+
 	
 	virtual float TakeDamage( // 데미지를 입었을때 호출되는 함수 (AActor의 TakeDamage 오버라이드)
 		float DamageAmount, // 입은 데미지 양
@@ -82,6 +102,18 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
 	TArray<UAnimMontage*> BossDeadMontages; // 사망 몽타주 배열
+
+	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UAnimMontage* StealthStartMontage;           // 1단계: 스텔스 시작 몽타주
+
+	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UAnimMontage* StealthDiveMontage;            // 2단계: 뛰어드는 몽타주
+
+	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UAnimMontage* StealthKickMontage;            // 5단계: 스텔스 킥 몽타주
+
+	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UAnimMontage* StealthFinishMontage;          // 6단계: 스텔스 피니쉬 몽타주
 
 	void BossDie(); // 사망 함수
 	void SetUpBossAI(); // AI가 네브매쉬에서 이동할수있게 설정하는 함수
@@ -161,4 +193,28 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Projectile")
 	FVector MuzzleOffset = FVector(100.f, 0.f, 80.f); // 보스 발사 위치 오프셋
 
+	UFUNCTION()
+	void OnStealthStartMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 스텔스 1단계 몽타주 델리게이트
+	UFUNCTION()
+	void OnStealthDiveMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 스텔스 2단계 몽타주 델리게이트
+	UFUNCTION()
+	void OnStealthFinishMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 스텔스 6단계 몽타주 델리게이트
+
+	// 스텔스 단계 관리
+	UPROPERTY(VisibleAnywhere, Category = "Stealth")
+	int32 CurrentStealthPhase = 0;               // 현재 스텔스 단계
+
+	// 타이머들
+	FTimerHandle StealthWaitTimer;               // 5초 대기 타이머
+	FTimerHandle PlayerAirborneTimer;            // 플레이어 공중 체류 타이머
+
+	// 계산된 텔레포트 위치
+	FVector CalculatedTeleportLocation;
+
+	// 스텔스 관련 추가 변수들
+	UPROPERTY(EditDefaultsOnly, Category = "AI")
+	float StealthCooldown = 8.0f;            // 스텔스 쿨타임
+
+	FTimerHandle StealthCooldownTimer;       // 스텔스 쿨타임 타이머
+	FTimerHandle StealthDiveTransitionTimer;     // 스텔스 다이브 퍼센트 전환 타이머
 };

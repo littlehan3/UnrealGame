@@ -41,6 +41,17 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         return;
     }
 
+    // **스텔스 공격 중이면 AI 행동 완전 중지 (추가)**
+    if (IsExecutingStealthAttack() || bIsAIDisabledForStealth)
+    {
+        if (CurrentState != EBossEnemyAIState::NormalAttack)
+        {
+            SetBossAIState(EBossEnemyAIState::NormalAttack);
+        }
+        DrawDebugInfo();
+        return; // 다른 행동은 수행하지 않음
+    }
+
     // 전신공격 중이거나 모든 종류의 텔레포트 중일 때는 상태 업데이트를 제한
     if (Boss->bIsFullBodyAttacking || Boss->bIsBossTeleporting ||
         Boss->bIsBossAttackTeleporting || Boss->bIsBossRangedAttacking)
@@ -133,57 +144,77 @@ void ABossEnemyAIController::BossMoveToPlayer()
 
 void ABossEnemyAIController::BossNormalAttack()
 {
-    if (!bCanBossAttack) return;
+    if (!bCanBossAttack) return; // 공격 가능 상태가 아니면 리턴
 
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
-    if (!Boss) return;
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn()); // 보스 객체를 캐스트해서 가져옴
+    if (!Boss) return; // 보스가 없으면 리턴
 
     // 피격 중이거나 사망한 경우 또는 전신공격 중인 경우 또는 텔레포트 중인 경우 공격하지 않음
     if (Boss->bIsBossHit || Boss->bIsBossDead || Boss->bIsFullBodyAttacking ||
         Boss->bIsBossTeleporting || Boss->bIsBossAttackTeleporting || Boss->bIsBossRangedAttacking) return;
 
-    float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
+    float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation()); // 플레이어와 보스 간의 거리 계산
 
-    if (Boss && Boss->bCanBossAttack)
+    UE_LOG(LogTemp, Warning, TEXT("Boss choosing attack - Distance: %f"), DistanceToPlayer); // 디버그 로그: 현재 거리 출력
+
+    // **최우선순위: 스텔스 공격 체크를 모든 거리 조건 이전에 실행**
+    if (CanExecuteStealthAttack()) // 스텔스 공격 조건을 만족하는지 체크
     {
-        if (DistanceToPlayer <= BossStandingAttackRange) // 0-200 범위
+        UE_LOG(LogTemp, Warning, TEXT("Stealth conditions met - rolling dice")); // 디버그 로그: 스텔스 조건 만족됨
+        float StealthChance = FMath::RandRange(0.0f, 1.0f); // 0.0~1.0 사이의 랜덤 값 생성
+        if (StealthChance <= 0.5f) // 50% 확률로 스텔스 공격 실행
         {
-            // **2가지 선택지만**: 전신공격 OR 멀어지는 텔레포트
-            bool bShouldTeleport = FMath::RandBool(); // 50% 확률
-
-            if (bShouldTeleport && Boss->bCanTeleport)
-            {
-                // 50% 확률 - 멀어지는 텔레포트 (텔레포트 후 정지하여 추가 선택 진행)
-                Boss->PlayBossTeleportAnimation();
-                UE_LOG(LogTemp, Warning, TEXT("Boss chose retreat teleport - will decide next action after pause - Distance: %f"), DistanceToPlayer);
-            }
-            else
-            {
-                // 50% 확률 - 전신 공격
-                Boss->PlayBossNormalAttackAnimation();
-                StopMovement(); // 이동 중지
-                UE_LOG(LogTemp, Warning, TEXT("Boss chose standing attack - Distance: %f"), DistanceToPlayer);
-            }
-        }
-        else if (DistanceToPlayer > BossStandingAttackRange && DistanceToPlayer <= BossMovingAttackRange) // 201-250 범위
-        {
-            // 이동 공격 - 상체만 애니메이션, 이동가능
-            Boss->PlayBossUpperBodyAttackAnimation();
-            UE_LOG(LogTemp, Warning, TEXT("Moving Attack - Distance: %f"), DistanceToPlayer);
+            Boss->PlayBossStealthAttackAnimation(); // 스텔스 공격 애니메이션 재생
+            UE_LOG(LogTemp, Warning, TEXT("Boss executing STEALTH ATTACK!")); // 디버그 로그: 스텔스 공격 실행됨
+            return; // 스텔스 공격이 선택되면 다른 공격은 실행하지 않음
         }
         else
         {
-            // 범위를 벗어난 경우 공격하지 않음
-            UE_LOG(LogTemp, Warning, TEXT("Out of attack range - Distance: %f"), DistanceToPlayer);
-            return; // 공격하지 않으므로 bCanBossAttack을 false로 설정하지 않음
+            UE_LOG(LogTemp, Warning, TEXT("Stealth dice roll failed - continuing with normal attacks")); // 디버그 로그: 스텔스 확률 실패, 일반 공격으로 진행
+        }
+    }
+
+    // **그 다음에 기존 거리별 공격 로직 실행**
+    if (Boss && Boss->bCanBossAttack) // 보스가 존재하고 공격 가능 상태인지 체크
+    {
+        if (DistanceToPlayer <= BossStandingAttackRange) // 0-200 범위: 근거리 공격 범위
+        {
+            bool bShouldTeleport = FMath::RandBool(); // 50% 확률로 true/false 결정
+            if (bShouldTeleport && Boss->bCanTeleport) // 텔레포트가 선택되고 텔레포트 가능 상태인 경우
+            {
+                // 50% 확률 - 멀어지는 텔레포트 실행
+                Boss->PlayBossTeleportAnimation(); // 후퇴 텔레포트 애니메이션 재생
+                UE_LOG(LogTemp, Warning, TEXT("Boss chose retreat teleport - Distance: %f"), DistanceToPlayer); // 디버그 로그: 후퇴 텔레포트 선택됨
+            }
+            else
+            {
+                // 50% 확률 - 전신 공격 실행
+                Boss->PlayBossNormalAttackAnimation(); // 일반 공격 애니메이션 재생
+                StopMovement(); // AI 이동 중지 (공격 중에는 움직이지 않음)
+                UE_LOG(LogTemp, Warning, TEXT("Boss chose standing attack - Distance: %f"), DistanceToPlayer); // 디버그 로그: 근거리 공격 선택됨
+            }
+        }
+        else if (DistanceToPlayer > BossStandingAttackRange && DistanceToPlayer <= BossMovingAttackRange) // 201-250 범위: 중거리 공격 범위
+        {
+            // 이동 공격 - 상체만 애니메이션 재생하여 이동하면서 공격 가능
+            Boss->PlayBossUpperBodyAttackAnimation(); // 상체 전용 공격 애니메이션 재생
+            UE_LOG(LogTemp, Warning, TEXT("Moving Attack - Distance: %f"), DistanceToPlayer); // 디버그 로그: 이동 공격 선택됨
+        }
+        else
+        {
+            // 공격 범위를 벗어난 경우 (251 이상) 공격하지 않음
+            UE_LOG(LogTemp, Warning, TEXT("Out of attack range - Distance: %f"), DistanceToPlayer); // 디버그 로그: 공격 범위 벗어남
+            return; // 공격하지 않으므로 bCanBossAttack을 false로 설정하지 않고 리턴
         }
 
-        if (!Boss->bIsBossTeleporting && !Boss->bIsBossAttackTeleporting) // 텔레포트가 아닌 경우에만
+        // 스텔스 공격이 아닌 일반 공격이 실행된 경우에만 공격 불가 상태로 설정
+        if (!Boss->bIsBossTeleporting && !Boss->bIsBossAttackTeleporting && !IsExecutingStealthAttack())
         {
-            bCanBossAttack = false;
+            bCanBossAttack = false; // 공격 후 쿨타임을 위해 공격 불가 상태로 설정
         }
     }
 }
+
 
 void ABossEnemyAIController::OnBossNormalAttackMontageEnded()
 {
@@ -218,6 +249,84 @@ void ABossEnemyAIController::OnBossRangedAttackEnded()
     UE_LOG(LogTemp, Warning, TEXT("Ranged attack ended - resuming chase logic"));
     bCanBossAttack = true; // 즉시 추격 재개
 }
+
+bool ABossEnemyAIController::CanExecuteStealthAttack() const
+{
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
+    if (!Boss) return false;
+
+    // 스텔스 공격 가능 여부 체크 (BossEnemy에 있는 변수)
+    if (!Boss->bCanUseStealthAttack) return false;
+
+    // 다른 특수 공격이 진행 중인지 체크 (BossEnemy에 있는 변수들)
+    if (Boss->bIsBossRangedAttacking || Boss->bIsBossTeleporting ||
+        Boss->bIsBossAttackTeleporting) return false;
+
+    // 거리 조건 체크
+    if (!IsInOptimalStealthRange()) return false;
+
+    return true;
+}
+
+bool ABossEnemyAIController::IsInOptimalStealthRange() const
+{
+    APawn* TargetPlayer = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);  // 변수명 변경
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
+
+    if (!TargetPlayer || !Boss) return false;
+
+    float Distance = FVector::Dist(Boss->GetActorLocation(), TargetPlayer->GetActorLocation());
+
+    // 스텔스 공격 최적 거리: 300-600
+    return (Distance >= StealthAttackMinRange && Distance <= StealthAttackOptimalRange);
+}
+
+
+bool ABossEnemyAIController::IsExecutingStealthAttack() const
+{
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
+    if (!Boss) return false;
+
+    // BossEnemy에 실제로 선언된 스텔스 변수들만 체크
+    return (Boss->bIsStealthStarting ||
+        Boss->bIsStealthDiving ||
+        Boss->bIsStealthInvisible ||
+        Boss->bIsStealthKicking ||
+        Boss->bIsStealthFinishing);
+}
+
+void ABossEnemyAIController::HandleStealthPhaseTransition(int32 NewPhase)
+{
+    switch (NewPhase)
+    {
+    case 1: // 스텔스 시작
+        bIsAIDisabledForStealth = true;
+        StopMovement();
+        UE_LOG(LogTemp, Warning, TEXT("AI Disabled for Stealth Attack"));
+        break;
+
+    case 3: // 투명화 단계
+        SetFocus(nullptr);
+        StopMovement();
+        UE_LOG(LogTemp, Warning, TEXT("Stealth invisible - AI tracking disabled"));
+        break;
+
+    case 5: // 킥 공격
+        if (APawn* Player = UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
+        {
+            SetFocus(Player);
+        }
+        UE_LOG(LogTemp, Warning, TEXT("Stealth kick phase - refocusing player"));
+        break;
+
+    case 0: // 스텔스 종료
+        bIsAIDisabledForStealth = false;
+        bCanBossAttack = true;
+        UE_LOG(LogTemp, Warning, TEXT("AI Enabled after Stealth Attack"));
+        break;
+    }
+}
+
 
 void ABossEnemyAIController::DrawDebugInfo()
 {

@@ -904,6 +904,378 @@ void ABossEnemy::OnRangedAttackMontageEnded(UAnimMontage* Montage, bool bInterru
 	bCanBossAttack = true;
 }
 
+void ABossEnemy::PlayBossStealthAttackAnimation()
+{
+    if (!StealthStartMontage) return;
+    
+    CurrentStealthPhase = 1;
+    bIsStealthStarting = true;
+	bIsInvincible = true; // 무적
+    
+    PlayAnimMontage(StealthStartMontage);
+    
+    // 몽타주 종료 델리게이트 바인딩
+    FOnMontageEnded EndDelegate;
+    EndDelegate.BindUObject(this, &ABossEnemy::OnStealthStartMontageEnded);
+    GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthStartMontage);
+    
+    UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 1: Start Animation"));
+
+	// AI 컨트롤러에 스텔스 시작 알림
+	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
+	if (BossAI)
+	{
+		BossAI->HandleStealthPhaseTransition(1);
+	}
+}
+
+void ABossEnemy::OnStealthStartMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    if (bInterrupted) return;
+    StartStealthDivePhase();
+}
+
+void ABossEnemy::StartStealthDivePhase()
+{
+	if (!StealthDiveMontage) return;
+
+	CurrentStealthPhase = 2;
+	bIsStealthStarting = false;
+	bIsStealthDiving = true;
+	bIsInvincible = true; // 무적 유지
+
+	PlayAnimMontage(StealthDiveMontage); // 뛰어드는 몽타주 재생
+
+	// 100% 완료 시 안전장치 델리게이트 (예외 상황 대비)
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(this, &ABossEnemy::OnStealthDiveMontageEnded);
+	GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthDiveMontage);
+
+	// **특정 지점에서 다음 단계로 넘어가는 타이머**
+	float MontageLength = StealthDiveMontage->GetPlayLength(); // 몽타주 전체 길이 가져오기
+	float TransitionTiming = MontageLength * 0.8f; // 지점 계산
+
+	GetWorld()->GetTimerManager().SetTimer(
+		StealthDiveTransitionTimer, // 클래스 멤버 타이머 핸들 사용
+		this, // 호출할 객체
+		&ABossEnemy::StartStealthInvisiblePhase, // 90% 지점에서 호출할 함수
+		TransitionTiming, // 90% 타이밍에 실행
+		false // 반복 안함
+	);
+
+	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 2: Dive Animation - will transition at 90%% (%.2f seconds)"), TransitionTiming);
+}
+
+
+
+void ABossEnemy::OnStealthDiveMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (bInterrupted) return;
+	StartStealthInvisiblePhase();
+}
+
+void ABossEnemy::StartStealthInvisiblePhase()
+{
+	CurrentStealthPhase = 3;
+	bIsStealthDiving = false;
+	bIsStealthInvisible = true;
+	bIsInvincible = true;
+
+	// 완전 투명 처리
+	SetActorHiddenInGame(true);      // 완전히 숨김
+	// 또는 머티리얼 투명도를 0으로 설정
+
+	// 텔레포트 위치 계산
+	CalculatedTeleportLocation = CalculateRandomTeleportLocation();
+
+	// 5초 대기 타이머 시작
+	GetWorld()->GetTimerManager().SetTimer(
+		StealthWaitTimer,
+		this,
+		&ABossEnemy::ExecuteStealthKick,
+		5.0f,
+		false
+	);
+
+	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 3: Invisible - Waiting 5 seconds"));
+
+	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
+	if (BossAI)
+	{
+		BossAI->HandleStealthPhaseTransition(3);
+	}
+}
+
+FVector ABossEnemy::CalculateRandomTeleportLocation()
+{
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return GetActorLocation();
+
+	FVector PlayerLocation = PlayerPawn->GetActorLocation();
+	FVector PlayerForward = PlayerPawn->GetActorForwardVector();
+	FVector PlayerRight = PlayerPawn->GetActorRightVector();
+
+	// 랜덤 방향 선택 (전방, 후방, 좌측, 우측)
+	TArray<FVector> Directions;
+	Directions.Add(PlayerForward);          // 전방
+	Directions.Add(-PlayerForward);         // 후방
+	Directions.Add(PlayerRight);            // 우측
+	Directions.Add(-PlayerRight);           // 좌측
+
+	int32 RandomIndex = FMath::RandRange(0, Directions.Num() - 1);
+	FVector ChosenDirection = Directions[RandomIndex];
+
+	// 코앞 거리 (100 단위)
+	float DistanceFromPlayer = 100.0f;
+	FVector TeleportLocation = PlayerLocation + (ChosenDirection * DistanceFromPlayer);
+
+	return AdjustHeightForCharacter(TeleportLocation);
+}
+
+void ABossEnemy::ExecuteStealthKick()
+{
+	CurrentStealthPhase = 5;
+	bIsStealthInvisible = false;
+	bIsStealthKicking = true;
+	bIsInvincible = true;
+
+	// 즉시 투명 해제
+	SetActorHiddenInGame(false);
+
+	// 계산된 위치로 텔레포트
+	SetActorLocation(CalculatedTeleportLocation);
+
+	// 플레이어 방향으로 회전
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (PlayerPawn)
+	{
+		FVector Direction = PlayerPawn->GetActorLocation() - GetActorLocation();
+		Direction.Z = 0;
+		SetActorRotation(Direction.Rotation());
+	}
+
+	// 킥 몽타주 재생
+	if (StealthKickMontage)
+	{
+		PlayAnimMontage(StealthKickMontage);
+
+		// 킥 타이밍에 맞춰 레이캐스트 (몽타주 50% 지점에서 실행)
+		float KickTiming = StealthKickMontage->GetPlayLength() * 0.5f;
+
+		FTimerHandle KickRaycastTimer;
+		GetWorld()->GetTimerManager().SetTimer(
+			KickRaycastTimer,
+			this,
+			&ABossEnemy::ExecuteStealthKickRaycast,
+			KickTiming,
+			false
+		);
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 5: Kick Attack"));
+
+	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
+	if (BossAI)
+	{
+		BossAI->HandleStealthPhaseTransition(5);
+	}
+}
+
+void ABossEnemy::ExecuteStealthKickRaycast()
+{
+	FVector StartLocation = GetActorLocation();
+	FVector EndLocation = StartLocation + (GetActorForwardVector() * 200.0f); // 킥 사거리
+
+	FHitResult HitResult;
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(this);
+
+	bool bHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		StartLocation,
+		EndLocation,
+		ECollisionChannel::ECC_Pawn,
+		CollisionParams
+	);
+
+	if (bHit && HitResult.GetActor())
+	{
+		APawn* HitPawn = Cast<APawn>(HitResult.GetActor());
+		if (HitPawn && HitPawn->IsPlayerControlled())
+		{
+			// 플레이어에게 킥 데미지 (20)
+			UGameplayStatics::ApplyPointDamage(
+				HitPawn, 20.0f, StartLocation, HitResult, nullptr, this, nullptr
+			);
+
+			// 플레이어를 200만큼 위로 발사
+			LaunchPlayerIntoAir(HitPawn, 200.0f);
+
+			// 5초 후 피니쉬 공격 실행
+			GetWorld()->GetTimerManager().SetTimer(
+				PlayerAirborneTimer,
+				this,
+				&ABossEnemy::ExecuteStealthFinish,
+				0.1f, // 즉시 피니쉬 시작
+				false
+			);
+
+			UE_LOG(LogTemp, Warning, TEXT("Stealth Kick Hit! Launching player"));
+		}
+	}
+	else
+	{
+		// 빗나감 - 스텔스 공격 종료
+		EndStealthAttack();
+		UE_LOG(LogTemp, Warning, TEXT("Stealth Kick Missed - Attack End"));
+	}
+}
+
+void ABossEnemy::LaunchPlayerIntoAir(APawn* PlayerPawn, float LaunchHeight)
+{
+	if (!PlayerPawn) return;
+
+	ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
+	if (PlayerCharacter)
+	{
+		// 위로 발사
+		FVector LaunchVelocity(0, 0, LaunchHeight);
+		PlayerCharacter->LaunchCharacter(LaunchVelocity, false, true);
+
+		// 5초 동안 공중에 머물게 하기 (중력 무효화)
+		UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
+		if (Movement)
+		{
+			Movement->GravityScale = 0.0f; // 중력 제거
+
+			// 5초 후 중력 복구
+			FTimerHandle GravityRestoreTimer;
+			GetWorld()->GetTimerManager().SetTimer(
+				GravityRestoreTimer,
+				[Movement]()
+				{
+					if (Movement)
+					{
+						Movement->GravityScale = 1.0f; // 중력 복구
+					}
+				},
+				5.0f,
+				false
+			);
+		}
+	}
+}
+
+void ABossEnemy::ExecuteStealthFinish()
+{
+	CurrentStealthPhase = 6;
+	bIsStealthKicking = false;
+	bIsStealthFinishing = true;
+	bIsInvincible = true;
+
+	if (StealthFinishMontage)
+	{
+		PlayAnimMontage(StealthFinishMontage);
+
+		// 대포 발사 타이밍 (몽타주 70% 지점)
+		float CannonTiming = StealthFinishMontage->GetPlayLength() * 0.7f;
+
+		FTimerHandle CannonTimer;
+		GetWorld()->GetTimerManager().SetTimer(
+			CannonTimer,
+			this,
+			&ABossEnemy::ExecuteStealthFinishRaycast,
+			CannonTiming,
+			false
+		);
+
+		// 몽타주 종료 시 스텔스 공격 완전 종료
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, &ABossEnemy::OnStealthFinishMontageEnded);
+		GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthFinishMontage);
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 6: Finish Cannon Attack"));
+}
+
+void ABossEnemy::ExecuteStealthFinishRaycast()
+{
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return;
+
+	FVector StartLocation = GetActorLocation();
+	FVector PlayerLocation = PlayerPawn->GetActorLocation();
+	FVector Direction = (PlayerLocation - StartLocation).GetSafeNormal();
+	FVector EndLocation = StartLocation + (Direction * 1000.0f); // 대포 사거리
+
+	FHitResult HitResult;
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(this);
+
+	bool bHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		StartLocation,
+		EndLocation,
+		ECollisionChannel::ECC_Pawn,
+		CollisionParams
+	);
+
+	if (bHit && HitResult.GetActor() == PlayerPawn)
+	{
+		// 대포 데미지 적용 (30 데미지)
+		UGameplayStatics::ApplyPointDamage(
+			PlayerPawn, 30.0f, StartLocation, HitResult, nullptr, this, nullptr
+		);
+
+		UE_LOG(LogTemp, Warning, TEXT("Stealth Cannon Hit! Dealing 30 damage"));
+	}
+}
+
+void ABossEnemy::OnStealthFinishMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	EndStealthAttack();
+}
+
+void ABossEnemy::EndStealthAttack()
+{
+	// 모든 상태 초기화
+	CurrentStealthPhase = 0;
+	bIsStealthStarting = false;
+	bIsStealthDiving = false;
+	bIsStealthInvisible = false;
+	bIsStealthKicking = false;
+	bIsStealthFinishing = false;
+
+	bIsInvincible = false;
+
+	SetActorHiddenInGame(false);
+
+	// 쿨타임 시작
+	bCanUseStealthAttack = false;
+	GetWorld()->GetTimerManager().SetTimer(
+		StealthCooldownTimer,
+		this,
+		&ABossEnemy::OnStealthCooldownEnd,
+		StealthCooldown,
+		false
+	);
+
+	UE_LOG(LogTemp, Warning, TEXT("Stealth Attack Completed - Cooldown Started"));
+
+	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
+	if (BossAI)
+	{
+		BossAI->HandleStealthPhaseTransition(0);
+	}
+}
+
+void ABossEnemy::OnStealthCooldownEnd()
+{
+	bCanUseStealthAttack = true;
+	UE_LOG(LogTemp, Warning, TEXT("Stealth Attack Ready"));
+}
+
+
 float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	if (bIsBossDead) return 0.0f; // 이미 사망했다면 데미지 무시
