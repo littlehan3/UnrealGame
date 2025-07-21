@@ -36,6 +36,9 @@ private:
     UPROPERTY(VisibleAnywhere)
     USphereComponent* CollisionComponent;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision", meta = (AllowPrivateAccess = "true"))
+    float CollisionRadius = 20.f;
+
     UPROPERTY(VisibleAnywhere)
     UProjectileMovementComponent* ProjectileMovement;
 

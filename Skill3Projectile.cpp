@@ -11,7 +11,7 @@ ASkill3Projectile::ASkill3Projectile()
     PrimaryActorTick.bCanEverTick = true;
 
     CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionComponent"));
-    CollisionComponent->InitSphereRadius(20.f);
+    CollisionComponent->InitSphereRadius(CollisionRadius);
     CollisionComponent->SetCollisionProfileName("BlockAllDynamic");
     CollisionComponent->OnComponentHit.AddDynamic(this, &ASkill3Projectile::OnHit);
     RootComponent = CollisionComponent;

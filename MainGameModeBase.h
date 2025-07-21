@@ -115,7 +115,7 @@ private:
     bool bIsBossAlive = false;
     bool bWaitingForBossTransition = false;  // 보스 사망 후 전환 대기 중
 
-    // 성능 최적화 - 사전 계산된 스폰 위치
+    // 사전 계산된 스폰 위치
     TArray<FVector> PreCalculatedSpawnLocations;
     int32 CurrentLocationIndex = 0;
     bool bLocationCalculationComplete = false;

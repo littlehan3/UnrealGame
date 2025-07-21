@@ -32,10 +32,11 @@ class LOCOMOTION_API ABossEnemyAIController : public AAIController
 
 public:
 	ABossEnemyAIController();
-
 	void StopBossAI(); // AI 동작 중지 함수
 	void OnBossNormalAttackMontageEnded();
 	void SetBossAIState(EBossEnemyAIState NewState); // 상태 전환 함수
+	void OnBossAttackTeleportEnded(); // 공격용 텔레포트 종료 알림
+	void OnBossRangedAttackEnded(); // 원거리 공격 종료 알림
 
 protected:
 	virtual void BeginPlay() override; // Beginplay 오버라이드로 초기화
@@ -70,6 +71,5 @@ private:
 
 	void UpdateBossAIState(float DistanceToPlayer); // 상태 업데이트 함수
 	void DrawDebugInfo(); // 디버그 시각화 함수
-	void LookAtPlayer(float DeltaTime);
 
 };

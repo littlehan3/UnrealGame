@@ -29,10 +29,23 @@ void ABossEnemyAIController::Tick(float DeltaTime)
     ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
     if (!Boss) return;
 
-    // 전신공격 중일 때는 상태 업데이트를 제한
-    if (Boss->bIsFullBodyAttacking)
+    // 등장 애니메이션 재생 중이면 AI 행동 중지
+    if (Boss->bIsPlayingBossIntro)
     {
-        // 전신공격 중에는 NormalAttack 상태를 유지
+        // 등장 중에는 NormalAttack 상태를 유지하되 행동은 하지 않음
+        if (CurrentState != EBossEnemyAIState::NormalAttack)
+        {
+            SetBossAIState(EBossEnemyAIState::NormalAttack);
+        }
+        DrawDebugInfo();
+        return;
+    }
+
+    // 전신공격 중이거나 모든 종류의 텔레포트 중일 때는 상태 업데이트를 제한
+    if (Boss->bIsFullBodyAttacking || Boss->bIsBossTeleporting ||
+        Boss->bIsBossAttackTeleporting || Boss->bIsBossRangedAttacking)
+    {
+        // 해당 상태들 중에는 NormalAttack 상태를 유지
         if (CurrentState != EBossEnemyAIState::NormalAttack)
         {
             SetBossAIState(EBossEnemyAIState::NormalAttack);
@@ -54,7 +67,7 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         break;
     case EBossEnemyAIState::NormalAttack:
         if (bCanBossAttack)
-        BossNormalAttack();
+            BossNormalAttack();
         break;
     }
 }
@@ -116,7 +129,6 @@ void ABossEnemyAIController::BossMoveToPlayer()
     }
 
     MoveToActor(PlayerPawn, 5.0f);
-    LookAtPlayer(GetWorld()->GetDeltaSeconds());
 }
 
 void ABossEnemyAIController::BossNormalAttack()
@@ -126,26 +138,37 @@ void ABossEnemyAIController::BossNormalAttack()
     ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
     if (!Boss) return;
 
-    // 피격 중이거나 사망한 경우 또는 전신공격 중인 경우 공격하지 않음
-    if (Boss->bIsBossHit || Boss->bIsBossDead || Boss->bIsFullBodyAttacking) return;
+    // 피격 중이거나 사망한 경우 또는 전신공격 중인 경우 또는 텔레포트 중인 경우 공격하지 않음
+    if (Boss->bIsBossHit || Boss->bIsBossDead || Boss->bIsFullBodyAttacking ||
+        Boss->bIsBossTeleporting || Boss->bIsBossAttackTeleporting || Boss->bIsBossRangedAttacking) return;
 
     float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
-
-    LookAtPlayer(GetWorld()->GetDeltaSeconds());
 
     if (Boss && Boss->bCanBossAttack)
     {
         if (DistanceToPlayer <= BossStandingAttackRange) // 0-200 범위
         {
-            // 정지 공격 - 전신 애니메이션
-            Boss->PlayBossNormalAttackAnimation();
-            StopMovement(); // 이동 중지
-            UE_LOG(LogTemp, Warning, TEXT("Standing Attack - Distance: %f"), DistanceToPlayer);
+            // **2가지 선택지만**: 전신공격 OR 멀어지는 텔레포트
+            bool bShouldTeleport = FMath::RandBool(); // 50% 확률
+
+            if (bShouldTeleport && Boss->bCanTeleport)
+            {
+                // 50% 확률 - 멀어지는 텔레포트 (텔레포트 후 정지하여 추가 선택 진행)
+                Boss->PlayBossTeleportAnimation();
+                UE_LOG(LogTemp, Warning, TEXT("Boss chose retreat teleport - will decide next action after pause - Distance: %f"), DistanceToPlayer);
+            }
+            else
+            {
+                // 50% 확률 - 전신 공격
+                Boss->PlayBossNormalAttackAnimation();
+                StopMovement(); // 이동 중지
+                UE_LOG(LogTemp, Warning, TEXT("Boss chose standing attack - Distance: %f"), DistanceToPlayer);
+            }
         }
         else if (DistanceToPlayer > BossStandingAttackRange && DistanceToPlayer <= BossMovingAttackRange) // 201-250 범위
         {
             // 이동 공격 - 상체만 애니메이션, 이동가능
-            Boss->PlayBossUpperBodyAttack();
+            Boss->PlayBossUpperBodyAttackAnimation();
             UE_LOG(LogTemp, Warning, TEXT("Moving Attack - Distance: %f"), DistanceToPlayer);
         }
         else
@@ -154,7 +177,11 @@ void ABossEnemyAIController::BossNormalAttack()
             UE_LOG(LogTemp, Warning, TEXT("Out of attack range - Distance: %f"), DistanceToPlayer);
             return; // 공격하지 않으므로 bCanBossAttack을 false로 설정하지 않음
         }
-        bCanBossAttack = false;
+
+        if (!Boss->bIsBossTeleporting && !Boss->bIsBossAttackTeleporting) // 텔레포트가 아닌 경우에만
+        {
+            bCanBossAttack = false;
+        }
     }
 }
 
@@ -163,17 +190,34 @@ void ABossEnemyAIController::OnBossNormalAttackMontageEnded()
     bCanBossAttack = true;
 }
 
-
-void ABossEnemyAIController::LookAtPlayer(float DeltaTime)
+void ABossEnemyAIController::OnBossAttackTeleportEnded()
 {
-    if (!PlayerPawn || !GetPawn()) return;
-    FVector PlayerLoc = PlayerPawn->GetActorLocation();
-    FRotator LookAt = (PlayerLoc - GetPawn()->GetActorLocation()).Rotation();
-    LookAt.Pitch = 0;
-    LookAt.Roll = 0;
-    GetPawn()->SetActorRotation(FMath::RInterpTo(GetPawn()->GetActorRotation(), LookAt, DeltaTime, 5.0f));
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
+    if (!Boss)
+    {
+        bCanBossAttack = true;
+        return;
+    }
+
+    // 텔레포트 후 추가 행동 결정
+    if (Boss->bShouldUseRangedAfterTeleport)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Executing ranged attack after teleport"));
+        Boss->PlayBossRangedAttackAnimation();
+        Boss->bShouldUseRangedAfterTeleport = false; // 플래그 리셋
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Resuming normal combat after attack teleport"));
+        bCanBossAttack = true;
+    }
 }
 
+void ABossEnemyAIController::OnBossRangedAttackEnded()
+{
+    UE_LOG(LogTemp, Warning, TEXT("Ranged attack ended - resuming chase logic"));
+    bCanBossAttack = true; // 즉시 추격 재개
+}
 
 void ABossEnemyAIController::DrawDebugInfo()
 {

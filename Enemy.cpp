@@ -89,6 +89,61 @@ void AEnemy::BeginPlay()
             }
         }
     }
+
+    PlaySpawnIntroAnimation(); // 등장 애니메이션 재생
+}
+
+void AEnemy::PlaySpawnIntroAnimation()
+{
+    UAnimMontage* SelectedIntroMontage = bIsEliteEnemy ? EliteSpawnIntroMontage : SpawnIntroMontage;
+
+    if (!SelectedIntroMontage || !EnemyAnimInstance)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("No intro montage found - skipping intro animation"));
+        return;
+    }
+
+    bIsPlayingIntro = true;
+    bCanAttack = false; // 등장 중에는 공격 불가
+
+    // AI 이동 잠시 중지
+    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    if (AICon)
+    {
+        AICon->StopMovement();
+    }
+
+    // 등장 몽타주 재생
+    float PlayResult = EnemyAnimInstance->Montage_Play(SelectedIntroMontage, 1.0f);
+
+    if (PlayResult > 0.0f)
+    {
+        // 등장 몽타주 종료 델리게이트 바인딩
+        FOnMontageEnded IntroEndDelegate;
+        IntroEndDelegate.BindUObject(this, &AEnemy::OnIntroMontageEnded);
+        EnemyAnimInstance->Montage_SetEndDelegate(IntroEndDelegate, SelectedIntroMontage);
+
+        UE_LOG(LogTemp, Warning, TEXT("%s Enemy intro animation playing"),
+            bIsEliteEnemy ? TEXT("Elite") : TEXT("Normal"));
+    }
+    else
+    {
+        // 몽타주 재생 실패 시 즉시 활성화
+        UE_LOG(LogTemp, Warning, TEXT("Intro montage failed to play"));
+        bIsPlayingIntro = false;
+        bCanAttack = true;
+    }
+}
+
+void AEnemy::OnIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    UE_LOG(LogTemp, Warning, TEXT("Enemy Intro Montage Ended"));
+
+    bIsPlayingIntro = false;
+    bCanAttack = true; // 등장 완료 후 공격 가능
+
+    // AI 행동 재개 허용 (AI Controller에서 자동으로 재개됨)
+    UE_LOG(LogTemp, Warning, TEXT("Enemy ready for combat after intro"));
 }
 
 void AEnemy::ApplyEliteSettings()
@@ -109,6 +164,11 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
     {
         //UE_LOG(LogTemp, Warning, TEXT("Enemy is already dead! Ignoring further damage."));
         return 0.0f;
+    }
+
+    if (bIsPlayingIntro)
+    {
+        return 0.0f; // 등장 중에는 데미지 무효화
     }
 
     float DamageApplied = FMath::Min(Health, DamageAmount);

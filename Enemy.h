@@ -66,9 +66,11 @@ public:
     UFUNCTION(BlueprintCallable)
     void InstantDeath(); // 보스 등장 시 즉시 사망
 
-    // 체력을 public으로 변경
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
-    float Health = 100.0f;
+    float Health = 100.0f; // 체력
+
+    void PlaySpawnIntroAnimation(); // 등장 애니메이션 재생 함수
+    bool bIsPlayingIntro = false; // 등장 애니메이션 재생 중 여부
 
 protected:
     virtual void BeginPlay() override;
@@ -88,8 +90,6 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* DodgeSound;
-
-    //float Health = 100.0f;
 
     bool bCanAttack = false; // 공격가능 상태 추적을 위한 변수
 
@@ -144,5 +144,14 @@ private:
     UAnimMontage* LastPlayedJumpAttackMontage;
 
     void ApplyEliteSettings();
+
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* SpawnIntroMontage; // 일반 적 등장 몽타주
+
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* EliteSpawnIntroMontage; // 엘리트 적 등장 몽타주
+
+    UFUNCTION()
+    void OnIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 등장 몽타주 종료 델리게이트
 
 };

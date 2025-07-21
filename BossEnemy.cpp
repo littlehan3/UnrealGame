@@ -6,6 +6,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
 #include "MainGameModeBase.h"
+#include "BossProjectile.h"
 
 ABossEnemy::ABossEnemy()
 {
@@ -44,6 +45,96 @@ void ABossEnemy::BeginPlay()
 		UE_LOG(LogTemp, Error, TEXT("Boss AI Controller NULL")); // 컨트롤러 NULL
 	}
 	SetUpBossAI(); // AI 설정함수 호출
+
+	PlayBossSpawnIntroAnimation(); // 보스 등장 애니메이션 재생
+}
+
+void ABossEnemy::PlayBossSpawnIntroAnimation()
+{
+	if (BossSpawnIntroMontages.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No boss intro montages found - skipping intro animation"));
+		return;
+	}
+
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (!AnimInstance)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Boss AnimInstance not found"));
+		return;
+	}
+
+	bIsPlayingBossIntro = true;
+	bCanBossAttack = false; // 등장 중에는 공격 불가
+	bIsFullBodyAttacking = true; // 전신 애니메이션으로 처리
+
+	// AI 이동 중지
+	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
+	if (AICon)
+	{
+		AICon->StopMovement();
+	}
+
+	// 이동 차단
+	DisableBossMovement();
+
+	// 등장 몽타주 재생
+	AnimInstance->bUseUpperBodyBlend = false; // 전신 애니메이션
+	AnimInstance->Montage_Stop(0.1f, nullptr); // 다른 몽타주 중지
+
+	int32 RandomIndex = FMath::RandRange(0, BossSpawnIntroMontages.Num() - 1);
+	UAnimMontage* SelectedMontage = BossSpawnIntroMontages[RandomIndex];
+
+	if (SelectedMontage)
+	{
+		float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+
+		if (PlayResult > 0.0f)
+		{
+			// 등장 몽타주 종료 델리게이트 바인딩
+			FOnMontageEnded IntroEndDelegate;
+			IntroEndDelegate.BindUObject(this, &ABossEnemy::OnBossIntroMontageEnded);
+			AnimInstance->Montage_SetEndDelegate(IntroEndDelegate, SelectedMontage);
+
+			UE_LOG(LogTemp, Warning, TEXT("Boss intro montage playing: %s"), *SelectedMontage->GetName());
+		}
+		else
+		{
+			// 몽타주 재생 실패 시 즉시 활성화
+			UE_LOG(LogTemp, Error, TEXT("Boss intro montage failed to play"));
+			bIsPlayingBossIntro = false;
+			bCanBossAttack = true;
+			bIsFullBodyAttacking = false;
+			EnableBossMovement();
+		}
+	}
+}
+
+void ABossEnemy::OnBossIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Boss Intro Montage Ended"));
+
+	// 애니메이션 상태 복원
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false;
+	}
+
+	// 전신공격 종료 및 이동 허용
+	bIsFullBodyAttacking = false;
+	bIsPlayingBossIntro = false;
+	EnableBossMovement();
+
+	// AI 컨트롤러에 등장 종료 알림
+	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
+	if (AICon)
+	{
+		AICon->OnBossNormalAttackMontageEnded();
+	}
+
+	bCanBossAttack = true;
+	UE_LOG(LogTemp, Warning, TEXT("Boss ready for combat after intro"));
 }
 
 void ABossEnemy::SetUpBossAI()
@@ -73,9 +164,14 @@ void ABossEnemy::PlayBossNormalAttackAnimation()
 {
 	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance()); // 최신 애님인스턴스를 캐스팅해서 받아옴
 	if (!AnimInstance || BossNormalAttackMontages.Num() == 0) return; // 애님인스턴스가 없거나 일반공격 몽타주가 없다면 리턴 
+
 	AnimInstance->bUseUpperBodyBlend = false; // 상하체 분리 여부 false
 	AnimInstance->Montage_Stop(0.1f, nullptr); // 다른슬롯 몽타주 중지
 	if (AnimInstance && AnimInstance->IsAnyMontagePlaying()) return; // 애님인스턴스가 있고 애님인스턴스의 몽타주가 실행중이라면 리턴
+
+	// ABP에서 플레이어 바라보기 활성화
+	AnimInstance->bShouldLookAtPlayer = true;
+	AnimInstance->LookAtSpeed = 8.0f; // 공격 시에는 더 빠른 회전
 
 	int32 RandomIndex = FMath::RandRange(0, BossNormalAttackMontages.Num() - 1); // 일반공격 몽타주배열중에 랜덤으로 선택하는 랜덤인덱스 선언
 	UAnimMontage* SelectedMontage = BossNormalAttackMontages[RandomIndex]; // 랜덤인텍스에서 선택한 몽타주를 가져옴
@@ -87,6 +183,7 @@ void ABossEnemy::PlayBossNormalAttackAnimation()
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Montage Play Failed")); // 몽타주 재생 실패
 			// 몽타주 재생 실패 시 즉시 공격 가능 상태로 복원
+			AnimInstance->bShouldLookAtPlayer = false; // 실패시 바라보기 비활성화
 			bCanBossAttack = true;
 			bIsFullBodyAttacking = false;
 		}
@@ -125,7 +222,11 @@ void ABossEnemy::OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterru
 	if (AnimInstance)
 	{
 		AnimInstance->bUseUpperBodyBlend = false; // 기본값으로 복원
+		// 플레이어 바라보기 비활성화
+		AnimInstance->bShouldLookAtPlayer = false;
+		AnimInstance->LookAtSpeed = 5.0f; // 기본 속도로 복원
 	}
+
 	// 전신공격 종료 및 이동 허용
 	bIsFullBodyAttacking = false;
 	EnableBossMovement(); // 이동 허용
@@ -167,11 +268,14 @@ void ABossEnemy::EnableBossMovement()
 	UE_LOG(LogTemp, Warning, TEXT("Boss Movement Enabled"));
 }
 
-void ABossEnemy::PlayBossUpperBodyAttack()
+void ABossEnemy::PlayBossUpperBodyAttackAnimation()
 {
 	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
 	if (!AnimInstance || BossUpperBodyMontages.Num() == 0) return;
 
+	// 플레이어 바라보기 활성화
+	AnimInstance->bShouldLookAtPlayer = true;
+	AnimInstance->LookAtSpeed = 6.0f; // 상체 공격시 속도
 	AnimInstance->bUseUpperBodyBlend = true; // 상하체분리 여부 true
 
 	int32 RandomIndex = FMath::RandRange(0, BossUpperBodyMontages.Num() - 1);
@@ -192,6 +296,7 @@ void ABossEnemy::PlayBossUpperBodyAttack()
 		}
 		else
 		{
+			AnimInstance->bShouldLookAtPlayer = false; // 실패시 비활성화
 			bCanBossAttack = true; // 재생 실패 시 즉시 복원
 		}
 
@@ -207,6 +312,9 @@ void ABossEnemy::OnUpperBodyAttackMontageEnded(UAnimMontage* Montage, bool bInte
 	if (AnimInstance)
 	{
 		AnimInstance->bUseUpperBodyBlend = false; // 기본값으로 복원
+		// 플레이어 바라보기 비활성화
+		AnimInstance->bShouldLookAtPlayer = false;
+		AnimInstance->LookAtSpeed = 5.0f;
 	}
 
 	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
@@ -218,12 +326,601 @@ void ABossEnemy::OnUpperBodyAttackMontageEnded(UAnimMontage* Montage, bool bInte
 	bCanBossAttack = true; // 공격 가능 상태로 복원
 }
 
+void ABossEnemy::PlayBossTeleportAnimation()
+{
+	if (!bCanTeleport || bIsBossTeleporting || bIsBossDead) return;
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return;
+
+	// 텔레포트 몽타주가 없다면 텔레포트 취소
+	if (BossTeleportMontages.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No teleport montages available - teleport cancelled"));
+		return;
+	}
+
+	bIsBossTeleporting = true;
+	bCanBossAttack = false;
+	bIsFullBodyAttacking = true; // 전신 애니메이션으로 처리
+	bIsInvincible = true; // 무적 상태 활성화
+
+	// AI 이동 중지
+	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
+	if (AICon)
+	{
+		AICon->StopMovement();
+	}
+
+	// 이동 차단
+	DisableBossMovement();
+
+	// 텔레포트 몽타주 재생
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false; // 전신 애니메이션
+		AnimInstance->Montage_Stop(0.1f, nullptr); // 다른 몽타주 중지
+		// ABP에서 플레이어 바라보기 활성화
+		AnimInstance->bShouldLookAtPlayer = true;
+		AnimInstance->LookAtSpeed = 8.0f; // 공격 시에는 더 빠른 회전
+
+		int32 RandomIndex = FMath::RandRange(0, BossTeleportMontages.Num() - 1);
+		UAnimMontage* SelectedMontage = BossTeleportMontages[RandomIndex];
+
+		if (SelectedMontage)
+		{
+			float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+
+			if (PlayResult > 0.0f)
+			{
+				// 텔레포트 몽타주 종료 델리게이트 바인딩
+				FOnMontageEnded TeleportEndDelegate;
+				TeleportEndDelegate.BindUObject(this, &ABossEnemy::OnTeleportMontageEnded);
+				AnimInstance->Montage_SetEndDelegate(TeleportEndDelegate, SelectedMontage);
+
+				// 몽타주 중간 타이밍(50%)에서 실제 텔레포트 실행
+				float MontageLength = SelectedMontage->GetPlayLength();
+				float TeleportTiming = MontageLength * 0.5f; // 50% 지점에서 텔레포트
+
+				GetWorld()->GetTimerManager().SetTimer(
+					TeleportExecutionTimer, // 텔레포트 이동 타이머
+					this,
+					&ABossEnemy::ExecuteTeleport,
+					TeleportTiming,
+					false
+				);
+
+				UE_LOG(LogTemp, Warning, TEXT("Teleport montage playing - will teleport at 50%% (%.2f seconds)"), TeleportTiming);
+			}
+			else
+			{
+				// 몽타주 재생 실패시 텔레포트 취소
+				UE_LOG(LogTemp, Error, TEXT("Teleport montage failed to play"));
+				bIsBossTeleporting = false;
+				bCanBossAttack = true;
+				bIsFullBodyAttacking = false;
+				bIsInvincible = false;
+				EnableBossMovement();
+			}
+		}
+		else
+		{
+			// 선택된 몽타주가 없으면 텔레포트 취소
+			UE_LOG(LogTemp, Error, TEXT("Selected teleport montage is null"));
+			bIsBossTeleporting = false;
+			bCanBossAttack = true;
+			bIsFullBodyAttacking = false;
+			EnableBossMovement();
+		}
+	}
+	else
+	{
+		// 애니메이션 인스턴스가 없으면 텔레포트 취소
+		UE_LOG(LogTemp, Error, TEXT("Animation instance not found - teleport cancelled"));
+		bIsBossTeleporting = false;
+		bCanBossAttack = true;
+		bIsFullBodyAttacking = false;
+		EnableBossMovement();
+	}
+}
+
+FVector ABossEnemy::CalculateTeleportLocation()
+{
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return GetActorLocation();
+
+	FVector BossLocation = GetActorLocation();
+	FVector PlayerLocation = PlayerPawn->GetActorLocation();
+	FVector DirectionAwayFromPlayer = (BossLocation - PlayerLocation).GetSafeNormal();
+	FVector TeleportLocation = BossLocation + (DirectionAwayFromPlayer * TeleportDistance);
+
+	// 네비게이션 시스템을 사용해 유효한 위치 찾기
+	UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+	if (NavSystem)
+	{
+		FNavLocation ValidLocation;
+		if (NavSystem->ProjectPointToNavigation(TeleportLocation, ValidLocation, FVector(200.0f, 200.0f, 500.0f)))
+		{
+			// 캐릭터 높이 보정 추가
+			return AdjustHeightForCharacter(ValidLocation.Location);
+		}
+		else
+		{
+			// 유효한 위치를 찾지 못한 경우 다른 방향들 시도
+			TArray<FVector> AlternativeDirections = {
+				FVector(1, 0, 0), FVector(-1, 0, 0), FVector(0, 1, 0), FVector(0, -1, 0),
+				FVector(0.707f, 0.707f, 0), FVector(-0.707f, 0.707f, 0),
+				FVector(0.707f, -0.707f, 0), FVector(-0.707f, -0.707f, 0)
+			};
+
+			for (const FVector& Direction : AlternativeDirections)
+			{
+				FVector TestLocation = BossLocation + (Direction * TeleportDistance);
+				if (NavSystem->ProjectPointToNavigation(TestLocation, ValidLocation, FVector(200.0f, 200.0f, 500.0f)))
+				{
+					// 캐릭터 높이 보정 추가
+					return AdjustHeightForCharacter(ValidLocation.Location);
+				}
+			}
+
+			UE_LOG(LogTemp, Warning, TEXT("Could not find valid teleport location - staying in place"));
+			return BossLocation; // 유효한 위치를 찾지 못한 경우 현재 위치 반환
+		}
+	}
+
+	// 네비게이션 시스템이 없는 경우에도 높이 보정 적용
+	return AdjustHeightForCharacter(TeleportLocation);
+}
+
+FVector ABossEnemy::AdjustHeightForCharacter(const FVector& TargetLocation)
+{
+	// 캐릭터의 캡슐 컴포넌트에서 반쪽 높이 가져오기
+	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
+	if (!CapsuleComp)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No capsule component found - using default height adjustment"));
+		return TargetLocation + FVector(0, 0, 90.0f); // 기본값으로 90 단위 위로
+	}
+
+	float CapsuleHalfHeight = CapsuleComp->GetScaledCapsuleHalfHeight();
+
+	// 라인 트레이스로 정확한 지면 높이 찾기
+	FVector StartLocation = TargetLocation + FVector(0, 0, 500.0f); // 위에서부터 시작
+	FVector EndLocation = TargetLocation + FVector(0, 0, -500.0f);  // 아래까지 검사
+
+	FHitResult HitResult;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this); // 자기 자신은 무시
+
+	bool bHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		StartLocation,
+		EndLocation,
+		ECollisionChannel::ECC_WorldStatic, // 지형과의 충돌만 검사
+		QueryParams
+	);
+
+	if (bHit)
+	{
+		// 지면에서 캐릭터 반쪽 높이만큼 위로 배치
+		FVector AdjustedLocation = HitResult.Location + FVector(0, 0, CapsuleHalfHeight + 5.0f); // 5.0f는 여유 공간
+
+		UE_LOG(LogTemp, Warning, TEXT("Height adjusted teleport - Ground: %s, Final: %s"),
+			*HitResult.Location.ToString(), *AdjustedLocation.ToString());
+
+		return AdjustedLocation;
+	}
+	else
+	{
+		// 라인 트레이스 실패시 기본 높이 보정
+		FVector AdjustedLocation = TargetLocation + FVector(0, 0, CapsuleHalfHeight + 5.0f);
+
+		UE_LOG(LogTemp, Warning, TEXT("Line trace failed - using default height adjustment: %s"),
+			*AdjustedLocation.ToString());
+
+		return AdjustedLocation;
+	}
+}
+
+void ABossEnemy::ExecuteTeleport()
+{
+	FVector TeleportLocation = CalculateTeleportLocation();
+
+	// 실제 텔레포트 실행
+	SetActorLocation(TeleportLocation);
+	UE_LOG(LogTemp, Warning, TEXT("Boss teleported during montage to: %s"), *TeleportLocation.ToString());
+}
+
+void ABossEnemy::OnTeleportMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Retreat Teleport Montage Ended - Starting pause before next action"));
+
+	// 애니메이션 상태 복원
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false;
+	}
+
+	bIsInvincible = false;
+
+	// 텔레포트 후 잠시 정지 (PostTeleportPauseTime만큼)
+	// 정지 중에는 아직 이동을 허용하지 않음
+	GetWorld()->GetTimerManager().SetTimer(
+		PostTeleportPauseTimer,
+		this,
+		&ABossEnemy::OnPostTeleportPauseEnd,
+		PostTeleportPauseTime,
+		false
+	);
+
+	// 텔레포트 쿨타임 시작
+	bCanTeleport = false;
+	GetWorld()->GetTimerManager().SetTimer(
+		TeleportCooldownTimer,
+		this,
+		&ABossEnemy::OnTeleportCooldownEnd,
+		TeleportCooldown,
+		false
+	);
+
+	// 아직 bCanBossAttack은 false로 유지 (정지 후 선택이 끝날 때까지)
+}
+
+
+void ABossEnemy::OnTeleportCooldownEnd()
+{
+	bCanTeleport = true;
+	UE_LOG(LogTemp, Warning, TEXT("Boss can teleport again"));
+}
+
+void ABossEnemy::PlayBossAttackTeleportAnimation()
+{
+	if (bIsBossAttackTeleporting || bIsBossDead) return;
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return;
+
+	// 공격용 텔레포트 몽타주가 없다면 취소
+	if (BossAttackTeleportMontages.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No attack teleport montages available - teleport cancelled"));
+		return;
+	}
+
+	bIsBossAttackTeleporting = true;
+	bCanBossAttack = false;
+	bIsFullBodyAttacking = true; // 전신 애니메이션으로 처리
+	bIsInvincible = true;
+
+	// AI 이동 중지
+	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
+	if (AICon)
+	{
+		AICon->StopMovement();
+	}
+
+	// 이동 차단
+	DisableBossMovement();
+
+	// 공격용 텔레포트 몽타주 재생
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false; // 전신 애니메이션
+		AnimInstance->Montage_Stop(0.1f, nullptr); // 다른 몽타주 중지
+		// ABP에서 플레이어 바라보기 활성화
+		AnimInstance->bShouldLookAtPlayer = true;
+		AnimInstance->LookAtSpeed = 8.0f; // 공격 시에는 더 빠른 회전
+
+		int32 RandomIndex = FMath::RandRange(0, BossAttackTeleportMontages.Num() - 1);
+		UAnimMontage* SelectedMontage = BossAttackTeleportMontages[RandomIndex];
+
+		if (SelectedMontage)
+		{
+			float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+
+			if (PlayResult > 0.0f)
+			{
+				// 공격용 텔레포트 몽타주 종료 델리게이트 바인딩
+				FOnMontageEnded AttackTeleportEndDelegate;
+				AttackTeleportEndDelegate.BindUObject(this, &ABossEnemy::OnAttackTeleportMontageEnded);
+				AnimInstance->Montage_SetEndDelegate(AttackTeleportEndDelegate, SelectedMontage);
+
+				// 몽타주 중간 타이밍(40%)에서 실제 텔레포트 실행 (공격용이므로 조금 빠르게)
+				float MontageLength = SelectedMontage->GetPlayLength();
+				float TeleportTiming = MontageLength * 0.4f; // 40% 지점에서 텔레포트
+
+				GetWorld()->GetTimerManager().SetTimer(
+					AttackTeleportExecutionTimer, // 공격 텔레포트 이동 타이머
+					this,
+					&ABossEnemy::ExecuteAttackTeleport,
+					TeleportTiming,
+					false
+				);
+
+				UE_LOG(LogTemp, Warning, TEXT("Attack teleport montage playing - will teleport at 40%% (%.2f seconds)"), TeleportTiming);
+			}
+			else
+			{
+				// 몽타주 재생 실패시 취소
+				UE_LOG(LogTemp, Error, TEXT("Attack teleport montage failed to play"));
+				bIsBossAttackTeleporting = false;
+				bCanBossAttack = true;
+				bIsFullBodyAttacking = false;
+				bIsInvincible = false;
+				EnableBossMovement();
+			}
+		}
+	}
+}
+
+FVector ABossEnemy::CalculateAttackTeleportLocation()
+{
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return GetActorLocation();
+
+	FVector PlayerLocation = PlayerPawn->GetActorLocation();
+	FVector BossLocation = GetActorLocation();
+
+	// 플레이어가 바라보는 방향 (Forward Vector)
+	FVector PlayerForward = PlayerPawn->GetActorForwardVector();
+
+	// 플레이어의 뒤쪽 방향 계산
+	FVector BehindPlayerDirection = -PlayerForward; // 반대 방향
+
+	// 뒤쪽 방향에 약간의 랜덤성 추가 (좌우로 약간 변화)
+	float RandomOffset = FMath::RandRange(-45.0f, 45.0f); // -45도 ~ +45도
+	FVector RotatedDirection = BehindPlayerDirection.RotateAngleAxis(RandomOffset, FVector(0, 0, 1));
+
+	// 우선적으로 뒤쪽으로 텔레포트 시도
+	FVector TeleportLocation = PlayerLocation + (RotatedDirection * AttackTeleportRange);
+
+	// 네비게이션 시스템으로 유효한 위치 확인
+	UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+	if (NavSystem)
+	{
+		FNavLocation ValidLocation;
+		if (NavSystem->ProjectPointToNavigation(TeleportLocation, ValidLocation, FVector(200.0f, 200.0f, 500.0f)))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Attack teleport to behind player successful"));
+			return AdjustHeightForCharacter(ValidLocation.Location);
+		}
+
+		// 뒤쪽이 안되면 기존 랜덤 방향들 시도
+		TArray<FVector> AlternativeDirections = {
+			FVector(1, 0, 0), FVector(-1, 0, 0), FVector(0, 1, 0), FVector(0, -1, 0),
+			FVector(0.707f, 0.707f, 0), FVector(-0.707f, 0.707f, 0),
+			FVector(0.707f, -0.707f, 0), FVector(-0.707f, -0.707f, 0)
+		};
+
+		for (const FVector& Direction : AlternativeDirections)
+		{
+			FVector TestLocation = PlayerLocation + (Direction * AttackTeleportRange);
+			if (NavSystem->ProjectPointToNavigation(TestLocation, ValidLocation, FVector(200.0f, 200.0f, 500.0f)))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Attack teleport to alternative direction"));
+				return AdjustHeightForCharacter(ValidLocation.Location);
+			}
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("Could not find valid attack teleport location - staying in place"));
+		return BossLocation;
+	}
+
+	return AdjustHeightForCharacter(TeleportLocation);
+}
+
+void ABossEnemy::ExecuteAttackTeleport()
+{
+	FVector TeleportLocation = CalculateAttackTeleportLocation();
+
+	// 실제 텔레포트 실행
+	SetActorLocation(TeleportLocation);
+	UE_LOG(LogTemp, Warning, TEXT("Boss attack teleported to: %s"), *TeleportLocation.ToString());
+}
+
+void ABossEnemy::OnAttackTeleportMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Attack Teleport Montage Ended - Resuming combat immediately"));
+
+	// 애니메이션 상태 복원
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false;
+	}
+
+	// 공격용 텔레포트 후에는 정지 없이 즉시 전투 재개
+	bIsFullBodyAttacking = false;
+	bIsBossAttackTeleporting = false;
+	bIsInvincible = false;
+	EnableBossMovement();
+
+	// AI 컨트롤러에 공격용 텔레포트 종료 알림
+	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
+	if (AICon)
+	{
+		AICon->OnBossAttackTeleportEnded(); // 즉시 전투 재개
+	}
+
+	bCanBossAttack = true;
+}
+
+void ABossEnemy::OnPostTeleportPauseEnd()
+{
+	UE_LOG(LogTemp, Warning, TEXT("Post teleport pause ended - choosing next action"));
+
+	// 정지 후 2가지 선택지: 즉시 캐릭터에게 텔레포트 OR 원거리 공격
+	bool bShouldUseAttackTeleport = FMath::RandBool(); // 50% 확률
+
+	if (bShouldUseAttackTeleport)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Chose attack teleport after retreat pause"));
+		// 즉시 캐릭터에게 텔레포트 (공격 애니메이션 포함)
+		PlayBossAttackTeleportAnimation();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Chose ranged attack after retreat pause"));
+		// 원거리 공격 시전
+		PlayBossRangedAttackAnimation();
+	}
+
+	// 전신공격 종료 및 이동 허용은 각 선택된 행동이 끝날 때 처리됨
+	bIsFullBodyAttacking = false;
+	bIsBossTeleporting = false;
+	bIsInvincible = false;
+	EnableBossMovement();
+}
+
+void ABossEnemy::PlayBossRangedAttackAnimation()
+{
+	if (bIsBossRangedAttacking || bIsBossDead) return;
+
+	// 원거리 공격 몽타주가 없다면 취소
+	if (BossRangedAttackMontages.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No ranged attack montages available - attack cancelled"));
+		return;
+	}
+
+	bIsBossRangedAttacking = true;
+	bCanBossAttack = false;
+	bIsFullBodyAttacking = true; // 전신 애니메이션으로 처리
+
+	// AI 이동 중지
+	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
+	if (AICon)
+	{
+		AICon->StopMovement();
+	}
+
+	// 이동 차단
+	DisableBossMovement();
+
+	// 원거리 공격 몽타주 재생
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false; // 전신 애니메이션
+		AnimInstance->Montage_Stop(0.1f, nullptr); // 다른 몽타주 중지
+		// ABP에서 플레이어 바라보기 활성화
+		AnimInstance->bShouldLookAtPlayer = true;
+		AnimInstance->LookAtSpeed = 8.0f; // 공격 시에는 더 빠른 회전
+
+		int32 RandomIndex = FMath::RandRange(0, BossRangedAttackMontages.Num() - 1);
+		UAnimMontage* SelectedMontage = BossRangedAttackMontages[RandomIndex];
+
+		if (SelectedMontage)
+		{
+			float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+
+			if (PlayResult > 0.0f)
+			{
+				// 원거리 공격 몽타주 종료 델리게이트 바인딩
+				FOnMontageEnded RangedAttackEndDelegate;
+				RangedAttackEndDelegate.BindUObject(this, &ABossEnemy::OnRangedAttackMontageEnded);
+				AnimInstance->Montage_SetEndDelegate(RangedAttackEndDelegate, SelectedMontage);
+
+				UE_LOG(LogTemp, Warning, TEXT("Ranged attack montage playing (DUMMY IMPLEMENTATION)"));
+
+				// TODO: 몽타주 중간에 투사체 발사 로직 추가 예정
+				// 몽타주 일정 퍼센트 지점에서 투사체 스폰
+			}
+			else
+			{
+				// 몽타주 재생 실패시 취소
+				UE_LOG(LogTemp, Error, TEXT("Ranged attack montage failed to play"));
+				bIsBossRangedAttacking = false;
+				bCanBossAttack = true;
+				bIsFullBodyAttacking = false;
+				EnableBossMovement();
+			}
+		}
+	}
+}
+
+#include "BossProjectile.h"   // 클래스 정의 포함
+
+void ABossEnemy::SpawnBossProjectile()
+{
+	if (!BossProjectileClass) return;
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return;
+
+	// 발사 위치와 방향
+	const FVector SpawnLocation = GetActorLocation()
+		+ GetActorForwardVector() * MuzzleOffset.X
+		+ GetActorRightVector() * MuzzleOffset.Y
+		+ FVector(0, 0, MuzzleOffset.Z);
+
+	const FVector TargetLocation = PlayerPawn->GetActorLocation();
+	const FVector ShootDirection = (TargetLocation - SpawnLocation).GetSafeNormal();
+
+	FTransform SpawnTM(ShootDirection.Rotation(), SpawnLocation);
+
+	// 템플릿 파라미터와 인자 타입 일치
+	ABossProjectile* Projectile = GetWorld()->SpawnActorDeferred<ABossProjectile>(
+		BossProjectileClass,   // TSubclassOf<ABossProjectile>
+		SpawnTM,               // FTransform
+		this,                  // Owner
+		this,                  // Instigator (APawn*)
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
+
+	if (Projectile)
+	{
+		Projectile->SetShooter(this);
+		UGameplayStatics::FinishSpawningActor(Projectile, SpawnTM);
+		Projectile->FireInDirection(ShootDirection);
+	}
+}
+
+void ABossEnemy::OnRangedAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Ranged Attack Montage Ended - Resuming chase logic"));
+
+	// 애니메이션 상태 복원
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false;
+	}
+
+	// 전신공격 종료 및 이동 허용
+	bIsFullBodyAttacking = false;
+	bIsBossRangedAttacking = false;
+	EnableBossMovement();
+
+	// AI 컨트롤러에 원거리 공격 종료 알림
+	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
+	if (AICon)
+	{
+		AICon->OnBossRangedAttackEnded();
+	}
+
+	bCanBossAttack = true;
+}
+
 float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	if (bIsBossDead) return 0.0f; // 이미 사망했다면 데미지 무시
 	float DamageApplied = FMath::Min(BossHealth, DamageAmount); // 보스의 체력과 데미지를 불러옴
 	BossHealth -= DamageApplied; // 체력에서 데미지만큼 차감
 	UE_LOG(LogTemp, Warning, TEXT("Boss took %f damage, Health remaining: %f"), DamageAmount, BossHealth);
+
+	// 무적 상태 체크 추가
+	if (bIsInvincible)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Boss is invulnerable - damage ignored"));
+		return 0.0f;
+	}
+	if (bIsPlayingBossIntro)
+	{
+		return 0.0f; // 등장 중에는 데미지 무효화
+	}
 
 	if (BossHitSound) // 사운드가 있다면
 	{

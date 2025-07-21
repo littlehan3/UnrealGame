@@ -33,11 +33,16 @@ void AEnemyAIController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 디버그 드로우 모두 제거 (성능 개선을 위해)
-	// 필요시 디버그 모드에서만 활성화 가능
 
 	AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
 	if (!EnemyCharacter || EnemyCharacter->bIsDead)
+	{
+		StopMovement();
+		return;
+	}
+
+	// 등장 애니메이션 재생 중이면 AI 행동 중지
+	if (EnemyCharacter->bIsPlayingIntro)
 	{
 		StopMovement();
 		return;
@@ -171,10 +176,6 @@ void AEnemyAIController::CalculateCirclePosition()
 {
 	AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
 	if (!EnemyCharacter || !PlayerPawn) return;
-
-	// *** 가장 큰 최적화: 전체 적 검색 제거 ***
-	// 기존: UGameplayStatics::GetAllActorsOfClass() 사용 (매우 무거운 연산)
-	// 신규: 단순한 랜덤 위치 생성으로 대체
 
 	StaticAngleOffset = (StaticAngleOffset + 1) % 360;
 
