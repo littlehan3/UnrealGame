@@ -907,7 +907,13 @@ void ABossEnemy::OnRangedAttackMontageEnded(UAnimMontage* Montage, bool bInterru
 void ABossEnemy::PlayBossStealthAttackAnimation()
 {
     if (!StealthStartMontage) return;
-    
+	// **쿨타임 체크만 하고 bCanUseStealthAttack은 false로 설정하지 않음**
+	if (!bCanUseStealthAttack)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Stealth Attack is on cooldown"));
+		return;
+	}
+
     CurrentStealthPhase = 1;
     bIsStealthStarting = true;
 	bIsInvincible = true; // 무적
@@ -982,22 +988,28 @@ void ABossEnemy::StartStealthInvisiblePhase()
 	bIsInvincible = true;
 
 	// 완전 투명 처리
-	SetActorHiddenInGame(true);      // 완전히 숨김
-	// 또는 머티리얼 투명도를 0으로 설정
+	SetActorHiddenInGame(true);
 
-	// 텔레포트 위치 계산
-	CalculatedTeleportLocation = CalculateRandomTeleportLocation();
-
-	// 5초 대기 타이머 시작
+	// **지속적인 위치 추적 시작 (0.2초마다 업데이트)**
 	GetWorld()->GetTimerManager().SetTimer(
 		StealthWaitTimer,
 		this,
-		&ABossEnemy::ExecuteStealthKick,
-		5.0f,
-		false
+		&ABossEnemy::UpdateStealthTeleportLocation, // 새로운 함수
+		0.2f, // 0.2초마다 실행
+		true  // 반복 실행
 	);
 
-	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 3: Invisible - Waiting 5 seconds"));
+	// **5초 후 킥 실행 타이머 (별도)**
+	FTimerHandle StealthKickExecutionTimer;
+	GetWorld()->GetTimerManager().SetTimer(
+		StealthKickExecutionTimer,
+		this,
+		&ABossEnemy::ExecuteStealthKick,
+		5.0f, // 5초 후 실행
+		false // 한 번만 실행
+	);
+
+	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 3: Invisible - Tracking player for 5 seconds"));
 
 	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
 	if (BossAI)
@@ -1005,6 +1017,23 @@ void ABossEnemy::StartStealthInvisiblePhase()
 		BossAI->HandleStealthPhaseTransition(3);
 	}
 }
+
+void ABossEnemy::UpdateStealthTeleportLocation()
+{
+	// 스텔스 상태가 아니면 추적 중단
+	if (!bIsStealthInvisible)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(StealthWaitTimer);
+		return;
+	}
+
+	// 실시간으로 플레이어 위치 기준 텔레포트 위치 재계산
+	CalculatedTeleportLocation = CalculateRandomTeleportLocation();
+
+	UE_LOG(LogTemp, Warning, TEXT("Stealth teleport location updated to: %s"),
+		*CalculatedTeleportLocation.ToString());
+}
+
 
 FVector ABossEnemy::CalculateRandomTeleportLocation()
 {
@@ -1038,11 +1067,16 @@ void ABossEnemy::ExecuteStealthKick()
 	bIsStealthInvisible = false;
 	bIsStealthKicking = true;
 	bIsInvincible = true;
+	// **킥 레이캐스트 플래그 초기화**
+	bHasExecutedKickRaycast = false;
+
+	// 위치 추적 타이머 정리
+	GetWorld()->GetTimerManager().ClearTimer(StealthWaitTimer);
 
 	// 즉시 투명 해제
 	SetActorHiddenInGame(false);
 
-	// 계산된 위치로 텔레포트
+	// 계산된 위치로 텔레포트 (가장 최근위치)
 	SetActorLocation(CalculatedTeleportLocation);
 
 	// 플레이어 방향으로 회전
@@ -1083,8 +1117,21 @@ void ABossEnemy::ExecuteStealthKick()
 
 void ABossEnemy::ExecuteStealthKickRaycast()
 {
+	// **이미 실행했으면 스킵**
+	if (bHasExecutedKickRaycast)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Kick raycast already executed - preventing duplicate"));
+		return;
+	}
+	bHasExecutedKickRaycast = true;
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return;
+
 	FVector StartLocation = GetActorLocation();
-	FVector EndLocation = StartLocation + (GetActorForwardVector() * 200.0f); // 킥 사거리
+	FVector PlayerLocation = PlayerPawn->GetActorLocation();
+	FVector Direction = (PlayerLocation - StartLocation).GetSafeNormal();
+	FVector EndLocation = StartLocation + (Direction * 100.0f); // 킥 사거리
 
 	FHitResult HitResult;
 	FCollisionQueryParams CollisionParams;
@@ -1098,38 +1145,71 @@ void ABossEnemy::ExecuteStealthKickRaycast()
 		CollisionParams
 	);
 
-	if (bHit && HitResult.GetActor())
+	// **시각화 추가 - 히트 여부에 따라 색상 변경**
+	if (bHit && HitResult.GetActor() == PlayerPawn)
 	{
-		APawn* HitPawn = Cast<APawn>(HitResult.GetActor());
-		if (HitPawn && HitPawn->IsPlayerControlled())
-		{
-			// 플레이어에게 킥 데미지 (20)
-			UGameplayStatics::ApplyPointDamage(
-				HitPawn, 20.0f, StartLocation, HitResult, nullptr, this, nullptr
-			);
+		// 히트 시 빨간색 라인
+		DrawDebugLine(
+			GetWorld(),
+			StartLocation,
+			HitResult.Location,
+			FColor::Red,
+			false,
+			3.0f, // 3초간 표시
+			0,
+			5.0f // 굵기
+		);
 
-			// 플레이어를 200만큼 위로 발사
-			LaunchPlayerIntoAir(HitPawn, 200.0f);
+		// 히트 지점에 구체 표시
+		DrawDebugSphere(
+			GetWorld(),
+			HitResult.Location,
+			20.0f,
+			12,
+			FColor::Red,
+			false,
+			3.0f
+		);
 
-			// 5초 후 피니쉬 공격 실행
-			GetWorld()->GetTimerManager().SetTimer(
-				PlayerAirborneTimer,
-				this,
-				&ABossEnemy::ExecuteStealthFinish,
-				0.1f, // 즉시 피니쉬 시작
-				false
-			);
+		// 킥 데미지 적용 (20 데미지)
+		UGameplayStatics::ApplyPointDamage(
+			PlayerPawn, 20.0f, StartLocation, HitResult, nullptr, this, nullptr
+		);
 
-			UE_LOG(LogTemp, Warning, TEXT("Stealth Kick Hit! Launching player"));
-		}
+		// 플레이어를 공중으로 발사 (높이 제한)
+		LaunchPlayerIntoAir(PlayerPawn, 300.0f);
+
+		// 5초 후 피니쉬 공격 실행
+		GetWorld()->GetTimerManager().SetTimer(
+			PlayerAirborneTimer,
+			this,
+			&ABossEnemy::ExecuteStealthFinish,
+			0.1f, // 즉시 피니쉬 시작
+			false
+		);
+
+		UE_LOG(LogTemp, Warning, TEXT("Stealth Kick Hit! Launching player"));
 	}
 	else
 	{
+		// 미스 시 초록색 라인
+		DrawDebugLine(
+			GetWorld(),
+			StartLocation,
+			EndLocation,
+			FColor::Green,
+			false,
+			3.0f, // 3초간 표시
+			0,
+			5.0f // 굵기
+		);
+
 		// 빗나감 - 스텔스 공격 종료
 		EndStealthAttack();
 		UE_LOG(LogTemp, Warning, TEXT("Stealth Kick Missed - Attack End"));
 	}
 }
+
 
 void ABossEnemy::LaunchPlayerIntoAir(APawn* PlayerPawn, float LaunchHeight)
 {
@@ -1138,31 +1218,21 @@ void ABossEnemy::LaunchPlayerIntoAir(APawn* PlayerPawn, float LaunchHeight)
 	ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
 	if (PlayerCharacter)
 	{
-		// 위로 발사
+		// 정확한 높이로 제한된 발사
 		FVector LaunchVelocity(0, 0, LaunchHeight);
+		// bXYOverride = false, bZOverride = true로 설정하여 Z축 속도만 지정
 		PlayerCharacter->LaunchCharacter(LaunchVelocity, false, true);
 
-		// 5초 동안 공중에 머물게 하기 (중력 무효화)
+		// 즉시 중력 무효화하여 200 높이에서 정지
 		UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
 		if (Movement)
 		{
 			Movement->GravityScale = 0.0f; // 중력 제거
-
-			// 5초 후 중력 복구
-			FTimerHandle GravityRestoreTimer;
-			GetWorld()->GetTimerManager().SetTimer(
-				GravityRestoreTimer,
-				[Movement]()
-				{
-					if (Movement)
-					{
-						Movement->GravityScale = 1.0f; // 중력 복구
-					}
-				},
-				5.0f,
-				false
-			);
+			// Velocity를 0으로 설정하여 정확한 높이에서 정지
+			Movement->Velocity = FVector::ZeroVector;
 		}
+
+		UE_LOG(LogTemp, Warning, TEXT("Player launched to height %f with gravity disabled"), LaunchHeight);
 	}
 }
 
@@ -1172,6 +1242,20 @@ void ABossEnemy::ExecuteStealthFinish()
 	bIsStealthKicking = false;
 	bIsStealthFinishing = true;
 	bIsInvincible = true;
+
+	// **추가: AI 제어와 이동 차단**
+	bCanBossAttack = false;           // 다른 공격 방지
+	bIsFullBodyAttacking = true;      // 전신 애니메이션으로 처리
+
+	// AI 이동 중지
+	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
+	if (AICon)
+	{
+		AICon->StopMovement();
+	}
+
+	// 이동 차단
+	DisableBossMovement();
 
 	if (StealthFinishMontage)
 	{
@@ -1196,6 +1280,13 @@ void ABossEnemy::ExecuteStealthFinish()
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 6: Finish Cannon Attack"));
+
+	// AI 컨트롤러에 피니쉬 단계 알림
+	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
+	if (BossAI)
+	{
+		BossAI->HandleStealthPhaseTransition(6);
+	}
 }
 
 void ABossEnemy::ExecuteStealthFinishRaycast()
@@ -1220,24 +1311,116 @@ void ABossEnemy::ExecuteStealthFinishRaycast()
 		CollisionParams
 	);
 
+	// **시각화 추가 - 히트 여부에 따라 색상 변경**
 	if (bHit && HitResult.GetActor() == PlayerPawn)
 	{
+		// 히트 시 빨간색 라인 (더 굵게)
+		DrawDebugLine(
+			GetWorld(),
+			StartLocation,
+			HitResult.Location,
+			FColor::Red,
+			false,
+			5.0f, // 5초간 표시
+			0,
+			8.0f // 더 굵게
+		);
+
+		// 히트 지점에 큰 구체 표시
+		DrawDebugSphere(
+			GetWorld(),
+			HitResult.Location,
+			30.0f,
+			16,
+			FColor::Red,
+			false,
+			5.0f
+		);
+
+		// 폭발 효과 시각화
+		DrawDebugSphere(
+			GetWorld(),
+			HitResult.Location,
+			100.0f,
+			20,
+			FColor::Orange,
+			false,
+			2.0f,
+			0,
+			3.0f
+		);
+
 		// 대포 데미지 적용 (30 데미지)
 		UGameplayStatics::ApplyPointDamage(
 			PlayerPawn, 30.0f, StartLocation, HitResult, nullptr, this, nullptr
 		);
 
-		UE_LOG(LogTemp, Warning, TEXT("Stealth Cannon Hit! Dealing 30 damage"));
+		// **피니쉬 공격 히트 시 플레이어 중력 복구**
+		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
+		if (PlayerCharacter)
+		{
+			UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
+			if (Movement)
+			{
+				Movement->GravityScale = 1.0f; // 중력 복구
+				UE_LOG(LogTemp, Warning, TEXT("Player gravity restored after stealth finish hit"));
+			}
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("Stealth Cannon Hit! Dealing 30 damage and ending suspension"));
+	}
+	else
+	{
+		// 미스 시 초록색 라인 (더 굵게)
+		DrawDebugLine(
+			GetWorld(),
+			StartLocation,
+			EndLocation,
+			FColor::Green,
+			false,
+			5.0f, // 5초간 표시
+			0,
+			8.0f // 더 굵게
+		);
+
+		// 빗나간 경우에도 중력 복구 (안전장치)
+		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
+		if (PlayerCharacter)
+		{
+			UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
+			if (Movement)
+			{
+				Movement->GravityScale = 1.0f;
+				UE_LOG(LogTemp, Warning, TEXT("Player gravity restored after stealth finish miss"));
+			}
+		}
 	}
 }
 
 void ABossEnemy::OnStealthFinishMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	UE_LOG(LogTemp, Warning, TEXT("Stealth Finish Montage Ended"));
+
+	// **애니메이션 상태 복원**
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false;
+		AnimInstance->bShouldLookAtPlayer = false;
+	}
+	// 이동 및 공격 복구
+	bIsFullBodyAttacking = false;
+	bCanBossAttack = true;
+	EnableBossMovement();
+
 	EndStealthAttack();
 }
 
 void ABossEnemy::EndStealthAttack()
 {
+	// **추적 타이머 정리 (안전장치)**
+	GetWorld()->GetTimerManager().ClearTimer(StealthWaitTimer);
+
 	// 모든 상태 초기화
 	CurrentStealthPhase = 0;
 	bIsStealthStarting = false;
@@ -1245,10 +1428,27 @@ void ABossEnemy::EndStealthAttack()
 	bIsStealthInvisible = false;
 	bIsStealthKicking = false;
 	bIsStealthFinishing = false;
-
 	bIsInvincible = false;
-
 	SetActorHiddenInGame(false);
+	// **공격 상태 강제 복구**
+	bCanBossAttack = true;
+	bIsFullBodyAttacking = false;
+
+	// **안전장치: 플레이어 중력 복구**
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (PlayerPawn)
+	{
+		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
+		if (PlayerCharacter)
+		{
+			UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
+			if (Movement && Movement->GravityScale <= 0.0f) // 중력이 비활성화된 상태라면
+			{
+				Movement->GravityScale = 1.0f; // 중력 복구
+				UE_LOG(LogTemp, Warning, TEXT("Player gravity restored as safety measure"));
+			}
+		}
+	}
 
 	// 쿨타임 시작
 	bCanUseStealthAttack = false;
@@ -1266,6 +1466,24 @@ void ABossEnemy::EndStealthAttack()
 	if (BossAI)
 	{
 		BossAI->HandleStealthPhaseTransition(0);
+
+		// **추가 안전장치: AI 상태 강제 초기화**
+		GetWorld()->GetTimerManager().SetTimerForNextTick([BossAI, this]()
+			{
+				if (IsValid(BossAI) && IsValid(this))
+				{
+					// 다음 프레임에 AI 상태 재확인 및 복구
+					BossAI->SetBossAIState(EBossEnemyAIState::MoveToPlayer);
+
+					APawn* Player = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+					if (Player)
+					{
+						BossAI->SetFocus(Player);
+					}
+
+					UE_LOG(LogTemp, Warning, TEXT("Post-stealth AI state recovery completed"));
+				}
+			});
 	}
 }
 

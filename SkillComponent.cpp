@@ -225,7 +225,7 @@ void USkillComponent::UseSkill3()
 
     RotateCharacterToInputDirection();
 
-    FVector SpawnLoc = OwnerCharacter->GetActorLocation() + OwnerCharacter->GetActorForwardVector() * 120.f + FVector(0, 0, 30.f);
+    FVector SpawnLoc = OwnerCharacter->GetActorLocation() + OwnerCharacter->GetActorForwardVector() * 150.f + FVector(0, 0, 30.f);
     FRotator SpawnRot = OwnerCharacter->GetActorRotation();
 
     if (Skill3ProjectileClass)

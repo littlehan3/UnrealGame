@@ -59,8 +59,8 @@ private:
 	UPROPERTY()
 	UAudioComponent* FlightAudioComponent = nullptr;
 
-	float Damage = 40.f;   // 데미지
-	float DamageRadius = 400.f;  // 광역 반경
+	float Damage = 20.f;   // 데미지
+	float DamageRadius = 150.f;  // 광역 반경
 	AActor* Shooter = nullptr;
 
 };

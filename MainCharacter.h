@@ -240,7 +240,7 @@ private:
     void ResetDashCooldown();
 
     float DefaultZoom = 250.0f;
-    float AimZoom = 100.0f;
+    float AimZoom = 70.0f;
     float MinZoom = 125.0f;
     float MaxZoom = 500.0f;
     float ZoomStep = 20.0f;

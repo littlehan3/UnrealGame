@@ -41,7 +41,7 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         return;
     }
 
-    // **스텔스 공격 중이면 AI 행동 완전 중지 (추가)**
+    // 스텔스 공격 중이면 AI 행동 완전 중지
     if (IsExecutingStealthAttack() || bIsAIDisabledForStealth)
     {
         if (CurrentState != EBossEnemyAIState::NormalAttack)
@@ -50,6 +50,34 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         }
         DrawDebugInfo();
         return; // 다른 행동은 수행하지 않음
+    }
+
+    // **스텔스 종료 후 Idle 상태에 갇힌 경우 강제로 MoveToPlayer 상태로 전환**
+    if (CurrentState == EBossEnemyAIState::Idle && !Boss->bIsPlayingBossIntro)
+    {
+        float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
+        if (DistToPlayer <= BossDetectRadius)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Force transitioning from Idle to MoveToPlayer"));
+            SetBossAIState(EBossEnemyAIState::MoveToPlayer);
+        }
+    }
+
+    // **스텔스 종료 후 AI 상태 복구 안전장치**
+    if (!bIsAIDisabledForStealth && !IsExecutingStealthAttack() &&
+        !Boss->bIsFullBodyAttacking && !Boss->bIsPlayingBossIntro)
+    {
+        // 스텔스가 완전히 끝났는데 Idle 상태에 갇힌 경우
+        if (CurrentState == EBossEnemyAIState::Idle)
+        {
+            float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
+            if (DistToPlayer <= BossDetectRadius)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("Force recovering from post-stealth Idle state"));
+                SetBossAIState(EBossEnemyAIState::MoveToPlayer);
+                SetFocus(PlayerPawn); // 플레이어 포커스 재설정
+            }
+        }
     }
 
     // 전신공격 중이거나 모든 종류의 텔레포트 중일 때는 상태 업데이트를 제한
@@ -301,6 +329,7 @@ void ABossEnemyAIController::HandleStealthPhaseTransition(int32 NewPhase)
     {
     case 1: // 스텔스 시작
         bIsAIDisabledForStealth = true;
+        bCanBossAttack = false;  // **AI 공격도 비활성화**
         StopMovement();
         UE_LOG(LogTemp, Warning, TEXT("AI Disabled for Stealth Attack"));
         break;
@@ -319,14 +348,28 @@ void ABossEnemyAIController::HandleStealthPhaseTransition(int32 NewPhase)
         UE_LOG(LogTemp, Warning, TEXT("Stealth kick phase - refocusing player"));
         break;
 
-    case 0: // 스텔스 종료
+    case 6: // 피니쉬 공격 단계
+        StopMovement();
+        UE_LOG(LogTemp, Warning, TEXT("Stealth finish phase - AI disabled"));
+        break;
+
+    case 0: // **스텔스 종료 - 완전한 AI 상태 복구**
         bIsAIDisabledForStealth = false;
-        bCanBossAttack = true;
-        UE_LOG(LogTemp, Warning, TEXT("AI Enabled after Stealth Attack"));
+        bCanBossAttack = true;  // **AI 컨트롤러 공격 상태 복구**
+
+        // 플레이어 다시 타겟팅
+        if (APawn* Player = UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
+        {
+            SetFocus(Player);
+        }
+
+        // AI 상태를 강제로 MoveToPlayer로 설정
+        SetBossAIState(EBossEnemyAIState::MoveToPlayer);
+
+        UE_LOG(LogTemp, Warning, TEXT("AI Fully Enabled after Stealth Attack - Attack capability restored"));
         break;
     }
 }
-
 
 void ABossEnemyAIController::DrawDebugInfo()
 {
@@ -346,6 +389,10 @@ void ABossEnemyAIController::DrawDebugInfo()
 
     // 보스 인식 범위
     DrawDebugSphere(GetWorld(), BossLoc, BossDetectRadius, 32, FColor::Green, false, -1, 0, 1);
+
+    DrawDebugCircle(GetWorld(), BossLoc, StealthAttackMinRange, 64, FColor::Green, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
+
+    DrawDebugCircle(GetWorld(), BossLoc, StealthAttackOptimalRange, 64, FColor::Blue, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
 }
 
 void ABossEnemyAIController::StopBossAI()
