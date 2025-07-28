@@ -9,6 +9,10 @@
 #include "SkillComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Components/BoxComponent.h"
+#include "CrossHairWidget.h"  // Widget을 위한 헤더 추가
+#include "Components/SlateWrapperTypes.h" // ESlateVisibility를 위한 헤더 추가
+#include "Kismet/GameplayStatics.h" // CreateWidget 함수
+#include "CrossHairComponent.h"
 #include "MainCharacter.generated.h"
 
 class ARifle;
@@ -78,6 +82,10 @@ public:
 
     void Die();
 
+    // 크로스헤어 컴포넌트 접근자 (반환 타입 수정)
+    UFUNCTION(BlueprintPure, Category = "Crosshair")
+    UCrossHairComponent* GetCrosshairComponent() const { return CrosshairComponent; }
+
 protected:
     virtual void BeginPlay() override;
 
@@ -89,6 +97,18 @@ protected:
     void FireWeapon();
     void ReloadWeapon();
     void ComboAttack();
+
+    // 크로스헤어 컴포넌트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+    UCrossHairComponent* CrosshairComponent;
+
+    // UMG 위젯 클래스
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "UI")
+    TSubclassOf<UCrossHairWidget> CrossHairWidgetClass;
+
+    // 위젯 인스턴스
+    UPROPERTY()
+    UCrossHairWidget* CrossHairWidget;
 
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
@@ -308,5 +328,52 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* DieSound;
+
+    // 반동 변수
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
+    float VerticalRecoilMin = 1.5f;  // 수직 반동 최솟값
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
+    float VerticalRecoilMax = 3.0f;  // 수직 반동 최댓값
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
+    float HorizontalRecoilMin = -1.0f;  // 수평 반동 최솟값
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
+    float HorizontalRecoilMax = 0.5f;   // 수평 반동 최댓값
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
+    float RecoilDuration = 0.2f; // 반동 지속시간
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
+    float RecoilRecoverySpeed = 5.0f; // 반동 회복속도
+
+    // 격발 시 화면 흔들림 변수
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Shake", meta = (AllowPrivateAccess = "true"))
+    float ShakeIntensity = 0.7f;  // 흔들림 강도
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Shake", meta = (AllowPrivateAccess = "true"))
+    float ShakeDuration = 0.1f;   // 흔들림 지속시간
+
+
+    // 반동 관련 변수들
+    FVector2D CurrentRecoil;
+    FVector2D TargetRecoil; 
+    bool bIsRecoiling;
+    FTimerHandle RecoilTimerHandle;
+
+    void ApplyCameraRecoil();
+    void ResetRecoil();
+    void UpdateRecoil(float DeltaTime);
+    void ApplyCameraShake();  // 화면 흔들림 함수 추가
+
+    // 이동속도 설정
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (AllowPrivateAccess = "true"))
+    float DefaultWalkSpeed = 700.0f; // 기본 이동속도
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (AllowPrivateAccess = "true"))
+    float AimWalkSpeed = 500.0f; // 에임모드 시 이동속도
+
+    void UpdateMovementSpeed(); // 이동속도 제어 함수
 
 };

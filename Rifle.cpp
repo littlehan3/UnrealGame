@@ -5,6 +5,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "TimerManager.h"
 #include "DrawDebugHelpers.h"
+#include "NiagaraFunctionLibrary.h"  // 나이아가라 함수 라이브러리 추가
+#include "NiagaraComponent.h"        // 나이아가라 컴포넌트 추가
 
 ARifle::ARifle()
 {
@@ -19,6 +21,21 @@ ARifle::ARifle()
         RifleMesh->SetEnableGravity(false);
         RifleMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
+
+    // 머즐 소켓 컴포넌트 생성 및 설정
+    MuzzleSocket = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MuzzleSocket"));
+    MuzzleSocket->SetupAttachment(RifleMesh);
+
+    if (MuzzleSocket)
+    {
+        MuzzleSocket->SetSimulatePhysics(false);
+        MuzzleSocket->SetEnableGravity(false);
+        MuzzleSocket->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        MuzzleSocket->SetVisibility(false); // 에디터에서만 보이도록 설정
+    }
+
+    CurrentMuzzleFlashComponent = nullptr; // 머즐 플래시 컴포넌트 초기화
+    CurrentImpactEffectComponent = nullptr; // 히트 이펙트 컴포넌트 초기화
 }
 
 void ARifle::BeginPlay()
@@ -31,17 +48,15 @@ void ARifle::BeginPlay()
     }
 }
 
-void ARifle::Fire()
+void ARifle::Fire(float CrosshairSpreadAngle)
 {
     if (bIsReloading)  // 재장전 중이면 사격 불가
     {
-        UE_LOG(LogTemp, Warning, TEXT("Cannot Fire! Reloading..."));
         return;
     }
 
     if (!bCanFire)
     {
-        //UE_LOG(LogTemp, Warning, TEXT("Cannot Fire Yet! FireRate Cooldown Active."));
         return;
     }
 
@@ -94,13 +109,17 @@ void ARifle::Fire()
 
             if (BulletTrail)
             {
-                UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), BulletTrail, HitResult.ImpactPoint);
+                UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                    GetWorld(),
+                    BulletTrail,
+                    HitResult.ImpactPoint
+                );
             }
 
             UE_LOG(LogTemp, Warning, TEXT("Hit detected! Target: %s, Location: %s"),
                 *HitResult.GetActor()->GetName(), *HitResult.ImpactPoint.ToString());
 
-            DrawDebugLine(GetWorld(), CameraLocation, HitResult.ImpactPoint, FColor::Green, false, 2.0f, 0, 2.0f);
+            //DrawDebugLine(GetWorld(), CameraLocation, HitResult.ImpactPoint, FColor::Green, false, 2.0f, 0, 2.0f);
         }
         else
         {
@@ -110,17 +129,56 @@ void ARifle::Fire()
     else
     {
         UE_LOG(LogTemp, Warning, TEXT("No hit detected!"));
-        DrawDebugLine(GetWorld(), CameraLocation, End, FColor::Red, false, 2.0f, 0, 2.0f);
+        //DrawDebugLine(GetWorld(), CameraLocation, End, FColor::Red, false, 2.0f, 0, 2.0f);
     }
 
-    if (MuzzleFlash)
+    // 부착된 위치에 새로운 이펙트 생성
+    if (MuzzleFlash && MuzzleSocket)
     {
-        UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MuzzleFlash, RifleMesh->GetComponentLocation(), CameraRotation);
+        // 기존 이펙트가 있다면 제거
+        if (CurrentMuzzleFlashComponent && IsValid(CurrentMuzzleFlashComponent))
+        {
+            CurrentMuzzleFlashComponent->DestroyComponent();
+            CurrentMuzzleFlashComponent = nullptr;
+        }
+
+        // 부착된 위치에 새로운 이펙트 생성
+        FVector MuzzleLocation = MuzzleSocket->GetComponentLocation();
+        FRotator MuzzleRotation = MuzzleSocket->GetComponentRotation();
+
+        CurrentMuzzleFlashComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+            MuzzleFlash,
+            MuzzleSocket,           // 부모 컴포넌트 지정
+            NAME_None,              // 소켓 이름 (없음)
+            FVector::ZeroVector,     // 로컬 오프셋 (부모 기준 상대 위치)
+            FRotator::ZeroRotator,  // 로컬 회전 (부모 기준 상대 회전)
+            EAttachLocation::SnapToTarget, // 부착 규칙 
+            true                    // 부모 소멸 시 자동 정리
+        );
+
+        if (CurrentMuzzleFlashComponent)
+        {
+            CurrentMuzzleFlashComponent->SetWorldScale3D(FVector(MuzzleFlashScale));
+            CurrentMuzzleFlashComponent->SetFloatParameter(FName("PlayRate"), MuzzleFlashPlayRate);
+
+            // 머즐 플래시 타이머 설정
+            GetWorldTimerManager().SetTimer(
+                MuzzleFlashTimerHandle,
+                this,
+                &ARifle::StopMuzzleFlash,
+                MuzzleFlashDuration,
+                false
+            );
+
+            UE_LOG(LogTemp, Warning, TEXT("Attached Muzzle Flash spawned and will stop in %f seconds"), MuzzleFlashDuration);
+        }
     }
 
-    if (FireSound)
+    // 사운드도 머즐 위치에서 재생
+    if (FireSound && MuzzleSocket)
     {
-        UGameplayStatics::PlaySoundAtLocation(this, FireSound, RifleMesh->GetComponentLocation());
+        UGameplayStatics::PlaySoundAtLocation(this, FireSound,
+            MuzzleSocket->GetComponentLocation());
     }
     else
     {
@@ -130,6 +188,29 @@ void ARifle::Fire()
     CurrentAmmo--;
     bCanFire = false;
     GetWorldTimerManager().SetTimer(FireRateTimerHandle, this, &ARifle::ResetFire, FireRate, false);
+}
+
+void ARifle::StopMuzzleFlash()
+{
+    if (CurrentMuzzleFlashComponent && IsValid(CurrentMuzzleFlashComponent))
+    {
+        CurrentMuzzleFlashComponent->Deactivate();
+        CurrentMuzzleFlashComponent->DestroyComponent();
+        CurrentMuzzleFlashComponent = nullptr;
+        UE_LOG(LogTemp, Warning, TEXT("Muzzle Flash stopped and destroyed"));
+    }
+}
+
+void ARifle::StopImpactEffect()
+{
+    if (CurrentImpactEffectComponent && IsValid(CurrentImpactEffectComponent))
+    {
+        CurrentImpactEffectComponent->Deactivate();
+        CurrentImpactEffectComponent->DestroyComponent();
+        CurrentImpactEffectComponent = nullptr;
+
+        UE_LOG(LogTemp, Warning, TEXT("Niagara Impact Effect stopped"));
+    }
 }
 
 // 재장전 기능 구현
@@ -172,7 +253,6 @@ void ARifle::ResetFire()
     bCanFire = true;
 }
 
-
 void ARifle::ProcessHit(const FHitResult& HitResult, FVector ShotDirection)
 {
     AEnemy* Enemy = Cast<AEnemy>(HitResult.GetActor());  // 맞은 액터가 적인지 확인
@@ -184,9 +264,40 @@ void ARifle::ProcessHit(const FHitResult& HitResult, FVector ShotDirection)
 
         UGameplayStatics::ApplyPointDamage(Enemy, AppliedDamage, ShotDirection, HitResult, GetOwner()->GetInstigatorController(), this, UDamageType::StaticClass());
 
+        // Impact Effect - 머즐 플래시처럼 조기 종료 기능 추가
         if (ImpactEffect)
         {
-            UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ImpactEffect, HitResult.ImpactPoint);
+            // 이전 Impact Effect가 있다면 제거
+            if (CurrentImpactEffectComponent && IsValid(CurrentImpactEffectComponent))
+            {
+                CurrentImpactEffectComponent->DestroyComponent();
+                CurrentImpactEffectComponent = nullptr;
+            }
+
+            FVector ImpactLocation = HitResult.ImpactPoint;
+            FRotator ImpactRotation = (-ShotDirection).Rotation(); // 충돌 방향으로 회전
+
+            CurrentImpactEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                GetWorld(),
+                ImpactEffect,
+                ImpactLocation,
+                ImpactRotation
+            );
+
+            if (CurrentImpactEffectComponent)
+            {
+                // Impact Effect 타이머 설정 - 짧게 재생 후 종료
+                GetWorldTimerManager().SetTimer(
+                    ImpactEffectTimerHandle,
+                    this,
+                    &ARifle::StopImpactEffect,
+                    ImpactEffectDuration,
+                    false
+                );
+
+                UE_LOG(LogTemp, Warning, TEXT("Niagara Impact Effect spawned at: %s, Duration: %f"),
+                    *ImpactLocation.ToString(), ImpactEffectDuration);
+            }
         }
     }
 }

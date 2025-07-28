@@ -37,4 +37,7 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
     bool bIsUsingAimSkill2;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation")
+    bool bIsReloading;
 };

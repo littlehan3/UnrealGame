@@ -14,11 +14,15 @@
 #include "MachineGun.h" // 머신건 헤더 추가
 #include "Cannon.h"
 #include "Kismet/GameplayStatics.h"
+#include "CrossHairWidget.h"  // 헤더 추가
 
 
 AMainCharacter::AMainCharacter()
 {
     PrimaryActorTick.bCanEverTick = true;
+
+    // 기본 이동속도 설정
+    GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
 
     // Camera Boom (Spring Arm)
     CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
@@ -62,6 +66,9 @@ AMainCharacter::AMainCharacter()
 
     CurrentHealth = MaxHealth;
     bIsDead = false;
+
+    // 크로스헤어 컴포넌트 생성
+    CrosshairComponent = CreateDefaultSubobject<UCrossHairComponent>(TEXT("CrosshairComponent"));
 }
 
 void AMainCharacter::BeginPlay()
@@ -150,6 +157,39 @@ void AMainCharacter::BeginPlay()
     if (SkillComponent)
     {
         SkillComponent->InitializeSkills(this, MachineGun, LeftKnife, RightKnife, KickHitBox, Cannon);
+    }
+
+    // 크로스헤어 위젯 생성
+    if (CrossHairWidgetClass)
+    {
+        CrossHairWidget = CreateWidget<UCrossHairWidget>(GetWorld(), CrossHairWidgetClass);
+        if (CrossHairWidget)
+        {
+            CrossHairWidget->AddToViewport();
+            CrossHairWidget->SetVisibility(ESlateVisibility::Hidden);
+
+            // 컴포넌트 참조 재확인 
+            if (!CrossHairWidget->IsComponentValid())
+            {
+                CrossHairWidget->SetCrossHairComponentReference(CrosshairComponent);
+            }
+        }
+    }
+}
+
+void AMainCharacter::UpdateMovementSpeed()
+{
+    if (!GetCharacterMovement()) return;
+
+    // 에임모드 또는 에임스킬 사용 중일 때 속도 감소
+    if (bIsAiming ||
+        (SkillComponent && (SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2())))
+    {
+        GetCharacterMovement()->MaxWalkSpeed = AimWalkSpeed;
+    }
+    else
+    {
+        GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
     }
 }
 
@@ -343,6 +383,40 @@ void AMainCharacter::Tick(float DeltaTime)
         UE_LOG(LogTemp, Warning, TEXT("Root Motion Applied! Rotation Set To: %s"), *TargetRootMotionRotation.ToString());
         SetActorRotation(TargetRootMotionRotation); // 루트모션이 적용되는 동안 방향유지 
     }
+
+    // 이동 중 크로스헤어 확산 적용
+    if (bIsAiming && CrosshairComponent)
+    {
+        // 이동 중 크로스헤어 확산 증가
+        float MovementSpeed = GetVelocity().Size();
+        float MovementSpread = 0.0f;
+
+        if (MovementSpeed > 50.0f) // 이동 중일 때
+        {
+            // 이동 속도에 비례하여 크로스헤어 확산 증가
+            MovementSpread = FMath::Clamp(MovementSpeed / 600.0f * 20.0f, 0.0f, 30.0f);
+        }
+
+        CrosshairComponent->SetMovementSpread(MovementSpread);
+        CrosshairComponent->SetCrosshairActive(true);
+
+        // 반동 업데이트
+        if (bIsRecoiling)
+        {
+            UpdateRecoil(DeltaTime);
+        }
+    }
+    else
+    {
+        // 에임 모드가 아닐 때는 크로스헤어 비활성화
+        if (CrosshairComponent)
+        {
+            CrosshairComponent->SetCrosshairActive(false);
+        }
+    }
+
+    // 이동속도 업데이트
+    UpdateMovementSpeed();
 }
 
 void AMainCharacter::HandleJump()
@@ -478,14 +552,26 @@ void AMainCharacter::FireWeapon()
 
     if (bIsAiming && Rifle)
     {
-        Rifle->Fire();
+        // 에임 모드일 때만 크로스헤어 기반 발사
+        float CurrentSpreadAngle = 0.0f;
+        if (CrosshairComponent)
+        {
+            CurrentSpreadAngle = CrosshairComponent->GetBulletSpreadAngle();
+            // 크로스헤어 확산 트리거
+            CrosshairComponent->StartExpansion(1.0f);
+
+            ApplyCameraRecoil();
+        }
+
+        // 라이플 발사 (분산 값 전달)
+        Rifle->Fire(CurrentSpreadAngle);
     }
     else
     {
-        // 에임 모드가 아닐 때 콤보 공격을 시작
+        // 에임 모드가 아닐 때는 근접 공격
         ComboAttack();
     }
- 
+
     // 점프 상태 체크
     if (GetCharacterMovement()->IsFalling())
     {
@@ -507,14 +593,22 @@ void AMainCharacter::FireWeapon()
         }
         return;
     }
+
+    // 크로스헤어 확산 트리거
+    if (CrosshairComponent)
+    {
+        CrosshairComponent->StartExpansion(1.0f);
+    }
 }
 
 void AMainCharacter::ReloadWeapon()
 {
-    if (Rifle)
+    if (!Rifle)
     {
-        Rifle->Reload();
+        return;
     }
+
+    Rifle->Reload();
 }
 
 void AMainCharacter::EnterAimMode()
@@ -537,7 +631,21 @@ void AMainCharacter::EnterAimMode()
 
         AttachRifleToHand(); // 손으로 이동
         AttachKnifeToBack();
+
+        // 크로스헤어 활성화
+        if (CrosshairComponent)
+        {
+            CrosshairComponent->SetCrosshairActive(true);
+        }
+
+        if (CrossHairWidget)
+        {
+            CrossHairWidget->SetVisibility(ESlateVisibility::Visible);
+        }
     }
+
+    // 이동속도 업데이트
+    UpdateMovementSpeed();
 }
 
 void AMainCharacter::ExitAimMode()
@@ -551,6 +659,103 @@ void AMainCharacter::ExitAimMode()
 
         AttachRifleToBack(); // 다시 등에 이동
         AttachKnifeToHand();
+
+        // 크로스헤어 비활성화
+        if (CrosshairComponent)
+        {
+            CrosshairComponent->SetCrosshairActive(false);
+        }
+
+        if (CrossHairWidget)
+        {
+            CrossHairWidget->SetVisibility(ESlateVisibility::Hidden);
+        }
+    }
+    // 이동속도 업데이트
+    UpdateMovementSpeed();
+}
+
+void AMainCharacter::ApplyCameraRecoil()
+{
+    // 에임 모드일 때만 반동 적용
+    if (!bIsAiming) return;
+
+    // 크로스헤어의 분산 정도에 따라 반동 강도 조절
+    float SpreadMultiplier = 1.0f;
+    if (CrosshairComponent)
+    {
+        SpreadMultiplier = 1.0f + CrosshairComponent->GetNormalizedSpread() * 0.5f;
+    }
+
+    // 수직 반동: 항상 위쪽으로 (음수값)
+    float VerticalRecoil = FMath::RandRange(VerticalRecoilMin, VerticalRecoilMax) * SpreadMultiplier;
+
+    // 수평 반동: 좌우 랜덤
+    float HorizontalRecoil = FMath::RandRange(HorizontalRecoilMin, HorizontalRecoilMax) * SpreadMultiplier;
+
+    // 반동 값 설정 (Y는 수직, X는 수평)
+    TargetRecoil = FVector2D(HorizontalRecoil, -VerticalRecoil);  // Y값을 음수로 하여 위쪽 반동
+    bIsRecoiling = true;
+
+    // 화면 흔들림 효과 추가
+    ApplyCameraShake();
+
+    GetWorldTimerManager().SetTimer(RecoilTimerHandle, this, &AMainCharacter::ResetRecoil, RecoilDuration, false);
+
+    UE_LOG(LogTemp, Warning, TEXT("Camera recoil applied: Horizontal=%.2f, Vertical=%.2f, Spread Multiplier=%.2f"),
+        HorizontalRecoil, VerticalRecoil, SpreadMultiplier);
+}
+
+void AMainCharacter::ResetRecoil()
+{
+    TargetRecoil = FVector2D::ZeroVector;
+}
+
+void AMainCharacter::UpdateRecoil(float DeltaTime)
+{
+    CurrentRecoil = FMath::Vector2DInterpTo(CurrentRecoil, TargetRecoil, DeltaTime, RecoilRecoverySpeed);
+
+    if (Controller)
+    {
+        AddControllerPitchInput(CurrentRecoil.Y * DeltaTime);
+        AddControllerYawInput(CurrentRecoil.X * DeltaTime);
+    }
+
+    if (TargetRecoil.IsNearlyZero() && CurrentRecoil.Size() < 0.1f)
+    {
+        bIsRecoiling = false;
+        CurrentRecoil = FVector2D::ZeroVector;
+    }
+}
+
+void AMainCharacter::ApplyCameraShake()
+{
+    // 플레이어 컨트롤러 가져오기
+    APlayerController* PlayerController = Cast<APlayerController>(GetController());
+    if (!PlayerController) return;
+
+    // 카메라 컴포넌트 흔들기
+    if (Camera)
+    {
+        // 랜덤한 흔들림 값 생성
+        FVector ShakeOffset;
+        ShakeOffset.X = FMath::RandRange(-ShakeIntensity, ShakeIntensity);
+        ShakeOffset.Y = FMath::RandRange(-ShakeIntensity, ShakeIntensity);
+        ShakeOffset.Z = FMath::RandRange(-ShakeIntensity * 0.5f, ShakeIntensity * 0.5f);
+
+        // 카메라 위치에 흔들림 적용
+        FVector OriginalLocation = Camera->GetRelativeLocation();
+        Camera->SetRelativeLocation(OriginalLocation + ShakeOffset);
+
+        // 일정 시간 후 원래 위치로 복구
+        FTimerHandle ShakeResetTimer;
+        GetWorldTimerManager().SetTimer(ShakeResetTimer, [this, OriginalLocation]()
+            {
+                if (Camera)
+                {
+                    Camera->SetRelativeLocation(OriginalLocation);
+                }
+            }, ShakeDuration, false);
     }
 }
 
@@ -886,9 +1091,7 @@ void AMainCharacter::Die()
             }
         }
     }
-
-    // 사망 애니메이션, 입력 차단 등 추가
-    UE_LOG(LogTemp, Warning, TEXT("MainCharacter 사망!"));
+    UE_LOG(LogTemp, Warning, TEXT("MainCharacter Dead!"));
 }
 
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -903,7 +1106,7 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
         EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &AMainCharacter::EnterAimMode);
         EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AMainCharacter::ExitAimMode);
-        EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &AMainCharacter::FireWeapon);
+        EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &AMainCharacter::FireWeapon);
         EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AMainCharacter::ReloadWeapon);
         EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &AMainCharacter::Dash);
         EnhancedInputComponent->BindAction(ZoomInAction, ETriggerEvent::Triggered, this, &AMainCharacter::ZoomIn);
