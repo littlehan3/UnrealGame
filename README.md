@@ -31,6 +31,9 @@ https://drive.google.com/file/d/1EyhP-_OgKLJm9quElz7aqmQUOh2R5Myg/view?usp=shari
 ### 6. 2025년 6월 1일 ~ 7월 1일까지의 노트입니다.
 https://drive.google.com/file/d/1l_OHdKEopPomFlDee4dHjost6mtDsDFe/view?usp=sharing
 
+### 7. 2025년 7월 1일 ~ 8월 1일까지의 노트입니다.
+https://drive.google.com/file/d/1Qnv0xIWh6RjjixkGRun9uKB-a2mltIlF/view?usp=sharing
+
 ## 2025-02-13 업데이트 내용
 
 ### 1. 레이캐스트 발사 위치 변경
@@ -713,6 +716,7 @@ NormalAttack 상태에서 공격 패턴 결정
 ```
 - 스텔스 공격의 레이캐스트시 캐릭터를 FVector LaunchVelocity 띄우고 즉시 ExecuteStealthFinish 함수를 호출하여 StealthFinish 몽타주를 재생하며Raycast로 즉시공격. 레이캐스트에 맞지 않았을 시 ExecuteStealthFinish로 넘어가지 않고 즉시 플레이어 추격 모드로 전환. 
 - 현재 계속해서 작업중이며 기능 추가 및 개선 예정
+- 정리된 보스에 대한 자세한 설명이 추가 될 예정
 
 ### 12. 맵 적용
 - 신규 맵에서 해당 게임을 즐길 수 있도록 변경

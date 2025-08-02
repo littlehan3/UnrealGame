@@ -552,30 +552,40 @@ void AMainCharacter::FireWeapon()
 
     if (bIsAiming && Rifle)
     {
-        // 에임 모드일 때만 크로스헤어 기반 발사
+        // getter로 받아온 상태를 이용해 재장전 중 사용 불가
+        if (Rifle->IsReloading())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("FireWeapon Blocked: Rifle is Reloading"));
+            return;
+        }
+        // getter로 받아온 상태를 이용해 총알이 없으면 재장전만 수행
+        if (Rifle->GetCurrentAmmo() <= 0)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("No Ammo. Triggering Reload. No recoil or shake."));
+            Rifle->Reload();
+            return;
+        }
+
+        // 총알이 있고 재장전이 아닐때만 리코일, 흔들림, 발사, 크로스헤어 퍼짐
         float CurrentSpreadAngle = 0.0f;
         if (CrosshairComponent)
         {
             CurrentSpreadAngle = CrosshairComponent->GetBulletSpreadAngle();
-            // 크로스헤어 확산 트리거
             CrosshairComponent->StartExpansion(1.0f);
-
-            ApplyCameraRecoil();
+            ApplyCameraRecoil();  
         }
-
-        // 라이플 발사 (분산 값 전달)
         Rifle->Fire(CurrentSpreadAngle);
     }
     else
     {
-        // 에임 모드가 아닐 때는 근접 공격
+        // 에임 모드 아닐 때 콤보 공격
         ComboAttack();
     }
 
     // 점프 상태 체크
     if (GetCharacterMovement()->IsFalling())
     {
-        // *에임모드 중에는 점프공격 비활성화
+        // 에임모드 중에는 점프공격 비활성화
         if (bIsAiming)
         {
             UE_LOG(LogTemp, Warning, TEXT("Jump Attack Blocked - Aim Mode Active"));

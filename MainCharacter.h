@@ -340,7 +340,7 @@ private:
     float HorizontalRecoilMin = -1.0f;  // 수평 반동 최솟값
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
-    float HorizontalRecoilMax = 0.5f;   // 수평 반동 최댓값
+    float HorizontalRecoilMax = 1.0f;   // 수평 반동 최댓값
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
     float RecoilDuration = 0.2f; // 반동 지속시간
@@ -350,10 +350,10 @@ private:
 
     // 격발 시 화면 흔들림 변수
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Shake", meta = (AllowPrivateAccess = "true"))
-    float ShakeIntensity = 0.7f;  // 흔들림 강도
+    float ShakeIntensity = 0.8f;  // 흔들림 강도
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Shake", meta = (AllowPrivateAccess = "true"))
-    float ShakeDuration = 0.1f;   // 흔들림 지속시간
+    float ShakeDuration = 0.15f;   // 흔들림 지속시간
 
 
     // 반동 관련 변수들

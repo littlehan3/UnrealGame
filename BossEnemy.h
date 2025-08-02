@@ -53,7 +53,7 @@ public:
 	void UpdateStealthTeleportLocation(); // 스텔스 텔레포트 위치 업데이트 함수
 
 	UFUNCTION()
-	void OnStealthCooldownEnd();             // 스텔스 쿨타임 종료
+	void OnStealthCooldownEnd(); // 스텔스 쿨타임 종료
 
 	
 	virtual float TakeDamage( // 데미지를 입었을때 호출되는 함수 (AActor의 TakeDamage 오버라이드)
@@ -142,7 +142,7 @@ private:
 	float TeleportDistance = 500.0f; // 텔레포트 거리
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float TeleportCooldown = 3.0f; // 텔레포트 쿨타임
+	float TeleportCooldown = 5.0f; // 텔레포트 쿨타임
 
 	FTimerHandle TeleportExecutionTimer; // 텔레포트 이동 타이머
 	FTimerHandle AttackTeleportExecutionTimer; // 공격 텔레포트 이동 타이머
@@ -208,7 +208,7 @@ private:
 	int32 CurrentStealthPhase = 0;  // 현재 스텔스 단계
 
 	// 타이머들
-	FTimerHandle StealthWaitTimer;  // 5초 대기 타이머
+	FTimerHandle StealthWaitTimer;  // 스텔스 대기 타이머
 	FTimerHandle PlayerAirborneTimer; // 플레이어 공중 체류 타이머
 
 	// 계산된 텔레포트 위치
@@ -216,7 +216,7 @@ private:
 
 	// 스텔스 관련 추가 변수들
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StealthCooldown = 8.0f; // 스텔스 쿨타임
+	float StealthCooldown = 20.0f; // 스텔스 쿨타임
 
 	FTimerHandle StealthCooldownTimer; // 스텔스 쿨타임 타이머
 	FTimerHandle StealthDiveTransitionTimer;// 스텔스 다이브 퍼센트 전환 타이머

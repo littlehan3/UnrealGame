@@ -36,19 +36,22 @@ void AMainGameModeBase::BeginPlay()
 
     if (bEnableWaveSystem)
     {
-        // 스폰 위치 사전 계산
-        PreCalculateSpawnLocations();
+        GetWorldTimerManager().SetTimerForNextTick([this]()
+            {
+                // 스폰 위치 사전 계산
+                PreCalculateSpawnLocations();
 
-        // 5분마다 스폰 위치 갱신
-        GetWorldTimerManager().SetTimer(
-            LocationRefreshTimer,
-            this,
-            &AMainGameModeBase::RefreshSpawnLocations,
-            300.0f,
-            true
-        );
+                // 5분마다 스폰 위치 갱신
+                GetWorldTimerManager().SetTimer(
+                    LocationRefreshTimer,
+                    this,
+                    &AMainGameModeBase::RefreshSpawnLocations,
+                    300.0f,
+                    true
+                );
 
-        StartWaveSystem();
+                StartWaveSystem();
+            });
     }
     else
     {
@@ -526,7 +529,9 @@ FVector AMainGameModeBase::GetPlayerLocation()
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
     if (PlayerCharacter)
     {
+        UE_LOG(LogTemp, Warning, TEXT("Player location obtained: %s"), *PlayerCharacter->GetActorLocation().ToString());
         return PlayerCharacter->GetActorLocation();
     }
+    UE_LOG(LogTemp, Warning, TEXT("Player character not found, returning ZeroVector"));
     return FVector::ZeroVector;
 }

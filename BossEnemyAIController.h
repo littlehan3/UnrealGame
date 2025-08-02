@@ -88,11 +88,16 @@ private:
 
 	// 스텔스 공격 설정값들
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StealthAttackOptimalRange = 600.0f;    // 스텔스 공격 최적 거리
+	float StealthAttackOptimalRange = 300.0f; // 스텔스 공격 최적 거리
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StealthAttackMinRange = 200.0f;        // 스텔스 공격 최소 거리
+	float StealthAttackMinRange = 200.0f; // 스텔스 공격 최소 거리
 
 	// AI 상태 관리
-	bool bIsAIDisabledForStealth = false;        // 스텔스 중 AI 비활성화 여부
+	bool bIsAIDisabledForStealth = false; // 스텔스 중 AI 비활성화 여부
+
+	float RangedAttackCooldown = .0f; // 투사체 공격 쿨타임
+	float LastRangedAttackTime = -FLT_MAX; // 마지막 원거리 공격 시간
+	bool bIgnoreRangedCooldownOnce = false; // 뒷텔레포트 직후 1회 무조건 허용하는 플래그 
+
 };

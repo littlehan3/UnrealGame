@@ -20,6 +20,9 @@ public:
     void ResetFire();
     void Fire(float CrosshairSpreadAngle = 0.0f); // 크로스헤어 연동 발사 함수
 
+    bool IsReloading() const { return bIsReloading; } // 재장전 상태 getter
+    int32 GetCurrentAmmo() const { return CurrentAmmo; } // 현재 총알 수 getter
+
 protected:
     virtual void BeginPlay() override;
 

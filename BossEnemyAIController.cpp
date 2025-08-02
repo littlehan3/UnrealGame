@@ -182,10 +182,11 @@ void ABossEnemyAIController::BossNormalAttack()
         Boss->bIsBossTeleporting || Boss->bIsBossAttackTeleporting || Boss->bIsBossRangedAttacking) return;
 
     float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation()); // 플레이어와 보스 간의 거리 계산
+    float CurrentTime = GetWorld()->GetTimeSeconds();
 
     UE_LOG(LogTemp, Warning, TEXT("Boss choosing attack - Distance: %f"), DistanceToPlayer); // 디버그 로그: 현재 거리 출력
 
-    // **최우선순위: 스텔스 공격 체크를 모든 거리 조건 이전에 실행**
+    // 최우선순위: 스텔스 공격 체크를 모든 거리 조건 이전에 실행
     if (CanExecuteStealthAttack()) // 스텔스 공격 조건을 만족하는지 체크
     {
         UE_LOG(LogTemp, Warning, TEXT("Stealth conditions met - rolling dice")); // 디버그 로그: 스텔스 조건 만족됨
@@ -202,7 +203,7 @@ void ABossEnemyAIController::BossNormalAttack()
         }
     }
 
-    // **그 다음에 기존 거리별 공격 로직 실행**
+    // 그 다음에 기존 거리별 공격 로직 실행
     if (Boss && Boss->bCanBossAttack) // 보스가 존재하고 공격 가능 상태인지 체크
     {
         if (DistanceToPlayer <= BossStandingAttackRange) // 0-200 범위: 근거리 공격 범위
@@ -224,9 +225,27 @@ void ABossEnemyAIController::BossNormalAttack()
         }
         else if (DistanceToPlayer > BossStandingAttackRange && DistanceToPlayer <= BossMovingAttackRange) // 201-250 범위: 중거리 공격 범위
         {
-            // 이동 공격 - 상체만 애니메이션 재생하여 이동하면서 공격 가능
-            Boss->PlayBossUpperBodyAttackAnimation(); // 상체 전용 공격 애니메이션 재생
-            UE_LOG(LogTemp, Warning, TEXT("Moving Attack - Distance: %f"), DistanceToPlayer); // 디버그 로그: 이동 공격 선택됨
+            bool bDoRangedAttack = false;
+            // 1. 원거리 쿨타임 및 예외(뒷텔레포트 후 1회 허용) 체크
+            if (bIgnoreRangedCooldownOnce ||
+                ((CurrentTime - LastRangedAttackTime) >= RangedAttackCooldown))
+            {
+                bDoRangedAttack = FMath::RandBool(); // 50% 확률 (변경 가능)
+            }
+
+            // 2. 실제 공격 실행
+            if (bDoRangedAttack)
+            {
+                Boss->PlayBossRangedAttackAnimation();
+                LastRangedAttackTime = CurrentTime;
+                if (bIgnoreRangedCooldownOnce) bIgnoreRangedCooldownOnce = false; // 한 번만 적용
+                UE_LOG(LogTemp, Warning, TEXT("Moving Ranged Attack - CD OK - Distance: %f"), DistanceToPlayer);
+            }
+            else
+            {
+                Boss->PlayBossUpperBodyAttackAnimation();
+                UE_LOG(LogTemp, Warning, TEXT("Moving UpperBody Attack - or RangedAttack on CD - Distance: %f"), DistanceToPlayer);
+            }
         }
         else
         {
@@ -258,16 +277,15 @@ void ABossEnemyAIController::OnBossAttackTeleportEnded()
         return;
     }
 
-    // 텔레포트 후 추가 행동 결정
     if (Boss->bShouldUseRangedAfterTeleport)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Executing ranged attack after teleport"));
+        bIgnoreRangedCooldownOnce = true; // 다음 투사체 공격만 쿨타임 무시
         Boss->PlayBossRangedAttackAnimation();
-        Boss->bShouldUseRangedAfterTeleport = false; // 플래그 리셋
+        LastRangedAttackTime = GetWorld()->GetTimeSeconds(); // CD 갱신
+        Boss->bShouldUseRangedAfterTeleport = false;
     }
-    else
+    else 
     {
-        UE_LOG(LogTemp, Warning, TEXT("Resuming normal combat after attack teleport"));
         bCanBossAttack = true;
     }
 }
@@ -353,9 +371,9 @@ void ABossEnemyAIController::HandleStealthPhaseTransition(int32 NewPhase)
         UE_LOG(LogTemp, Warning, TEXT("Stealth finish phase - AI disabled"));
         break;
 
-    case 0: // **스텔스 종료 - 완전한 AI 상태 복구**
+    case 0: // 스텔스 종료 AI 상태 복구
         bIsAIDisabledForStealth = false;
-        bCanBossAttack = true;  // **AI 컨트롤러 공격 상태 복구**
+        bCanBossAttack = true;  // AI 컨트롤러 공격 상태 복구
 
         // 플레이어 다시 타겟팅
         if (APawn* Player = UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
@@ -382,13 +400,10 @@ void ABossEnemyAIController::DrawDebugInfo()
     DrawDebugCircle(GetWorld(), PlayerLoc, BossMoveRadius, 64, FColor::Cyan, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
 
     // 보스 공격 범위 표시
-    // 외곽 원 (250)
+ 
     DrawDebugCircle(GetWorld(), BossLoc, BossMovingAttackRange, 64, FColor::Orange, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-    // 내부 원 (200) 
-    DrawDebugCircle(GetWorld(), BossLoc, BossStandingAttackRange, 64, FColor::Yellow, false, -1, 0, 1, FVector(1, 0, 0), FVector(0, 1, 0), false);
 
-    // 보스 인식 범위
-    DrawDebugSphere(GetWorld(), BossLoc, BossDetectRadius, 32, FColor::Green, false, -1, 0, 1);
+    DrawDebugCircle(GetWorld(), BossLoc, BossStandingAttackRange, 64, FColor::Yellow, false, -1, 0, 1, FVector(1, 0, 0), FVector(0, 1, 0), false);
 
     DrawDebugCircle(GetWorld(), BossLoc, StealthAttackMinRange, 64, FColor::Green, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
 
