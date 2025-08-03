@@ -96,7 +96,7 @@ private:
 	// AI 상태 관리
 	bool bIsAIDisabledForStealth = false; // 스텔스 중 AI 비활성화 여부
 
-	float RangedAttackCooldown = .0f; // 투사체 공격 쿨타임
+	float RangedAttackCooldown = 10.0f; // 투사체 공격 쿨타임
 	float LastRangedAttackTime = -FLT_MAX; // 마지막 원거리 공격 시간
 	bool bIgnoreRangedCooldownOnce = false; // 뒷텔레포트 직후 1회 무조건 허용하는 플래그 
 

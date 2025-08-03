@@ -9,6 +9,7 @@
 #include "BossEnemy.generated.h"
 
 class ABossProjectile;
+class AEnemyBossKatana;
 
 UCLASS()
 class LOCOMOTION_API ABossEnemy : public ACharacter
@@ -74,6 +75,13 @@ public:
 
 	UFUNCTION() // 애님 노티파이에서 호출할 함수
 	void SpawnBossProjectile();
+
+	// 보스 전용 카타나 참조
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	AEnemyBossKatana* EquippedBossKatana;
+
+	void StartAttack();
+	void EndAttack();
 
 protected:
 	virtual void BeginPlay() override;
@@ -142,7 +150,7 @@ private:
 	float TeleportDistance = 500.0f; // 텔레포트 거리
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float TeleportCooldown = 5.0f; // 텔레포트 쿨타임
+	float TeleportCooldown = 10.0f; // 텔레포트 쿨타임
 
 	FTimerHandle TeleportExecutionTimer; // 텔레포트 이동 타이머
 	FTimerHandle AttackTeleportExecutionTimer; // 공격 텔레포트 이동 타이머
@@ -216,8 +224,12 @@ private:
 
 	// 스텔스 관련 추가 변수들
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StealthCooldown = 20.0f; // 스텔스 쿨타임
+	float StealthCooldown = 30.0f; // 스텔스 쿨타임
 
 	FTimerHandle StealthCooldownTimer; // 스텔스 쿨타임 타이머
 	FTimerHandle StealthDiveTransitionTimer;// 스텔스 다이브 퍼센트 전환 타이머
+
+	//BP에서 Katana Blueprint 지정
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	TSubclassOf<AEnemyBossKatana> BossKatanaClass;
 };

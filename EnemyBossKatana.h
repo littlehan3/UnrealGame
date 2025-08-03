@@ -2,40 +2,32 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "EnemyKatana.generated.h"
+#include "EnemyBossKatana.generated.h"
 
-UENUM(BlueprintType)
-enum class EAttackType : uint8
-{
-    Normal,
-    Strong,
-    Jump
-};
-
-class AEnemy;
+class AEnemyBoss;
 
 UCLASS()
-class LOCOMOTION_API AEnemyKatana : public AActor
+class LOCOMOTION_API AEnemyBossKatana : public AActor
 {
     GENERATED_BODY()
 
 public:
-    AEnemyKatana();
+    AEnemyBossKatana();
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    class UStaticMeshComponent* KatanaMesh; // ê³„ì¸µ ê´€ë¦¬ë¥¼ ìœ„í•œ ë£¨íŠ¸ ì»´í¬ë„ŒíŠ¸
+    class UStaticMeshComponent* KatanaMesh; // °èÃş °ü¸®¸¦ À§ÇÑ ·çÆ® ÄÄÆ÷³ÍÆ®
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UStaticMeshComponent* KatanaChildMesh; // ì‹¤ì§ˆì ì¸ ë ˆì´ìºìŠ¤íŠ¸ ìœ„ì¹˜ ì„¤ì •ì„ ìœ„í•œ ë©”ì‹œ
+    UStaticMeshComponent* KatanaChildMesh; // ½ÇÁúÀûÀÎ ·¹ÀÌÄ³½ºÆ® À§Ä¡ ¼³Á¤À» À§ÇÑ ¸Ş½Ã
 
-    // íŒì • ë°ì´í„°
+    // ÇÇ°İµÈ ¾×ÅÍ °ü¸®
     TSet<AActor*> RaycastHitActors;
     TSet<AActor*> DamagedActors;
 
-    void EnableAttackHitDetection(EAttackType AttackType);
+    void EnableAttackHitDetection();
     void DisableAttackHitDetection();
 
-    void PerformRaycastAttack(); // ê³µê²© í”„ë ˆì„ë§ˆë‹¤ AnimNotify ë“±ì—ì„œ í˜¸ì¶œ
+    void PerformRaycastAttack(); // Æ½ È¤Àº AnimNotify¿¡¼­ È£Ãâ
 
     UFUNCTION()
     void HideKatana();
@@ -50,12 +42,13 @@ protected:
 
 private:
     bool bIsAttacking = false;
-    bool bIsStrongAttack = false;
 
     void ApplyDamage(AActor* OtherActor);
-    
+
     TArray<AActor*> EnemyActorsCache;
 
-    EAttackType CurrentAttackType;
+    // µ¥¹ÌÁö
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attack", meta = (AllowPrivateAccess = "true"))
+    float BossDamage = 50.0f;
 
 };

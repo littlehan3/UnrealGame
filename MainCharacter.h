@@ -70,7 +70,7 @@ public:
     void AttachKnifeToHand();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
-    float MaxHealth = 100.0f;
+    float MaxHealth = 10000.0f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
     float CurrentHealth;

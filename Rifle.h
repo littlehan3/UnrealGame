@@ -90,7 +90,7 @@ private:
 
     // 머즐 플래시 설정 변수들 추가
     UPROPERTY(EditAnywhere, Category = "Effects", meta = (ClampMin = "0.1", ClampMax = "5.0"))
-    float MuzzleFlashDuration = 0.2f; // 머즐 플래시 지속 시간
+    float MuzzleFlashDuration = 0.15f; // 머즐 플래시 지속 시간
 
     UPROPERTY(EditAnywhere, Category = "Effects", meta = (ClampMin = "0.1", ClampMax = "10.0"))
     float MuzzleFlashScale = 0.1f; // 머즐 플래시 크기 조절

@@ -7,18 +7,18 @@
 #include "DrawDebugHelpers.h"
 #include "Enemy.h"
 
-// Sets default values
 AEnemyKatana::AEnemyKatana()
 {
-    // Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
     PrimaryActorTick.bCanEverTick = true;
 
     // 카타나 메시 초기화 및 RootComponent로 설정
     KatanaMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("KatanaMesh"));
     RootComponent = KatanaMesh;
+
+    KatanaChildMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("KatanaChildMesh"));
+    KatanaChildMesh->SetupAttachment(KatanaMesh);  // 루트 컴포넌트의 자식으로 붙이고 초기화
 }
 
-// Called when the game starts or when spawned
 void AEnemyKatana::BeginPlay()
 {
     Super::BeginPlay();
@@ -71,9 +71,9 @@ void AEnemyKatana::DisableAttackHitDetection()
 
 void AEnemyKatana::PerformRaycastAttack()
 {
-    FVector Start = KatanaMesh->GetComponentLocation();
-    FVector Forward = KatanaMesh->GetForwardVector();
-    float TotalDistance = 120.0f;
+    FVector Start = KatanaChildMesh->GetComponentLocation(); // 자식 메쉬 기준 start
+    FVector Forward = KatanaChildMesh->GetForwardVector();  // 자식 메쉬 기준 end
+    float TotalDistance = 150.0f;
     int NumSteps = 5;
     float StepLength = TotalDistance / NumSteps;
 

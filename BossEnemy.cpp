@@ -7,6 +7,8 @@
 #include "Animation/AnimInstance.h"
 #include "MainGameModeBase.h"
 #include "BossProjectile.h"
+#include "EnemyBossKatana.h"
+#include "Components/SkeletalMeshComponent.h"
 
 ABossEnemy::ABossEnemy()
 {
@@ -47,6 +49,27 @@ void ABossEnemy::BeginPlay()
 	SetUpBossAI(); // AI 설정함수 호출
 
 	PlayBossSpawnIntroAnimation(); // 보스 등장 애니메이션 재생
+
+	// KatanaClass가 BP에서 설정되어 있다면 카타나 생성 및 부착
+	if (BossKatanaClass)
+	{
+		EquippedBossKatana = GetWorld()->SpawnActor<AEnemyBossKatana>(BossKatanaClass);
+		if (EquippedBossKatana)
+		{
+			EquippedBossKatana->SetOwner(this);
+			USkeletalMeshComponent* MeshComp = GetMesh();
+			if (MeshComp)
+			{
+				FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
+				EquippedBossKatana->AttachToComponent(
+					MeshComp,
+					AttachmentRules,
+					FName("BossEnemyKatanaSocket")
+				);
+			}
+		}
+	}
+
 }
 
 void ABossEnemy::PlayBossSpawnIntroAnimation()
@@ -952,12 +975,12 @@ void ABossEnemy::StartStealthDivePhase()
 
 	PlayAnimMontage(StealthDiveMontage); // 뛰어드는 몽타주 재생
 
-	// 100% 완료 시 안전장치 델리게이트 (예외 상황 대비)
+	// 몰타주 완료 시 안전장치 델리게이트
 	FOnMontageEnded EndDelegate;
 	EndDelegate.BindUObject(this, &ABossEnemy::OnStealthDiveMontageEnded);
 	GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthDiveMontage);
 
-	// **특정 지점에서 다음 단계로 넘어가는 타이머**
+	// 특정 지점에서 다음 단계로 넘어가는 타이머
 	float MontageLength = StealthDiveMontage->GetPlayLength(); // 몽타주 전체 길이 가져오기
 	float TransitionTiming = MontageLength * 0.8f; // 지점 계산
 
@@ -969,10 +992,13 @@ void ABossEnemy::StartStealthDivePhase()
 		false // 반복 안함
 	);
 
+	if (EquippedBossKatana)
+	{
+		EquippedBossKatana->SetActorHiddenInGame(true); // 액터 단위 숨김
+	}
+
 	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 2: Dive Animation - will transition at 90%% (%.2f seconds)"), TransitionTiming);
 }
-
-
 
 void ABossEnemy::OnStealthDiveMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
@@ -990,7 +1016,7 @@ void ABossEnemy::StartStealthInvisiblePhase()
 	// 완전 투명 처리
 	SetActorHiddenInGame(true);
 
-	// **지속적인 위치 추적 시작 (0.2초마다 업데이트)**
+	// 지속적인 위치 추적 시작 (0.2초마다 업데이트)
 	GetWorld()->GetTimerManager().SetTimer(
 		StealthWaitTimer,
 		this,
@@ -999,7 +1025,7 @@ void ABossEnemy::StartStealthInvisiblePhase()
 		true  // 반복 실행
 	);
 
-	// **5초 후 킥 실행 타이머 (별도)**
+	// 5초 후 킥 실행 타이머 (별도)
 	FTimerHandle StealthKickExecutionTimer;
 	GetWorld()->GetTimerManager().SetTimer(
 		StealthKickExecutionTimer,
@@ -1046,10 +1072,10 @@ FVector ABossEnemy::CalculateRandomTeleportLocation()
 
 	// 랜덤 방향 선택 (전방, 후방, 좌측, 우측)
 	TArray<FVector> Directions;
-	Directions.Add(PlayerForward);          // 전방
-	Directions.Add(-PlayerForward);         // 후방
-	Directions.Add(PlayerRight);            // 우측
-	Directions.Add(-PlayerRight);           // 좌측
+	Directions.Add(PlayerForward); // 전방
+	Directions.Add(-PlayerForward); // 후방
+	Directions.Add(PlayerRight); // 우측
+	Directions.Add(-PlayerRight); // 좌측
 
 	int32 RandomIndex = FMath::RandRange(0, Directions.Num() - 1);
 	FVector ChosenDirection = Directions[RandomIndex];
@@ -1063,11 +1089,16 @@ FVector ABossEnemy::CalculateRandomTeleportLocation()
 
 void ABossEnemy::ExecuteStealthKick()
 {
+	if (EquippedBossKatana)
+	{
+		EquippedBossKatana->SetActorHiddenInGame(false); // 액터 단위 숨김
+	}
+
 	CurrentStealthPhase = 5;
 	bIsStealthInvisible = false;
 	bIsStealthKicking = true;
 	bIsInvincible = true;
-	// **킥 레이캐스트 플래그 초기화**
+	// 킥 레이캐스트 플래그 초기화
 	bHasExecutedKickRaycast = false;
 
 	// 위치 추적 타이머 정리
@@ -1117,7 +1148,7 @@ void ABossEnemy::ExecuteStealthKick()
 
 void ABossEnemy::ExecuteStealthKickRaycast()
 {
-	// **이미 실행했으면 스킵**
+	// 이미 실행했으면 스킵
 	if (bHasExecutedKickRaycast)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Kick raycast already executed - preventing duplicate"));
@@ -1145,7 +1176,7 @@ void ABossEnemy::ExecuteStealthKickRaycast()
 		CollisionParams
 	);
 
-	// **시각화 추가 - 히트 여부에 따라 색상 변경**
+	// 시각화 추가 - 히트 여부에 따라 색상 변경
 	if (bHit && HitResult.GetActor() == PlayerPawn)
 	{
 		// 히트 시 빨간색 라인
@@ -1243,7 +1274,6 @@ void ABossEnemy::ExecuteStealthFinish()
 	bIsStealthFinishing = true;
 	bIsInvincible = true;
 
-	// **추가: AI 제어와 이동 차단**
 	bCanBossAttack = false;           // 다른 공격 방지
 	bIsFullBodyAttacking = true;      // 전신 애니메이션으로 처리
 
@@ -1311,7 +1341,7 @@ void ABossEnemy::ExecuteStealthFinishRaycast()
 		CollisionParams
 	);
 
-	// **시각화 추가 - 히트 여부에 따라 색상 변경**
+	// 히트 여부에 따라 색상 변경
 	if (bHit && HitResult.GetActor() == PlayerPawn)
 	{
 		// 히트 시 빨간색 라인 (더 굵게)
@@ -1355,7 +1385,7 @@ void ABossEnemy::ExecuteStealthFinishRaycast()
 			PlayerPawn, 30.0f, StartLocation, HitResult, nullptr, this, nullptr
 		);
 
-		// **피니쉬 공격 히트 시 플레이어 중력 복구**
+		// 피니쉬 공격 히트 시 플레이어 중력 복구
 		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
 		if (PlayerCharacter)
 		{
@@ -1383,7 +1413,7 @@ void ABossEnemy::ExecuteStealthFinishRaycast()
 			8.0f // 더 굵게
 		);
 
-		// 빗나간 경우에도 중력 복구 (안전장치)
+		// 빗나간 경우에도 중력 복구 안전장치
 		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
 		if (PlayerCharacter)
 		{
@@ -1401,7 +1431,7 @@ void ABossEnemy::OnStealthFinishMontageEnded(UAnimMontage* Montage, bool bInterr
 {
 	UE_LOG(LogTemp, Warning, TEXT("Stealth Finish Montage Ended"));
 
-	// **애니메이션 상태 복원**
+	// 애니메이션 상태 복원
 	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
 	if (AnimInstance)
 	{
@@ -1418,7 +1448,7 @@ void ABossEnemy::OnStealthFinishMontageEnded(UAnimMontage* Montage, bool bInterr
 
 void ABossEnemy::EndStealthAttack()
 {
-	// **추적 타이머 정리 (안전장치)**
+	// 추적 타이머 정리 안전장치
 	GetWorld()->GetTimerManager().ClearTimer(StealthWaitTimer);
 
 	// 모든 상태 초기화
@@ -1430,11 +1460,11 @@ void ABossEnemy::EndStealthAttack()
 	bIsStealthFinishing = false;
 	bIsInvincible = false;
 	SetActorHiddenInGame(false);
-	// **공격 상태 강제 복구**
+	// 공격 상태 강제 복구
 	bCanBossAttack = true;
 	bIsFullBodyAttacking = false;
 
-	// **안전장치: 플레이어 중력 복구**
+	// 안전장치: 플레이어 중력 복구
 	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
 	if (PlayerPawn)
 	{
@@ -1467,7 +1497,7 @@ void ABossEnemy::EndStealthAttack()
 	{
 		BossAI->HandleStealthPhaseTransition(0);
 
-		// **추가 안전장치: AI 상태 강제 초기화**
+		// 추가 안전장치: AI 상태 강제 초기화
 		GetWorld()->GetTimerManager().SetTimerForNextTick([BossAI, this]()
 			{
 				if (IsValid(BossAI) && IsValid(this))
@@ -1493,6 +1523,21 @@ void ABossEnemy::OnStealthCooldownEnd()
 	UE_LOG(LogTemp, Warning, TEXT("Stealth Attack Ready"));
 }
 
+void ABossEnemy::StartAttack()
+{
+	if (EquippedBossKatana)
+	{
+		EquippedBossKatana->EnableAttackHitDetection();
+	}
+}
+
+void ABossEnemy::EndAttack()
+{
+	if (EquippedBossKatana)
+	{
+		EquippedBossKatana->DisableAttackHitDetection();
+	}
+}
 
 float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
@@ -1721,6 +1766,13 @@ void ABossEnemy::HideBossEnemy()
 		AICon->Destroy(); // AI 컨트롤러 완전 제거
 	}
 
+	// 무기 정리
+	if (EquippedBossKatana && IsValid(EquippedBossKatana)) // 무기 유효성 검사
+	{
+		EquippedBossKatana->HideKatana(); // AI가 정리 후 무기를 제거하는 HideKatana 함수 호출
+		EquippedBossKatana = nullptr; // 무기 참조 해제
+	}
+
 	// 3. 무브먼트 시스템 정리
 	UCharacterMovementComponent* MovementComp = GetCharacterMovement(); // 캐릭터 무브먼트 컴포넌트 참조 받아옴
 	if (MovementComp && IsValid(MovementComp)) // 무브먼트 컴포넌트가 있고 유효하다면
@@ -1768,3 +1820,4 @@ void ABossEnemy::HideBossEnemy()
 			}
 		});
 }
+

@@ -746,7 +746,6 @@ void AEnemy::StartAttack(EAttackType AttackType)
 {
     if (EquippedKatana)
     {
-        //EquippedKatana->StartAttack();
         EquippedKatana->EnableAttackHitDetection(AttackType);
     }
 }
@@ -755,7 +754,6 @@ void AEnemy::EndAttack()
 {
     if (EquippedKatana)
     {
-        //EquippedKatana->EndAttack();
         EquippedKatana->DisableAttackHitDetection();
     }
 }
