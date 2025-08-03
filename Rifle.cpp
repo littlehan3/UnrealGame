@@ -255,14 +255,12 @@ void ARifle::ResetFire()
 
 void ARifle::ProcessHit(const FHitResult& HitResult, FVector ShotDirection)
 {
-    AEnemy* Enemy = Cast<AEnemy>(HitResult.GetActor());  // 맞은 액터가 적인지 확인
-    if (Enemy)
+    AActor* HitActor = HitResult.GetActor();
+    if (HitActor)
     {
-        float AppliedDamage = (HitResult.BoneName == "head") ? Damage * 2.0f : Damage;
+        float AppliedDamage = (HitResult.BoneName == "Head") ? Damage * 100.0f : Damage;
 
-        UE_LOG(LogTemp, Warning, TEXT("ProcessHit: %s took %f damage"), *Enemy->GetName(), AppliedDamage);
-
-        UGameplayStatics::ApplyPointDamage(Enemy, AppliedDamage, ShotDirection, HitResult, GetOwner()->GetInstigatorController(), this, UDamageType::StaticClass());
+        UGameplayStatics::ApplyPointDamage(HitActor, AppliedDamage, ShotDirection, HitResult, GetOwner()->GetInstigatorController(), this, UDamageType::StaticClass());
 
         // Impact Effect - 머즐 플래시처럼 조기 종료 기능 추가
         if (ImpactEffect)

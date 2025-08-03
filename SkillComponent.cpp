@@ -182,14 +182,14 @@ void USkillComponent::ApplySkill2Effect()
         false, {}, EDrawDebugTrace::None, HitResults, true
     );
 
-    TSet<AEnemy*> HitEnemies;
+    TSet<AActor*> HitActors;
     for (const FHitResult& Hit : HitResults)
     {
-        AEnemy* Enemy = Cast<AEnemy>(Hit.GetActor());
-        if (Enemy && !HitEnemies.Contains(Enemy))
+        AActor* HitActor = Hit.GetActor();
+        if (HitActor && HitActor != OwnerCharacter && !HitActors.Contains(HitActor))
         {
-            UGameplayStatics::ApplyDamage(Enemy, Skill2Damage, OwnerCharacter->GetController(), OwnerCharacter, UDamageType::StaticClass());
-            HitEnemies.Add(Enemy);
+            UGameplayStatics::ApplyDamage(HitActor, Skill2Damage, OwnerCharacter->GetController(), OwnerCharacter, UDamageType::StaticClass());
+            HitActors.Add(HitActor);
         }
     }
 

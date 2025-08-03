@@ -1820,4 +1820,3 @@ void ABossEnemy::HideBossEnemy()
 			}
 		});
 }
-
