@@ -42,8 +42,6 @@ void UEnemyAnimInstance::NativeUpdateAnimation(float DeltaTime)
     Direction = CalculateDirection(EnemyCharacter->GetVelocity(), EnemyCharacter->GetActorRotation());
 }
 
-
-
 // 이동 방향 계산 함수 구현
 float UEnemyAnimInstance::CalculateDirection(const FVector& Velocity, const FRotator& BaseRotation)
 {

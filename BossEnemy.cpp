@@ -930,7 +930,7 @@ void ABossEnemy::OnRangedAttackMontageEnded(UAnimMontage* Montage, bool bInterru
 void ABossEnemy::PlayBossStealthAttackAnimation()
 {
     if (!StealthStartMontage) return;
-	// **쿨타임 체크만 하고 bCanUseStealthAttack은 false로 설정하지 않음**
+	// 쿨타임 체크만 하고 bCanUseStealthAttack은 false로 설정하지 않음
 	if (!bCanUseStealthAttack)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Stealth Attack is on cooldown"));

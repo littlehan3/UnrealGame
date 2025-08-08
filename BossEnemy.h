@@ -19,7 +19,7 @@ class LOCOMOTION_API ABossEnemy : public ACharacter
 public:
 	ABossEnemy();
 
-	virtual void PostInitializeComponents() override; // AI 이동
+	virtual void PostInitializeComponents() override; // AI 컨트롤러 확인 함수
 
 	void PlayBossNormalAttackAnimation(); // 일반공격 애니메이션 실행 함수
 	void PlayBossUpperBodyAttackAnimation(); // 상체 전용 애니메이션 실행 함수
