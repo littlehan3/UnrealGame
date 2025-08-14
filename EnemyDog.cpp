@@ -3,11 +3,14 @@
 #include "EnemyDogAIController.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "Engine/OverlapResult.h" // FOverlapResult 구조체 사용
 
 AEnemyDog::AEnemyDog()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bCanAttack = true;
+	bIsAttacking = false;
 
 	AIControllerClass = AEnemyDogAIController::StaticClass(); // AI 컨트롤러 설정
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned; //스폰 시에도 AI 컨트롤러 자동 할당
@@ -118,7 +121,12 @@ void AEnemyDog::PlayNormalAttackAnimation()
 
 	if (SelectedMontage)
 	{
-		float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f); // 선택된 몽타주를 재생
+		float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.5f); // 선택된 몽타주를 재생
+
+		// 몽타주 종료 델리게이트 연결
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, &AEnemyDog::OnAttackMontageEnded);
+		AnimInstance->Montage_SetEndDelegate(EndDelegate, SelectedMontage);
 	}
 
 	AEnemyDogAIController* AICon = Cast<AEnemyDogAIController>(GetController()); // 공격 실행 후
@@ -128,6 +136,14 @@ void AEnemyDog::PlayNormalAttackAnimation()
 	}
 	
 	bCanAttack = false;
+	bIsAttacking = true;
+}
+
+void AEnemyDog::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	bCanAttack = true;
+	bIsAttacking = false;
+	bHasExecutedRaycast = false;
 }
 
 float AEnemyDog::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -171,14 +187,25 @@ void AEnemyDog::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	if (bIsDead) return;
 
-	UEnemyDogAnimInstance* AnimInstance = Cast<UEnemyDogAnimInstance>(GetMesh()->GetAnimInstance()); // 애님인스턴스를 불러옴
-	// 공중 스턴 상태일 때만 다시 스턴 애니메이션 실행
+	UEnemyDogAnimInstance* AnimInstance = Cast<UEnemyDogAnimInstance>(GetMesh()->GetAnimInstance());
 	if (bIsInAirStun)
 	{
 		if (AnimInstance && InAirStunMontage)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Hit animation ended while airborne. Resuming InAirStunMontage."));
+			// 스턴 몽타주 재생 전에 히트 몽타주 타이머가 반복하지 못하게 막기 위해 타이머 정지
+			GetWorld()->GetTimerManager().ClearTimer(StunAnimRepeatTimerHandle);
+
 			AnimInstance->Montage_Play(InAirStunMontage, 1.0f);
+
+			// 스턴 몽타주 반복 타이머 재개
+			GetWorld()->GetTimerManager().SetTimer(
+				StunAnimRepeatTimerHandle,
+				this,
+				&AEnemyDog::PlayStunMontageLoop,
+				0.4f,
+				true
+			);
 		}
 	}
 	else
@@ -192,34 +219,34 @@ void AEnemyDog::Die()
 	if (bIsDead) return;
 	bIsDead = true;
 
-	StopActions();
+	// 타이머
+	GetWorld()->GetTimerManager().ClearTimer(StunAnimRepeatTimerHandle);
+	GetWorld()->GetTimerManager().ClearTimer(StunTimerHandle);
 
-	float HideTime = 3.0f;
-
-	UEnemyDogAnimInstance* AnimInstance = Cast<UEnemyDogAnimInstance>(GetMesh()->GetAnimInstance()); // 애님인스턴스를 불러옴
-	if (bIsInAirStun && InAirStunDeathMontage) // 공중에서 사망 시
+	// 몽타주 재생(지상/공중 구분)
+	UEnemyDogAnimInstance* AnimInstance = Cast<UEnemyDogAnimInstance>(GetMesh()->GetAnimInstance());
+	if ((bIsInAirStun || GetCharacterMovement()->IsFalling()) && InAirStunDeathMontage)
 	{
-		float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
-		AnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f); // 애니메이션 재생속도 조절
-		HideTime = AirDeathDuration * 0.9f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
+		AnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f);
 	}
-	else if (!AnimInstance || DeadMontages.Num() == 0) return; // 애님인스턴스가 없거나 몽타주배열이 비었다면 리턴
-	int32 RandomIndex = FMath::RandRange(0, DeadMontages.Num() - 1); // 사망 몽타주 랜덤재생 범위
-	UAnimMontage* SelectedMontage = DeadMontages[RandomIndex]; // 해당 범위 안에서 몽타주를 선택
-
-	if (SelectedMontage)
+	else if (DeadMontages.Num() > 0)
 	{
-		float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f); // 선택된 몽타주를 재생
-	}
-	else
-	{
-		// 사망 애니메이션이 없을 경우 즉시 사라지게 함
-		HideEnemy();
-		return;
+		int32 Rand = FMath::RandRange(0, DeadMontages.Num() - 1);
+		AnimInstance->Montage_Play(DeadMontages[Rand], 1.0f);
 	}
 
-	// 일정 시간 후 사라지도록 설정
-	GetWorld()->GetTimerManager().SetTimer(DeathTimerHandle, this, &AEnemyDog::HideEnemy, HideTime, false);
+	// 사망 호출 시점 기준 고정 시간 후 폭발/제거
+	constexpr float FixedExplosionDelay = 0.5f;
+	GetWorld()->GetTimerManager().SetTimer(
+		DeathTimerHandle,
+		[this]()
+		{
+			Explode();
+			HideEnemy();
+		},
+		FixedExplosionDelay,
+		false
+	);
 
 	// AI 컨트롤러 중지
 	AEnemyDogAIController* AICon = Cast<AEnemyDogAIController>(GetController());
@@ -237,37 +264,85 @@ void AEnemyDog::Die()
 	GetCharacterMovement()->StopMovementImmediately();
 	SetActorTickEnabled(false); // AI Tick 중지
 
-	Explode();
 	UE_LOG(LogTemp, Warning, TEXT("Die() called: Setting HideEnemy timer"));
+}
+
+void AEnemyDog::OnDeadMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (Montage == InAirStunDeathMontage) // 인에어 사망이면
+	{
+		UE_LOG(LogTemp, Warning, TEXT("InAir death montage ended, triggering explosion"));
+		Explode();
+		HideEnemy();
+	}
+	else
+	{
+		Explode();
+		HideEnemy();
+	}
 }
 
 void AEnemyDog::Explode()
 {
 	if (bIsDead == false) return; // 사망하지 않은 상태에서 폭발 방지
 
+	// 폭발 반경 내 플레이어만 피해 적용
 	FVector ExplosionCenter = GetActorLocation();
-	float ExplosionRadius = 300.0f; // 필요시 UPROPERTY로 조정
-	float ExplosionDamage = 40.0f;
+	float ExplosionRadiusTemp = ExplosionRadius; // 변수 그대로 사용
 
-	// 폭발 범위 내의 액터들에게 데미지를 적용
-	UGameplayStatics::ApplyRadialDamage(
-		GetWorld(),
-		ExplosionDamage,
+	// Pawn 채널로 플레이어 감지
+	TArray<FOverlapResult> Overlaps;
+	FCollisionShape CollisionShape = FCollisionShape::MakeSphere(ExplosionRadiusTemp);
+
+	bool bHasOverlaps = GetWorld()->OverlapMultiByChannel(
+		Overlaps,
 		ExplosionCenter,
-		ExplosionRadius,
-		nullptr, // DamageTypeClass (기본 데미지 타입)
-		TArray<AActor*>(), // IgnoreActors (없음)
-		this, // 데미지 가한 액터
-		GetController(), // Instigator(컨트롤러)
-		true // DoFullDamage
+		FQuat::Identity,
+		ECC_Pawn,
+		CollisionShape
 	);
 
-	// 폭발 범위 시각화 (디버그용)
-	DrawDebugSphere(GetWorld(), ExplosionCenter, ExplosionRadius, 32, FColor::Red, false, 3.0f, 0, 2.0f);
+	if (bHasOverlaps)
+	{
+		ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
+		for (auto& Overlap : Overlaps)
+		{
+			if (Overlap.GetActor() == PlayerCharacter)
+			{
+				UGameplayStatics::ApplyDamage(
+					PlayerCharacter,
+					ExplosionDamage,
+					GetInstigator() ? GetInstigator()->GetController() : nullptr,
+					this,
+					nullptr
+				);
+				break; // 플레이어 1명만 처리
+			}
+		}
+	}
 
-	// 폭발 파티클, 사운드 등 효과
+	// 폭발 범위 시각화
+	DrawDebugSphere(GetWorld(), ExplosionCenter, ExplosionRadius, 32, FColor::Red, false, 1.0f, 0, 2.0f);
 
-	UE_LOG(LogTemp, Warning, TEXT("EnemyDog exploded at location: %s"), *ExplosionCenter.ToString());
+	// 폭발 이펙트 생성
+	if (ExplosionEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			ExplosionEffect,
+			GetActorLocation(),
+			GetActorRotation(),
+			FVector(1.0f),
+			true,
+			true
+		);
+	}
+
+	// 폭발 사운드 재생
+	if (ExplosionSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, ExplosionSound, GetActorLocation());
+	}
 }
 
 void AEnemyDog::HideEnemy()
@@ -364,6 +439,7 @@ void AEnemyDog::EnterInAirStunState(float Duration)
 		UE_LOG(LogTemp, Warning, TEXT("Stopping AI manually..."));
 		AICon->StopMovement();
 	}
+
 	// 적을 위로 띄우기 (LaunchCharacter 먼저 실행)
 	FVector LaunchDirection = FVector(0.0f, 0.0f, 1.0f); // 위쪽 방향
 	float LaunchStrength = 600.0f; // 강한 힘 적용
@@ -393,9 +469,70 @@ void AEnemyDog::EnterInAirStunState(float Duration)
 		AnimInstance->Montage_Play(InAirStunMontage, 1.0f);
 	}
 
+	// 스턴 루프 타이머 시작 (에셋이 약 0.6정도 길이)
+	GetWorld()->GetTimerManager().SetTimer(
+		StunAnimRepeatTimerHandle,
+		this,
+		&AEnemyDog::PlayStunMontageLoop,
+		0.4f,    // 몽타주 길이보다 짧게
+		true     // 루프
+	);
+
+	// 스턴 전체 지속시간 타이머 끝나면 Exit
+	GetWorld()->GetTimerManager().SetTimer(
+		StunTimerHandle,
+		this,
+		&AEnemyDog::ExitInAirStunState,
+		Duration,
+		false
+	);
+
 	// 일정 시간이 지나면 원래 상태로 복귀
 	GetWorld()->GetTimerManager().SetTimer(StunTimerHandle, this, &AEnemyDog::ExitInAirStunState, Duration, false);
 	UE_LOG(LogTemp, Warning, TEXT("EnemyDog %s is now stunned for %f seconds!"), *GetName(), Duration);
+}
+
+void AEnemyDog::PlayStunMontageLoop()
+{
+	if (bIsDead || !bIsInAirStun) return;
+
+	UEnemyDogAnimInstance* AnimInstance = Cast<UEnemyDogAnimInstance>(GetMesh()->GetAnimInstance());
+	if (AnimInstance && InAirStunMontage)
+	{
+		// 히트 몽타주 또는 사망 몽타주가 재생중일 경우 스턴 몽타주 반복 재생 중지
+		bool bIsHitPlaying = false;
+		bool bIsDeathPlaying = false;
+
+		// HitMontages 배열에 대해 한 번이라도 재생중인지 체크
+		for (auto* HitMontage : HitMontages)
+		{
+			if (AnimInstance->Montage_IsPlaying(HitMontage))
+			{
+				bIsHitPlaying = true;
+				break;
+			}
+		}
+		// 사망 몽타주 재생 체크
+		if (AnimInstance->Montage_IsPlaying(InAirStunDeathMontage))
+		{
+			bIsDeathPlaying = true;
+		}
+		else
+		{
+			for (auto* DeathMontage : DeadMontages)
+			{
+				if (AnimInstance->Montage_IsPlaying(DeathMontage))
+				{
+					bIsDeathPlaying = true;
+					break;
+				}
+			}
+		}
+		if (!bIsHitPlaying && !bIsDeathPlaying)
+		{
+			AnimInstance->Montage_Play(InAirStunMontage, 1.0f);
+		}
+	}
 }
 
 void AEnemyDog::ExitInAirStunState()
@@ -404,6 +541,9 @@ void AEnemyDog::ExitInAirStunState()
 	UE_LOG(LogTemp, Warning, TEXT("Exiting InAirStunState..."));
 
 	bIsInAirStun = false;
+
+	// 타이머 해제
+	GetWorld()->GetTimerManager().ClearTimer(StunAnimRepeatTimerHandle);
 
 	// 중력 복구 및 낙하 상태로 변경
 	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
@@ -476,14 +616,93 @@ void AEnemyDog::ApplyGravityPull(FVector ExplosionCenter, float PullStrength)
 		*GetName(), AdjustedPullStrength);
 }
 
+void AEnemyDog::RaycastAttack()
+{
+	if (bHasExecutedRaycast) return;
+	bHasExecutedRaycast = true;
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (!PlayerPawn) return;
+
+	FVector StartLocation = GetActorLocation();
+	FVector PlayerLocation = PlayerPawn->GetActorLocation();
+	FVector Direction = (PlayerLocation - StartLocation).GetSafeNormal();
+	FVector EndLocation = StartLocation + (Direction * 150.0f);
+
+	FHitResult HitResult;
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(this);
+
+	bool bHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		StartLocation,
+		EndLocation,
+		ECollisionChannel::ECC_Pawn,
+		CollisionParams
+	);
+
+	// 시각화 추가 - 히트 여부에 따라 색상 변경
+	if (bHit && HitResult.GetActor() == PlayerPawn)
+	{
+		// 히트 시 빨간색 라인
+		DrawDebugLine(
+			GetWorld(),
+			StartLocation,
+			HitResult.Location,
+			FColor::Red,
+			false,
+			3.0f, // 3초간 표시
+			0,
+			5.0f // 굵기
+		);
+
+		// 히트 지점에 구체 표시
+		DrawDebugSphere(
+			GetWorld(),
+			HitResult.Location,
+			20.0f,
+			12,
+			FColor::Red,
+			false,
+			3.0f
+		);
+
+		UGameplayStatics::ApplyPointDamage(
+			PlayerPawn, Damage, StartLocation, HitResult, nullptr, this, nullptr
+		);
+
+	}
+	else
+	{
+		// 미스 시 초록색 라인
+		DrawDebugLine(
+			GetWorld(),
+			StartLocation,
+			EndLocation,
+			FColor::Green,
+			false,
+			3.0f, // 3초간 표시
+			0,
+			5.0f // 굵기
+		);
+	}
+}
+
 void AEnemyDog::StartAttack()
 {
+	bIsAttacking = true;
+	bHasExecutedRaycast = false;
+	RaycastHitActors.Empty();
+	DamagedActors.Empty();
+	bCanAttack = false;
+	RaycastAttack();
 }
 
 void AEnemyDog::EndAttack()
 {
-}
-
-void AEnemyDog::StopActions()
-{
+	bIsAttacking = false;
+	bHasExecutedRaycast = false;
+	RaycastHitActors.Empty();
+	DamagedActors.Empty();
+	bCanAttack = true;
 }

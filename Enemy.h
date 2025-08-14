@@ -43,7 +43,11 @@ public:
 
     bool bIsInAirStun = false; // 공중 스턴 상태 여부
     
-    void ApplyGravityPull(FVector ExplosionCenter, float PullStrength);
+    void EnableGravityPull(FVector ExplosionCenter, float PullStrength); // 중력장으로 적을 잡아둠
+    void DisableGravityPull(); // 중력장 효과 해제
+
+    bool bIsTrappedInGravityField = false; // 중력장 상태 여부
+    FVector GravityFieldCenter = FVector::ZeroVector; // 중력장 중심 좌표
 
     // 공격 시작/종료 함수
     void StartAttack(EAttackType AttackType); // true: 강공격, false: 일반공격

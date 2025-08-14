@@ -10,6 +10,8 @@
 #include "DrawDebugHelpers.h"
 #include "Cannon.h"
 #include "Animation/AnimInstance.h"
+#include "BossEnemy.h"
+#include "EnemyDog.h"
 
 USkillComponent::USkillComponent()
 {
@@ -106,6 +108,21 @@ void USkillComponent::ApplySkill1Effect()
             if (Dist <= Skill1Range)
             {
                 Enemy->EnterInAirStunState(4.0f);
+            }
+        }
+    }
+
+    TArray<AActor*> Dogs;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyDog::StaticClass(), Dogs);
+    for (AActor* Actor : Dogs)
+    {
+        AEnemyDog* Dog = Cast<AEnemyDog>(Actor);
+        if (Dog && Dog->GetCharacterMovement())
+        {
+            float Dist = FVector::Dist(Center, Dog->GetActorLocation());
+            if (Dist <= Skill1Range)
+            {
+                Dog->EnterInAirStunState(5.0f);
             }
         }
     }
@@ -225,7 +242,7 @@ void USkillComponent::UseSkill3()
 
     RotateCharacterToInputDirection();
 
-    FVector SpawnLoc = OwnerCharacter->GetActorLocation() + OwnerCharacter->GetActorForwardVector() * 150.f + FVector(0, 0, 30.f);
+    FVector SpawnLoc = OwnerCharacter->GetActorLocation() + OwnerCharacter->GetActorForwardVector() * 200.f + FVector(0, 0, 30.f);
     FRotator SpawnRot = OwnerCharacter->GetActorRotation();
 
     if (Skill3ProjectileClass)
@@ -535,7 +552,7 @@ void USkillComponent::PlayAimSkill3Montage()
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
 
-    Anim->Montage_Play(AimSkill3Montage, 1.3f);
+    Anim->Montage_Play(AimSkill3Montage, 1.8f);
 
     FOnMontageEnded EndDelegate;
     EndDelegate.BindUObject(this, &USkillComponent::OnAimSkill3MontageEnded);
@@ -676,4 +693,14 @@ void USkillComponent::CancelAllSkills()
     // 기타 스킬 상태 초기화
     bIsUsingSkill1 = bIsUsingSkill2 = bIsUsingSkill3 = false;
     bIsUsingAimSkill3 = false;
+}
+
+bool USkillComponent::IsCastingSkill() const
+{
+    return bIsUsingSkill1 ||
+        bIsUsingSkill2 ||
+        bIsUsingSkill3 ||
+        bIsUsingAimSkill1 ||
+        bIsUsingAimSkill2 ||
+        bIsUsingAimSkill3;
 }

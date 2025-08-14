@@ -52,7 +52,7 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         return; // 다른 행동은 수행하지 않음
     }
 
-    // **스텔스 종료 후 Idle 상태에 갇힌 경우 강제로 MoveToPlayer 상태로 전환**
+    // 스텔스 종료 후 Idle 상태에 갇힌 경우 강제로 MoveToPlayer 상태로 전환
     if (CurrentState == EBossEnemyAIState::Idle && !Boss->bIsPlayingBossIntro)
     {
         float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
@@ -63,7 +63,7 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         }
     }
 
-    // **스텔스 종료 후 AI 상태 복구 안전장치**
+    // 스텔스 종료 후 AI 상태 복구 안전장치
     if (!bIsAIDisabledForStealth && !IsExecutingStealthAttack() &&
         !Boss->bIsFullBodyAttacking && !Boss->bIsPlayingBossIntro)
     {

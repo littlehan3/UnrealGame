@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "EnemyKatana.h"
 #include "EnemyBossKatana.h"
+#include "EnemyDog.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "AnimNotify_EnemyStartAttack.generated.h"
 

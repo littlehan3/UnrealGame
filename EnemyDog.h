@@ -4,6 +4,7 @@
 #include "GameFramework/Character.h"
 #include "EnemyDogAnimInstance.h"
 #include "Animation/AnimInstance.h"
+#include "NiagaraSystem.h"
 #include "EnemyDog.generated.h"
 
 UCLASS()
@@ -29,20 +30,29 @@ public:
 	) override;
 	void Die();
 	void Explode();
-	void StopActions();
 	void ApplyBaseWalkSpeed();
 	void HideEnemy();
 	void EnterInAirStunState(float Duration);
 	void ExitInAirStunState();
 	void ApplyGravityPull(FVector ExplosionCenter, float PullStrength);
+	void RaycastAttack();
 	void StartAttack();
 	void EndAttack();
+	void PlayStunMontageLoop();
+
+	// 판정 데이터
+	TSet<AActor*> RaycastHitActors;
+	TSet<AActor*> DamagedActors;
 
 	UPROPERTY(EditAnyWhere, BlueprintReadWrite, Category = "Health")
 	float Health = 50.0f;
 	bool bIsDead = false;
 	bool bIsInAirStun = false;
 	bool bCanAttack = false;
+	bool bIsAttacking = false;
+	bool bHasExecutedRaycast = false;
+	float Damage = 10.0f;
+	float ExplosionDamage = 40.0f;
 
 protected:
 	virtual void BeginPlay() override;
@@ -66,10 +76,23 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
 	UAnimMontage* InAirStunDeathMontage;
 
+	UPROPERTY(EditDefaultsOnly)
+	UNiagaraSystem* ExplosionEffect;
+
+	UPROPERTY(EditAnywhere, Category = "SoundEffects")
+	USoundBase* ExplosionSound;
+
 	UFUNCTION()
 	void OnIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 	void OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 에어본 상태에서 히트시 상태를 관리하기 위한 함수
+	void OnDeadMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 	FTimerHandle DeathTimerHandle;
 	FTimerHandle StunTimerHandle;
+	FTimerHandle StunAnimRepeatTimerHandle;
+
+	UPROPERTY(EditAnywhere, Category = "Missile")
+	float ExplosionRadius = 100.f;
+
 };

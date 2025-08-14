@@ -21,8 +21,8 @@ AAimSkill3Projectile::AAimSkill3Projectile()
     MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Movement"));
-    ProjectileMovement->InitialSpeed = 1000.f;
-    ProjectileMovement->MaxSpeed = 1000.f;
+    ProjectileMovement->InitialSpeed = 1500.f;
+    ProjectileMovement->MaxSpeed = 1500.f;
     ProjectileMovement->ProjectileGravityScale = 3.0f;
     ProjectileMovement->bRotationFollowsVelocity = false;
 }

@@ -6,6 +6,7 @@
 #include "Animation/AnimInstance.h"
 #include "Components/CapsuleComponent.h"
 #include "DrawDebugHelpers.h"
+#include "NiagaraSystem.h"
 #include "BossEnemy.generated.h"
 
 class ABossProjectile;
@@ -232,4 +233,10 @@ private:
 	//BP에서 Katana Blueprint 지정
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
 	TSubclassOf<AEnemyBossKatana> BossKatanaClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Effects")
+	UNiagaraSystem* StealthFinishEffect;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Effects")
+	USoundBase* StealthFinishSound;
 };

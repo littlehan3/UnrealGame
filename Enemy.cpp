@@ -700,46 +700,67 @@ void AEnemy::ExitInAirStunState()
     bIsInAirStun = false;
 }
 
-void AEnemy::ApplyGravityPull(FVector ExplosionCenter, float PullStrength)
+void AEnemy::EnableGravityPull(FVector ExplosionCenter, float PullStrength)
 {
     if (bIsDead) return; // 죽은 적은 끌어당기지 않음
 
-    // 폭발 범위 내에서 적을 빨아들이는 로직
-    FVector Direction = ExplosionCenter - GetActorLocation();
-    float Distance = Direction.Size();
-    Direction.Normalize();  // 방향 벡터 정규화
+    // 중력장 상태 업데이트
+    bIsTrappedInGravityField = true;
+    GravityFieldCenter = ExplosionCenter;
 
-    // 거리에 따라 힘 조절 (가까울수록 더 강하게)
-    float DistanceFactor = FMath::Clamp(1.0f - (Distance / 500.0f), 0.1f, 1.0f);
-    float AdjustedPullStrength = PullStrength * DistanceFactor;
-
-    // 캐릭터가 공중에 있는 상태라면 더 강한 힘 적용
-    if (GetCharacterMovement()->IsFalling())
+    // AI·이동 전면 차단
+    if (AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController()))
     {
-        AdjustedPullStrength *= 1.5f;
+        AICon->StopMovement();
+        AICon->SetActorTickEnabled(false); // AI Tick 완전 중지
     }
 
-    // 새로운 속도 설정
-    FVector NewVelocity = Direction * AdjustedPullStrength;
-    GetCharacterMovement()->Velocity = NewVelocity;
+    GetCharacterMovement()->StopMovementImmediately();
+    GetCharacterMovement()->DisableMovement(); // AI 네비게이션 이동 막음
+    GetCharacterMovement()->SetMovementMode(MOVE_Flying); // 중심 고정에 유리
 
-    // 잠시 네비게이션 이동 비활성화
-    GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+    // 중력장 중앙으로 강제 이동 로직
+    FVector Direction = GravityFieldCenter - GetActorLocation();
+    float Distance = Direction.Size();
 
-    // 일정 시간 후 네비게이션 이동 다시 활성화
-    FTimerHandle ResetMovementHandle;
-    GetWorld()->GetTimerManager().SetTimer(
-        ResetMovementHandle,
-        [this]()
-        {
-            GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
-        },
-        0.5f, // 0.5초 후 원래 이동 모드로 복귀
-        false
-    );
+    // 너무 중앙에 가까우면 바로 가운데 고정
+    if (Distance < 50.f)
+    {
+        SetActorLocation(GravityFieldCenter, true);
+    }
+    else
+    {
+        Direction.Normalize();
+        float PullSpeed = PullStrength * 10.f; // 강도 강화
+        FVector NewLocation = GetActorLocation() + Direction * PullSpeed * GetWorld()->GetDeltaSeconds();
+        SetActorLocation(NewLocation, true);
+    }
 
-    UE_LOG(LogTemp, Warning, TEXT("Enemy %s pulled toward explosion center with strength %f"),
-        *GetName(), AdjustedPullStrength);
+    // 중력장에 붙잡힌 상태에서 절대 못 빠져나가도록 위치·이동 고정
+    GetCharacterMovement()->Velocity = FVector::ZeroVector;
+}
+
+void AEnemy::DisableGravityPull()
+{
+    if (!bIsTrappedInGravityField) return;
+
+    bIsTrappedInGravityField = false;
+
+    // 이동 모드 복구
+    ApplyBaseWalkSpeed();
+    GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
+    GetCharacterMovement()->SetDefaultMovementMode();
+    GetCharacterMovement()->StopMovementImmediately();
+
+    // AI 복구
+    if (AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController()))
+    {
+        // 다시 플레이어를 추적하게 함
+        AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+        AICon->SetActorTickEnabled(true); // AI Tick 완전 중지
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Enemy %s has been released from gravity field"), *GetName());
 }
 
 void AEnemy::StartAttack(EAttackType AttackType)

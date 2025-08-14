@@ -32,6 +32,7 @@ void UEnemyDogAnimInstance::NativeUpdateAnimation(float DeltaTime)
 		return;
 	}
 
+	bIsInAirStun = EnemyDogCharacter->bIsInAirStun;
 	Speed = EnemyDogCharacter->GetVelocity().Size();
 	Direction = CalculateDirection(EnemyDogCharacter->GetVelocity(), EnemyDogCharacter->GetActorRotation());
 }

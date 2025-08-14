@@ -34,13 +34,16 @@ private:
 	APawn* PlayerPawn;
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float AttackRange = 200.0f; // 공격 범위
+	float AttackRange = 150.0f; // 공격 범위
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float AttackCooldown = 2.0f; // 공격 쿨타임
+	float AttackCooldown = 1.0f; // 공격 쿨타임
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float ChaseStartDistance = 1000.0f; // 추적 시작 거리
+	float ChaseStartDistance = 2000.0f; // 추적 시작 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "AI")
+	float SurroundRadius = 100.0f; // 포위 반경
 
 	EEnemyDogAIState CurrentState = EEnemyDogAIState::Idle;
 
@@ -56,7 +59,7 @@ private:
 	void UpdateAIState(float DistanceToPlayer);
 	void SetAIState(EEnemyDogAIState NewState);
 	void ChasePlayer();
-
+	
 	FVector CachedTargetLocation;
 	bool bHasCachedTarget = false;
 

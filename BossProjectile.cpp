@@ -8,6 +8,7 @@
 #include "Engine/DamageEvents.h"
 #include "Engine/OverlapResult.h"
 #include "CollisionQueryParams.h"
+#include "MainCharacter.h"
 
 ABossProjectile::ABossProjectile()
 {
@@ -99,22 +100,25 @@ void ABossProjectile::ApplyAreaDamage()
 
     if (bHasOverlaps)
     {
-        // ← TSet으로 자동 중복 제거
+        // 중복 제거용 TSet
         TSet<AActor*> UniqueActors;
-
         for (const FOverlapResult& Overlap : Overlaps)
         {
             AActor* HitActor = Overlap.GetActor();
             if (HitActor && HitActor != Shooter)
             {
-                UniqueActors.Add(HitActor);  // TSet은 자동으로 중복 제거
+                // 메인 캐릭터만 필터링
+                if (HitActor->IsA(AMainCharacter::StaticClass()))
+                {
+                    UniqueActors.Add(HitActor);
+                }
             }
         }
 
-        // 중복 제거된 액터들에게 데미지 적용
+        // 필터링된 플레이어만 데미지 적용
         for (AActor* HitActor : UniqueActors)
         {
-            UE_LOG(LogTemp, Warning, TEXT("Applying damage to: %s"), *HitActor->GetName());
+            UE_LOG(LogTemp, Warning, TEXT("Applying damage to player: %s"), *HitActor->GetName());
 
             FDamageEvent DamageEvent;
             HitActor->TakeDamage(Damage, DamageEvent, nullptr, Shooter);

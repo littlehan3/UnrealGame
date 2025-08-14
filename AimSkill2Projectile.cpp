@@ -7,6 +7,7 @@
 #include "NiagaraFunctionLibrary.h"
 #include "DrawDebugHelpers.h"
 #include "Enemy.h"
+#include "NiagaraComponent.h"
 
 AAimSkill2Projectile::AAimSkill2Projectile()
 {
@@ -24,8 +25,8 @@ AAimSkill2Projectile::AAimSkill2Projectile()
 	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 메쉬의 콜리전 비활성화
 
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement")); // 투사체 이동 컴포넌트 생성
-	ProjectileMovement->InitialSpeed = 1500.0f; // 투사체 초기속도 
-	ProjectileMovement->MaxSpeed = 1500.0f; // 투사체 최고 속도
+	ProjectileMovement->InitialSpeed = 2000.0f; // 투사체 초기속도 
+	ProjectileMovement->MaxSpeed = 2000.0f; // 투사체 최고 속도
 	ProjectileMovement->ProjectileGravityScale = 0.0f; // 중력 영향 비활성화
 	ProjectileMovement->bRotationFollowsVelocity = true; // 이동 방향에 따라 회전
 
@@ -157,8 +158,9 @@ void AAimSkill2Projectile::SpawnPersistentExplosionArea(const FVector& Location)
 	// 지속적인 폭발 효과 생성
 	if (PersistentAreaEffect)
 	{
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-			GetWorld(), PersistentAreaEffect, Location, FRotator::ZeroRotator, FVector(1.0f), true, true, ENCPoolMethod::AutoRelease, true);
+		PersistentAreaNiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(), PersistentAreaEffect, Location, FRotator::ZeroRotator,
+			FVector(1.0f), true, true, ENCPoolMethod::AutoRelease, false);
 	}
 
 	// 지속적인 사운드 효과 생성
@@ -197,6 +199,38 @@ void AAimSkill2Projectile::SpawnPersistentExplosionArea(const FVector& Location)
 			{
 				PersistentAreaAudioComponent->FadeOut(0.5f, 0.0f);
 			}
+
+			if (PersistentAreaNiagaraComponent)
+			{
+				PersistentAreaNiagaraComponent->Deactivate();
+				GetWorldTimerManager().SetTimerForNextTick([this]()
+					{
+						if (PersistentAreaNiagaraComponent)
+						{
+							PersistentAreaNiagaraComponent->DestroyComponent();
+							PersistentAreaNiagaraComponent = nullptr;
+						}
+					});
+			}
+			// 모든 적 중력장 해제
+			TArray<AActor*> OverlappedActors;
+			TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+			ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+
+			TArray<AActor*> IgnoredActors;
+			IgnoredActors.Add(Shooter);
+
+			UKismetSystemLibrary::SphereOverlapActors(
+				GetWorld(), ExplosionLocation, DamageRadius,
+				ObjectTypes, AEnemy::StaticClass(), IgnoredActors, OverlappedActors);
+
+			for (AActor* Actor : OverlappedActors)
+			{
+				if (AEnemy* Enemy = Cast<AEnemy>(Actor))
+				{
+					Enemy->DisableGravityPull();
+				}
+			}
 		},
 		ExplosionDuration,
 		false);
@@ -234,7 +268,8 @@ void AAimSkill2Projectile::ApplyPersistentEffects()
 			AEnemy* Enemy = Cast<AEnemy>(Actor);
 			if (Enemy)
 			{
-				Enemy->ApplyGravityPull(ExplosionLocation, PullStrength);
+				Enemy->bIsTrappedInGravityField = true; // 한 번 들어왔으면 상태 True 
+				Enemy->EnableGravityPull(ExplosionLocation, PullStrength);
 			}
 			else
 			{
@@ -321,7 +356,7 @@ void AAimSkill2Projectile::ApplyAreaDamage()
 			AEnemy* Enemy = Cast<AEnemy>(HitActor);
 			if (Enemy)
 			{
-				Enemy->ApplyGravityPull(ExplosionCenter, PullStrength);
+				Enemy->EnableGravityPull(ExplosionCenter, PullStrength);
 			}
 			else
 			{

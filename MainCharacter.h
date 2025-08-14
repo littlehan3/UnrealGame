@@ -321,7 +321,7 @@ private:
     TArray<UAnimMontage*> DieMontages; // 사망 몽타주 저장하는 배열
 
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
-    USoundBase* NormalHitSound;
+    TArray<USoundBase*> NormalHitSounds;
 
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* BigHitSound;

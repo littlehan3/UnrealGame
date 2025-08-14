@@ -16,28 +16,14 @@ ASkill3Projectile::ASkill3Projectile()
     CollisionComponent->OnComponentHit.AddDynamic(this, &ASkill3Projectile::OnHit);
     RootComponent = CollisionComponent;
 
-    MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
-    MeshComponent->SetupAttachment(CollisionComponent);
-    MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
-    ProjectileMovement->InitialSpeed = 1000.0f;
-    ProjectileMovement->MaxSpeed = 1000.0f;
+    ProjectileMovement->InitialSpeed = 1500.0f;
+    ProjectileMovement->MaxSpeed = 1500.0f;
     ProjectileMovement->ProjectileGravityScale = 0.0f;
     ProjectileMovement->bRotationFollowsVelocity = true;
 
     InitialLifeSpan = 3.0f;
 }
-
-void ASkill3Projectile::Tick(float DeltaTime)
-{
-    Super::Tick(DeltaTime);
-
-    // 초당 720도 회전 (Yaw 기준)
-    FRotator RotationDelta(0.0f, 720.0f * DeltaTime, 0.0f);
-    MeshComponent->AddRelativeRotation(RotationDelta);
-}
-
 
 void ASkill3Projectile::BeginPlay()
 {
@@ -93,7 +79,6 @@ void ASkill3Projectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherAc
     {
         UGameplayStatics::PlaySoundAtLocation(this, ExplosionSound, GetActorLocation());
     }
-
 
     // 광역 피해 적용
     ApplyAreaDamage();

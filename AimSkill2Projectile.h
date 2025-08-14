@@ -67,6 +67,9 @@ private:
 	USoundBase* PersistentAreaSound; // 폭발영역 사운드
 
 	UPROPERTY()
+	UNiagaraComponent* PersistentAreaNiagaraComponent; // 스폰시 컴포넌트를 저장하고 지속시간 종료 시 직접 제어하기 위한 포인터
+
+	UPROPERTY()
 	UAudioComponent* FlightAudioComponent;  // 비행 사운드 오디오 컴포넌트
 
 	UPROPERTY()
@@ -75,15 +78,15 @@ private:
 	AActor* Shooter; // 투사체를 발사한 엑터
 
 	float Damage = 10.0f; // 투사체 데미지
-	float DamageRadius = 150.0f; // 투사체 폭발반경
-	float PullStrength = 500.0f; // 끌어당김 세기
+	float DamageRadius = 300.0f; // 투사체 폭발반경
+	float PullStrength = 1000.0f; // 끌어당김 세기
 
 	bool bHasReachedApex = false; // 투사체가 고점에 도달했는지 여부
-	float ApexHeight = 500.0f; // 고점 높이
+	float ApexHeight = 1500.0f; // 고점 높이
 	float DelayBeforeTracking = 0.5f; // 고점 도달 후 타겟 추적 전 딜레이
-	float DetectionRadius = 1200.0f; // 감지 범위
+	float DetectionRadius = 1500.0f; // 감지 범위
 
-	float ExplosionDuration = 5.0f; // 폭발 반경
+	float ExplosionDuration = 10.0f; // 폭발 지속 시간
 	float DamageInterval = 1.0f; // 주기적 데미지 적용 간격
 	bool bExplosionActive = false; // 폭발 이펙트가 활성화 되었는지 여부
 

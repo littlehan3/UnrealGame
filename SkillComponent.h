@@ -47,6 +47,8 @@ public:
 
     void CancelAllSkills();
 
+    bool IsCastingSkill() const; // 스킬 시전 상태 체크
+
 protected:
     virtual void BeginPlay() override;
 

@@ -108,16 +108,19 @@ void AEnemyBossKatana::PerformRaycastAttack()
         {
             for (const FHitResult& Hit : OutHits)
             {
-                if (Hit.GetActor())
-                {
-                    RaycastHitActors.Add(Hit.GetActor());
-                    ApplyDamage(Hit.GetActor());
+                AActor* HitActor = Hit.GetActor();
+                if (!HitActor) continue;
 
-                    if (Hit.GetActor()->IsA(AMainCharacter::StaticClass()))
-                    {
-                        DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12, FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);
-                        return;
-                    }
+                // 메인 캐릭터만 필터링
+                if (HitActor->IsA(AMainCharacter::StaticClass()))
+                {
+                    RaycastHitActors.Add(HitActor);
+                    ApplyDamage(HitActor);
+
+                    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12,
+                        FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);
+
+                    return; // 첫 맞은 메인 캐릭터에서 종료
                 }
             }
         }

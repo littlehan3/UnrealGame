@@ -9,6 +9,7 @@
 #include "BossProjectile.h"
 #include "EnemyBossKatana.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "NiagaraFunctionLibrary.h"
 
 ABossEnemy::ABossEnemy()
 {
@@ -1101,6 +1102,11 @@ void ABossEnemy::ExecuteStealthKick()
 	// 킥 레이캐스트 플래그 초기화
 	bHasExecutedKickRaycast = false;
 
+	// 이동 차단
+	DisableBossMovement();
+	bCanBossAttack = false;
+	bIsFullBodyAttacking = true;
+
 	// 위치 추적 타이머 정리
 	GetWorld()->GetTimerManager().ClearTimer(StealthWaitTimer);
 
@@ -1122,19 +1128,27 @@ void ABossEnemy::ExecuteStealthKick()
 	// 킥 몽타주 재생
 	if (StealthKickMontage)
 	{
-		PlayAnimMontage(StealthKickMontage);
 
-		// 킥 타이밍에 맞춰 레이캐스트 (몽타주 50% 지점에서 실행)
-		float KickTiming = StealthKickMontage->GetPlayLength() * 0.5f;
+		float PlayResult = PlayAnimMontage(StealthKickMontage);
+		if (PlayResult > 0.f)
+		{
+			// 몽타주 종료 시 이동 허용
+			FOnMontageEnded EndDelegate;
+			EndDelegate.BindLambda([this](UAnimMontage* Montage, bool bInterrupted)
+				{
+					bIsFullBodyAttacking = false;
+					bIsStealthKicking = false;
+					EnableBossMovement();
+					bCanBossAttack = true;
+				});
+			GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthKickMontage);
 
-		FTimerHandle KickRaycastTimer;
-		GetWorld()->GetTimerManager().SetTimer(
-			KickRaycastTimer,
-			this,
-			&ABossEnemy::ExecuteStealthKickRaycast,
-			KickTiming,
-			false
-		);
+			// 킥 판정 레이캐스트 타이머
+			float KickTiming = StealthKickMontage->GetPlayLength() * 0.5f;
+			FTimerHandle KickRaycastTimer;
+			GetWorld()->GetTimerManager().SetTimer(
+				KickRaycastTimer, this, &ABossEnemy::ExecuteStealthKickRaycast, KickTiming, false);
+		}
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 5: Kick Attack"));
@@ -1240,7 +1254,6 @@ void ABossEnemy::ExecuteStealthKickRaycast()
 		UE_LOG(LogTemp, Warning, TEXT("Stealth Kick Missed - Attack End"));
 	}
 }
-
 
 void ABossEnemy::LaunchPlayerIntoAir(APawn* PlayerPawn, float LaunchHeight)
 {
@@ -1379,6 +1392,19 @@ void ABossEnemy::ExecuteStealthFinishRaycast()
 			0,
 			3.0f
 		);
+
+		// 나이아가라 파티클 + 사운드 재생
+		if (StealthFinishEffect)
+		{
+			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+				GetWorld(), StealthFinishEffect, HitResult.Location,
+				FRotator::ZeroRotator, FVector(1.0f), true
+			);
+		}
+		if (StealthFinishSound)
+		{
+			UGameplayStatics::PlaySoundAtLocation(GetWorld(), StealthFinishSound, HitResult.Location);
+		}
 
 		// 대포 데미지 적용 (30 데미지)
 		UGameplayStatics::ApplyPointDamage(

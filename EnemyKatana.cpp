@@ -92,7 +92,7 @@ void AEnemyKatana::PerformRaycastAttack()
         }
     }
 
-    // Sweep 전체 경로에 파란색 선만 한 번만 그림
+    // Sweep 전체 경로에 초록색 선만 한 번만 그림
     FVector SweepLineEnd = Start + Forward * TotalDistance;
     DrawDebugLine(GetWorld(), Start, SweepLineEnd, FColor::Green, false, 5.0f, SDPG_Foreground, 3.0f);
 
@@ -116,17 +116,19 @@ void AEnemyKatana::PerformRaycastAttack()
         {
             for (const FHitResult& Hit : OutHits)
             {
-                if (Hit.GetActor())
-                {
-                    RaycastHitActors.Add(Hit.GetActor());
-                    ApplyDamage(Hit.GetActor());
+                AActor* HitActor = Hit.GetActor();
+                if (!HitActor) continue;
 
-                    // 맞았을 때만 빨간색 구 표시
-                    if (Hit.GetActor()->IsA(AMainCharacter::StaticClass()))
-                    {
-                        DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12, FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);
-                        return;
-                    }
+                // 메인 캐릭터만 피해 처리
+                if (HitActor->IsA(AMainCharacter::StaticClass()))
+                {
+                    RaycastHitActors.Add(HitActor);
+                    ApplyDamage(HitActor);
+
+                    // 맞은 위치에 빨간 구 표시
+                    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12, FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);
+
+                    return;  // 첫 번째 맞은 메인 캐릭터에서 함수 종료
                 }
             }
         }

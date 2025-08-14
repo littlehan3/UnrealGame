@@ -37,6 +37,9 @@ private:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
     float Direction;
+    
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+    bool bIsInAirStun;
 
     // 방향 계산 함수 
     float CalculateDirection(const FVector& Velocity, const FRotator& BaseRotation);

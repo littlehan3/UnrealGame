@@ -751,7 +751,7 @@ void AMainCharacter::ApplyCameraShake()
         FVector ShakeOffset;
         ShakeOffset.X = FMath::RandRange(-ShakeIntensity, ShakeIntensity);
         ShakeOffset.Y = FMath::RandRange(-ShakeIntensity, ShakeIntensity);
-        ShakeOffset.Z = FMath::RandRange(-ShakeIntensity * 0.5f, ShakeIntensity * 0.5f);
+        ShakeOffset.Z = FMath::RandRange(-ShakeIntensity * 1.0f, ShakeIntensity * 1.0f);
 
         // 카메라 위치에 흔들림 적용
         FVector OriginalLocation = Camera->GetRelativeLocation();
@@ -1039,25 +1039,39 @@ float AMainCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 
     UE_LOG(LogTemp, Warning, TEXT("MainCharacter took: %f Damage, Health remaining: %f"), DamageApplied, CurrentHealth);
 
-    if (NormalHitSound)
+    // 히트 사운드 랜덤 재생
+    if (NormalHitSounds.Num() > 0)
     {
-        UGameplayStatics::PlaySoundAtLocation(this, NormalHitSound, GetActorLocation());
-    }
-
-    if (NormalHitMontages.Num() > 0)
-    {
-        int32 RandomIndex = FMath::RandRange(0, NormalHitMontages.Num() - 1);
-        UAnimMontage* SelectedMontage = NormalHitMontages[RandomIndex];
-        if (SelectedMontage)
+        int32 RandIndex = FMath::RandRange(0, NormalHitSounds.Num() - 1);
+        if (NormalHitSounds[RandIndex])
         {
-            UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-            if (AnimInstance)
-            {
-                AnimInstance->Montage_Play(SelectedMontage, 1.0f);
-            }
+            UGameplayStatics::PlaySoundAtLocation(this, NormalHitSounds[RandIndex], GetActorLocation());
         }
     }
 
+    // 스킬 시전 중이 아닐 때만 히트 몽타주 재생
+    if (SkillComponent && !SkillComponent->IsCastingSkill())
+    {
+        if (NormalHitMontages.Num() > 0)
+        {
+            int32 RandomIndex = FMath::RandRange(0, NormalHitMontages.Num() - 1);
+            UAnimMontage* SelectedMontage = NormalHitMontages[RandomIndex];
+            if (SelectedMontage)
+            {
+                UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+                if (AnimInstance)
+                {
+                    AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+                }
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Damage received during skill cast - skip hit montage"));
+    }
+
+    // 사망 체크
     if (CurrentHealth <= 0.0f)
     {
         Die();

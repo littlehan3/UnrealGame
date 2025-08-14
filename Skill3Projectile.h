@@ -8,7 +8,6 @@
 
 class UProjectileMovementComponent;
 class USphereComponent;
-class UStaticMeshComponent;
 
 UCLASS()
 class LOCOMOTION_API ASkill3Projectile : public AActor
@@ -20,7 +19,6 @@ public:
 
     void SetDamage(float InDamage) { Damage = InDamage; }
     void SetShooter(AActor* InShooter) { Shooter = InShooter; }
-    virtual void Tick(float DeltaTime) override;
     void FireInDirection(const FVector& ShootDirection);
 
 protected:
@@ -41,9 +39,6 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     UProjectileMovementComponent* ProjectileMovement;
-
-    UPROPERTY(VisibleAnywhere)
-    UStaticMeshComponent* MeshComponent;
 
     UPROPERTY(EditDefaultsOnly)
     UNiagaraSystem* ExplosionEffect;
