@@ -9,7 +9,7 @@
 #include "MainGameModeBase.h"
 #include "Enemy.generated.h"
 
-class AEnemyKatana;
+//class AEnemyKatana;
 
 UCLASS()
 class LOCOMOTION_API AEnemy : public ACharacter
