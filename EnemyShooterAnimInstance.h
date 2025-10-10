@@ -3,15 +3,15 @@
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h" // UAnimInstance 클래스 상속
 #include "Kismet/KismetMathLibrary.h" // 수학 라이브러리 함수 사용
-#include "EnemyGuardianAnimInstance.generated.h"
+#include "EnemyShooterAnimInstance.generated.h"
 
 UCLASS()
-class LOCOMOTION_API UEnemyGuardianAnimInstance : public UAnimInstance
+class LOCOMOTION_API UEnemyShooterAnimInstance : public UAnimInstance
 {
 	GENERATED_BODY()
 
 public:
-	UEnemyGuardianAnimInstance(); // 생성자
+	UEnemyShooterAnimInstance(); // 생성자
 
 	// 블루프린트에서 호출 가능한 Getter 함수들
 	UFUNCTION(BlueprintCallable, Category = "Animation")
@@ -23,15 +23,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Animation")
 	bool GetIsDead() const { return bIsDead; }
 
-	UFUNCTION(BlueprintCallable, Category = "Animation")
-	bool GetIsShieldDestroyed() const { return bIsShieldDestroyed; }
-
 	// 애니메이션 블루프린트와 직접 연동될 변수
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation")
 	bool bIsDead; // 사망 여부
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation")
-	bool bIsShieldDestroyed; // 방패 파괴 여부
 
 protected:
 	virtual void NativeInitializeAnimation() override; // 애님 인스턴스 초기화 시 호출
@@ -40,7 +34,7 @@ protected:
 private:
 	// C++ 내부에서만 사용할 변수들
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
-	class AEnemyGuardian* EnemyCharacter; // 이 애님 인스턴스의 소유자 캐릭터에 대한 참조
+	class AEnemyShooter* EnemyCharacter; // 이 애님 인스턴스의 소유자 캐릭터에 대한 참조
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Animation", meta = (AllowPrivateAccess = "true"))
 	float Speed; // 캐릭터의 현재 속도

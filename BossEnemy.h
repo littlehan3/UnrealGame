@@ -12,7 +12,7 @@
 class ABossProjectile;
 class AEnemyBossKatana;
 
-UCLASS()
+UCLASS(Blueprintable)
 class LOCOMOTION_API ABossEnemy : public ACharacter
 {
 	GENERATED_BODY()
@@ -83,6 +83,7 @@ public:
 
 	void StartAttack();
 	void EndAttack();
+	void BossDie(); // 사망 함수
 
 protected:
 	virtual void BeginPlay() override;
@@ -127,7 +128,6 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
 	UAnimMontage* StealthFinishMontage; // 6단계: 스텔스 피니쉬 몽타주
 
-	void BossDie(); // 사망 함수
 	void SetUpBossAI(); // AI가 네브매쉬에서 이동할수있게 설정하는 함수
 	void StopBossActions(); // 모든 동작 정지 함수
 	void HideBossEnemy(); // 사망시 보스를 숨기는 함수

@@ -358,7 +358,7 @@ private:
 
     // 반동 관련 변수들
     FVector2D CurrentRecoil;
-    FVector2D TargetRecoil; 
+    FVector2D TargetRecoil;
     bool bIsRecoiling;
     FTimerHandle RecoilTimerHandle;
 
@@ -376,4 +376,7 @@ private:
 
     void UpdateMovementSpeed(); // 이동속도 제어 함수
 
+    bool bIsPlayingLandingAnimation = false;  // 착지 애니메이션 재생 중인지 확인
+    FTimerHandle LandingAnimationTimerHandle; // 착지 애니메이션 타이머
+    void OnLandingAnimationFinished();        // 착지 애니메이션 완료 콜백
 };

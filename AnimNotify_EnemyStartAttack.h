@@ -4,6 +4,7 @@
 #include "EnemyKatana.h"
 #include "EnemyBossKatana.h"
 #include "EnemyDog.h"
+#include "EnemyGuardianBaton.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "AnimNotify_EnemyStartAttack.generated.h"
 

@@ -2,6 +2,7 @@
 #include "BossEnemy.h"
 #include "Enemy.h"
 #include "EnemyDog.h"
+#include "EnemyGuardian.h"
 
 void UAnimNotify_EnemyStartAttack::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {
@@ -16,5 +17,9 @@ void UAnimNotify_EnemyStartAttack::Notify(USkeletalMeshComponent* MeshComp, UAni
     else if (AEnemyDog* Dog = Cast<AEnemyDog>(MeshComp->GetOwner()))
     {
         Dog->StartAttack();
+    }
+    else if (AEnemyGuardian* Guardian = Cast<AEnemyGuardian>(MeshComp->GetOwner()))
+    {
+        Guardian->StartAttack();
     }
 }

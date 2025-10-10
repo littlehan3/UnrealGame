@@ -135,6 +135,7 @@ void UMeleeCombatComponent::ResetCombo()
 {
     bIsAttacking = false;
     ComboIndex = 0;
+    bCanTeleport = true;
 
     if (OwnerCharacter)
     {
@@ -175,6 +176,7 @@ void UMeleeCombatComponent::OnComboMontageEnded(UAnimMontage* Montage, bool bInt
 
     bIsAttacking = false;
     bCanAirAction = true; // 콤보 완료 시 공중 액션 허용
+    bCanTeleport = true;
 
     if (OwnerCharacter && OwnerCharacter->GetCharacterMovement())
     {
@@ -208,6 +210,7 @@ void UMeleeCombatComponent::OnComboMontageEnded(UAnimMontage* Montage, bool bInt
     else
     {
         ComboIndex = 0; // 콤보 시간이 끝났으면 리셋
+        bCanTeleport = true;
     }
 
     // 큐 처리 시 상태 체크 강화
@@ -263,31 +266,160 @@ void UMeleeCombatComponent::AdjustAttackDirection()
     TArray<AActor*> FoundEnemies;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), FoundEnemies);
 
+    FVector StartLocation = OwnerCharacter->GetActorLocation();
+
+    // 모든 적들을 검사하여 가장 가까운 유효한 적 찾기
     for (AActor* Enemy : FoundEnemies)
     {
         AEnemy* EnemyCharacter = Cast<AEnemy>(Enemy);
         if (!EnemyCharacter || EnemyCharacter->bIsDead || EnemyCharacter->bIsInAirStun) continue;
 
-        float Distance = FVector::Dist(OwnerCharacter->GetActorLocation(), Enemy->GetActorLocation());
+        FVector EnemyLocation = Enemy->GetActorLocation();
+        float Distance = FVector::Dist(StartLocation, EnemyLocation);
+
         if (Distance < ClosestDistance)
         {
-            ClosestDistance = Distance;
-            TargetEnemy = Enemy;
+            // 레이캐스트로 직선상에 장애물이 있는지 체크
+            FHitResult HitResult;
+            FCollisionQueryParams Params;
+            Params.AddIgnoredActor(OwnerCharacter);
+            Params.AddIgnoredActor(Enemy);
+
+            FVector EndLocation = EnemyLocation;
+            EndLocation.Z = StartLocation.Z; // 같은 높이로 맞춤
+
+            bool bHit = GetWorld()->LineTraceSingleByChannel(
+                HitResult,
+                StartLocation,
+                EndLocation,
+                ECC_Visibility,
+                Params
+            );
+
+            // 파란색으로 레이캐스트 시각화 (모든 검사에서 표시)
+            DrawDebugLine(GetWorld(), StartLocation, EndLocation, FColor::Blue, false, 2.0f, 0, 3.0f);
+
+            // 장애물이 없거나 장애물이 적보다 멀리 있으면 타겟으로 설정
+            if (!bHit || FVector::Dist(StartLocation, HitResult.Location) > Distance * 0.9f)
+            {
+                ClosestDistance = Distance;
+                TargetEnemy = Enemy;
+            }
         }
     }
 
     if (TargetEnemy)
     {
-        FVector DirectionToEnemy = TargetEnemy->GetActorLocation() - OwnerCharacter->GetActorLocation();
-        DirectionToEnemy.Z = 0.0f;
-        DirectionToEnemy.Normalize();
+        // 적까지의 거리 계산
+        float DistanceToEnemy = FVector::Dist(OwnerCharacter->GetActorLocation(), TargetEnemy->GetActorLocation());
 
-        FRotator NewRot = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator();
-        OwnerCharacter->SetActorRotation(NewRot);
+        // 최소 텔레포트 거리보다 가까우면 방향 보정만 수행
+        if (DistanceToEnemy < MinTeleportDistance)
+        {
+            // 방향 보정만 수행
+            FVector DirectionToEnemy = TargetEnemy->GetActorLocation() - OwnerCharacter->GetActorLocation();
+            DirectionToEnemy.Z = 0.0f;
+            DirectionToEnemy.Normalize();
 
-        LastAttackDirection = DirectionToEnemy;
+            FRotator NewRot = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator();
+            OwnerCharacter->SetActorRotation(NewRot);
+
+            LastAttackDirection = DirectionToEnemy;
+
+            UE_LOG(LogTemp, Warning, TEXT("Direction adjusted only - enemy too close for teleport: %f"), DistanceToEnemy);
+        }
+        else
+        {
+            // 텔레포트 거리 범위 내에 있으면 텔레포트 조건 체크
+            if (ShouldTeleportToTarget(DistanceToEnemy))
+            {
+                TeleportToTarget(TargetEnemy);
+            }
+            else
+            {
+                // 텔레포트 조건이 안 맞으면 기존 방향 보정만 수행
+                FVector DirectionToEnemy = TargetEnemy->GetActorLocation() - OwnerCharacter->GetActorLocation();
+                DirectionToEnemy.Z = 0.0f;
+                DirectionToEnemy.Normalize();
+
+                FRotator NewRot = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator();
+                OwnerCharacter->SetActorRotation(NewRot);
+
+                LastAttackDirection = DirectionToEnemy;
+
+                UE_LOG(LogTemp, Warning, TEXT("Direction adjusted - teleport conditions not met: %f"), DistanceToEnemy);
+            }
+        }
     }
 }
+
+
+
+bool UMeleeCombatComponent::ShouldTeleportToTarget(float DistanceToTarget)
+{
+    // 순간이동 조건들 체크
+    if (!OwnerCharacter || !bCanTeleport) return false;
+
+    // 공중에 있으면 순간이동 안함
+    if (OwnerCharacter->GetCharacterMovement()->IsFalling()) return false;
+
+    // 최소 텔레포트 거리보다 가까우면 순간이동 안함
+    if (DistanceToTarget < MinTeleportDistance) return false;
+
+    // 최대 텔레포트 거리보다 멀면 순간이동 안함
+    if (DistanceToTarget > TeleportDistance) return false;
+
+    return true;
+}
+
+
+void UMeleeCombatComponent::TeleportToTarget(AActor* TargetEnemy)
+{
+    if (!TargetEnemy || !OwnerCharacter) return;
+
+    // 적의 위치와 방향 계산
+    FVector EnemyLocation = TargetEnemy->GetActorLocation();
+    FVector EnemyForward = TargetEnemy->GetActorForwardVector();
+
+    // 적의 전방으로 순간이동 위치 계산
+    FVector TeleportLocation = EnemyLocation + (EnemyForward * TeleportOffset);
+    TeleportLocation.Z = OwnerCharacter->GetActorLocation().Z; // 높이는 유지
+
+    // 바닥과의 충돌 체크해서 높이 조정 (선택사항)
+    FHitResult FloorHit;
+    FCollisionQueryParams FloorParams;
+    FloorParams.AddIgnoredActor(OwnerCharacter);
+    FloorParams.AddIgnoredActor(TargetEnemy);
+
+    FVector FloorStart = TeleportLocation + FVector(0, 0, 100);
+    FVector FloorEnd = TeleportLocation - FVector(0, 0, 500);
+
+    if (GetWorld()->LineTraceSingleByChannel(FloorHit, FloorStart, FloorEnd, ECC_Visibility, FloorParams))
+    {
+        TeleportLocation.Z = FloorHit.Location.Z + 90.0f; // 캐릭터 발 위치 조정
+    }
+
+    // 순간이동 실행
+    OwnerCharacter->SetActorLocation(TeleportLocation);
+
+    // 적을 향해 회전
+    FVector DirectionToEnemy = EnemyLocation - TeleportLocation;
+    DirectionToEnemy.Z = 0.0f;
+    DirectionToEnemy.Normalize();
+
+    FRotator NewRot = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator();
+    OwnerCharacter->SetActorRotation(NewRot);
+
+    LastAttackDirection = DirectionToEnemy;
+
+    // 시각적 효과들
+    DrawDebugSphere(GetWorld(), TeleportLocation, 50.0f, 12, FColor::Green, false, 2.0f, 0, 2.0f);
+    DrawDebugLine(GetWorld(), OwnerCharacter->GetActorLocation(), EnemyLocation, FColor::Yellow, false, 2.0f, 0, 5.0f);
+
+    UE_LOG(LogTemp, Warning, TEXT("Teleported to target enemy - Combo Index: %d"), ComboIndex);
+}
+
+
 
 void UMeleeCombatComponent::ApplyComboMovement(float MoveDistance, FVector MoveDirection)
 {

@@ -4,46 +4,51 @@
 #include "GameFramework/GameModeBase.h"
 #include "Engine/TimerHandle.h"
 #include "NavigationSystem.h"
+#include "Enemy.h"
+#include "BossEnemy.h"
+#include "EnemyDrone.h"
+#include "EnemyDog.h"
+#include "EnemyGuardian.h"
+#include "EnemyShooter.h"
 #include "MainGameModeBase.generated.h"
 
+// 웨이브별 스폰 정보 구조체
 USTRUCT(BlueprintType)
-struct FEnemySpawnInfo
+struct FWaveSpawnEntry
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    TSubclassOf<class AEnemy> EnemyClass;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
+    TSubclassOf<class APawn> EnemyClass;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float SpawnTime;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Spawn")
+    int32 SpawnCount = 1;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 SpawnCount;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Spawn")
+    float SpawnDelay = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float SpawnRadius;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Spawn")
+    float SpawnInterval = 1.0f;
 
-    FEnemySpawnInfo() : SpawnTime(30.0f), SpawnCount(1), SpawnRadius(1000.0f) {}
+    FWaveSpawnEntry() : SpawnCount(1), SpawnDelay(0.0f), SpawnInterval(1.0f) {}
 };
 
+// 웨이브 설정 구조체
 USTRUCT(BlueprintType)
-struct FBossSpawnInfo
+struct FWaveConfiguration
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    TSubclassOf<class ABossEnemy> BossClass;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Config")
+    FString WaveName = TEXT("Wave");
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float SpawnTime;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Config")
+    TArray<FWaveSpawnEntry> SpawnEntries;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float SpawnRadius;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Config")
+    float PrepareTime = 5.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float ZOffset;
-
-    FBossSpawnInfo() : SpawnTime(60.0f), SpawnRadius(1000.0f), ZOffset(0.0f) {}
+    FWaveConfiguration() : PrepareTime(5.0f) {}
 };
 
 UCLASS()
@@ -55,147 +60,150 @@ public:
     AMainGameModeBase();
 
     UFUNCTION(BlueprintCallable)
-    void OnEnemyDestroyed(AEnemy* DestroyedEnemy);
+    void OnEnemyDestroyed(APawn* DestroyedEnemy);
 
 protected:
     virtual void BeginPlay() override;
 
-    // 적 스폰 설정
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy Spawn")
-    TArray<FEnemySpawnInfo> EnemySpawnList;
+    // === 웨이브 시스템 메인 컨트롤 ===
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
+    bool bWaveSystemEnabled = true;
 
-    // 보스 스폰 설정
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss Spawn")
-    TArray<FBossSpawnInfo> BossSpawnList;
+    // === 6개 AI 클래스 등록 ===
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
+    TSubclassOf<class AEnemy> EnemyType;
 
-    // 플레이어 주변 스폰 여부
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
+    TSubclassOf<class ABossEnemy> BossEnemyType;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
+    TSubclassOf<class AEnemyDog> EnemyDogType;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
+    TSubclassOf<class AEnemyDrone> EnemyDroneType;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
+    TSubclassOf<class AEnemyGuardian> EnemyGuardianType;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
+    TSubclassOf<class AEnemyShooter> EnemyShooterType;
+
+    // === 웨이브 시스템 ===
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
+    TArray<FWaveConfiguration> WaveConfigurations;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
+    float DefaultWaveClearDelay = 3.0f;
+
+    // === 스폰 설정 ===
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Settings")
     bool bSpawnAroundPlayer = true;
 
-    // 스폰 중심점
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Settings")
     FVector SpawnCenterLocation = FVector::ZeroVector;
 
-    // 웨이브 시스템 설정
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
-    bool bEnableWaveSystem = true;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
-    float SpawnInterval = 10.0f;  // 10초마다 스폰
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
-    bool bSpawnEnabled = true;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
-    TSubclassOf<class AEnemy> DefaultEnemyClass;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
-    TSubclassOf<class ABossEnemy> DefaultBossClass;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Settings")
     float DefaultSpawnRadius = 1000.0f;
 
-    // 성능 최적화 설정
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Settings")
+    float DroneSpawnHeightOffset = 200.0f;
+
+    // === 성능 최적화 ===
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Performance")
-    int32 PreCalculatedLocationCount = 200;  // 사전 계산할 위치 수
+    int32 PreCalculatedLocationCount = 200;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Performance")
+    bool bEnableAsyncCleanup = true;
 
 private:
-    // 레거시 스폰 시스템
-    TArray<FTimerHandle> EnemySpawnTimers;
-    TArray<FTimerHandle> BossSpawnTimers;
-
-    // 새로운 웨이브 레벨 시스템
-    FTimerHandle MainSpawnTimer;
-    FTimerHandle PostBossTransitionTimer;
+    // === 웨이브 시스템 변수 ===
+    int32 CurrentWaveIndex = 0;
+    bool bWaveInProgress = false;
+    bool bWaveSystemActive = false;
+    FTimerHandle WaveStartTimer;
+    FTimerHandle SpawnTimer;
+    FTimerHandle CleanupTimer;
     FTimerHandle LocationRefreshTimer;
 
-    // 웨이브 레벨 관리
-    int32 CurrentWaveLevel = 1;
-    int32 SpawnStepCount = 0;       // 전체 스폰 단계 카운트 (0부터 시작)
-    bool bIsBossAlive = false;
-    bool bWaitingForBossTransition = false;  // 보스 사망 후 전환 대기 중
+    // 현재 웨이브 스폰 진행 상황
+    int32 CurrentSpawnEntryIndex = 0;
+    int32 CurrentSpawnCount = 0;
 
-    // 사전 계산된 스폰 위치
+    // === 적 관리 ===
+    TArray<TWeakObjectPtr<class APawn>> SpawnedEnemies;
+    int32 TotalEnemiesInWave = 0;
+    int32 EnemiesKilledInWave = 0;
+
+    // === 스폰 위치 관리 ===
     TArray<FVector> PreCalculatedSpawnLocations;
     int32 CurrentLocationIndex = 0;
     bool bLocationCalculationComplete = false;
 
-    // 메모리 관리
-    TArray<TWeakObjectPtr<class AEnemy>> SpawnedEnemies;
-    TWeakObjectPtr<class ABossEnemy> CurrentBoss;
-
-    // 웨이브 레벨 시스템 함수들
-    UFUNCTION()
-    void ProcessSpawnStep();
-
-    UFUNCTION()
-    void StartNextWaveLevel();
+    // === 웨이브 시스템 함수 ===
+    void StartWaveSystem();
+    void StartWave(int32 WaveIndex);
+    void ProcessWaveSpawn();
+    void SpawnEnemyFromEntry(const FWaveSpawnEntry& Entry);
+    void CheckWaveCompletion();
+    void OnWaveCompleted();
+    void PrepareNextWave();
 
     UFUNCTION()
-    void RefreshSpawnLocations();
+    void StartNextWave();
 
-    void StartWaveLevel();
-    void ForceCompleteMemoryCleanup();
+    // === 스폰 함수 ===
+    void SpawnEnemyAtLocation(TSubclassOf<class APawn> EnemyClass, const FVector& Location);
 
-    // 성능 최적화 함수들
+    // === 성능 최적화 함수 ===
     void PreCalculateSpawnLocations();
+    void RefreshSpawnLocations();
     void RefillSpawnLocationsAsync();
     FVector GetNextSpawnLocation();
+    void PerformAsyncCleanup();
+    void ForceCompleteMemoryCleanup();
 
-    // 시스템 제어
-    void StartWaveSystem();
-    void StopWaveSystem();
-
-    // 스폰 함수들
-    void SpawnEnemies(int32 Count);
-    void SpawnBoss();
-    void SpawnActorAtLocation(const FVector& Location);
-
-    // 메모리 관리
+    // === 유틸리티 함수 ===
     void KillAllEnemies();
-
-    // 유틸리티 함수들
-    bool SpawnActorOnNavMesh(TSubclassOf<class APawn> ActorClass, FVector CenterLocation,
-        float Radius, float ZOffset = 0.0f);
     bool FindRandomLocationOnNavMesh(FVector CenterLocation, float Radius, FVector& OutLocation);
     FVector GetPlayerLocation();
-    void ApplyEnemyStatsForWaveLevel(AEnemy* Enemy, int32 WaveLevel);
-
-    // 레거시 함수들
-    UFUNCTION()
-    void SpawnEnemyWave(int32 EnemyWaveIndex);
-
-    UFUNCTION()
-    void SpawnBossWave(int32 BossWaveIndex);
+    void StopAllSystems();
 
 public:
-    // 보스 사망 알림
-    UFUNCTION(BlueprintCallable)
-    void OnBossDead();
-
-    // 시스템 제어
-    UFUNCTION(BlueprintCallable)
-    void SetSpawnEnabled(bool bEnabled) { bSpawnEnabled = bEnabled; }
-
-    UFUNCTION(BlueprintCallable)
+    // === 웨이브 시스템 제어 ===
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
     void SetWaveSystemEnabled(bool bEnabled);
 
-    UFUNCTION(BlueprintCallable)
-    bool IsWaveSystemEnabled() const { return bEnableWaveSystem; }
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    bool IsWaveSystemEnabled() const { return bWaveSystemEnabled; }
 
-    // 웨이브 레벨 정보
-    UFUNCTION(BlueprintCallable)
-    int32 GetCurrentWaveLevel() const { return CurrentWaveLevel; }
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    int32 GetCurrentWaveIndex() const { return CurrentWaveIndex; }
 
-    UFUNCTION(BlueprintCallable)
-    int32 GetSpawnStepCount() const { return SpawnStepCount; }
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    bool IsWaveInProgress() const { return bWaveInProgress; }
 
-    UFUNCTION(BlueprintCallable)
-    bool IsBossAlive() const { return bIsBossAlive; }
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    int32 GetTotalWaveCount() const { return WaveConfigurations.Num(); }
 
-    UFUNCTION(BlueprintCallable)
-    int32 GetActiveEnemyCount() const { return SpawnedEnemies.Num(); }
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    FString GetCurrentWaveName() const;
 
-    UFUNCTION(BlueprintCallable)
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    void RestartWaveSystem();
+
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    void SkipToWave(int32 WaveIndex);
+
+    // === 적 정보 ===
+    UFUNCTION(BlueprintCallable, Category = "Enemy Info")
+    int32 GetActiveEnemyCount() const;
+
+    UFUNCTION(BlueprintCallable, Category = "Enemy Info")
+    int32 GetEnemiesKilledInWave() const { return EnemiesKilledInWave; }
+
+    UFUNCTION(BlueprintCallable, Category = "Enemy Info")
+    int32 GetTotalEnemiesInWave() const { return TotalEnemiesInWave; }
+
+    UFUNCTION(BlueprintCallable, Category = "Enemy Info")
     int32 GetPreCalculatedLocationCount() const { return PreCalculatedSpawnLocations.Num(); }
 };

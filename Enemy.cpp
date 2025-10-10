@@ -8,6 +8,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
 #include "ObjectPoolManager.h"
+#include "MainGameModeBase.h"
 
 
 AEnemy::AEnemy()
@@ -229,60 +230,40 @@ void AEnemy::Die()
     float HideTime = 0.0f;
     
     if (bIsInAirStun && InAirStunDeathMontage) // 공중에서 사망 시
-        {
-            float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
-            EnemyAnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f); // 애니메이션 재생속도 조절
-            HideTime = AirDeathDuration * 0.35f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
-        }
+    {
+        float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
+        EnemyAnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f); // 애니메이션 재생속도 조절
+        HideTime = AirDeathDuration * 0.35f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
+    }
     else if (EnemyAnimInstance && DeadMontage) // 일반 사망 시
     {
-            float DeathAnimDuration = DeadMontage->GetPlayLength();
-            EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
-            HideTime = DeathAnimDuration * 0.6f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
+        float DeathAnimDuration = DeadMontage->GetPlayLength();
+        EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
+        HideTime = DeathAnimDuration * 0.6f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
     }
     else
     {
-            // 사망 애니메이션이 없을 경우 즉시 사라지게 함
-            HideEnemy();
-            return;
+        // 사망 애니메이션이 없을 경우 즉시 사라지게 함
+        HideEnemy();
+        return;
     }
+    // 일정 시간 후 사라지도록 설정
+    GetWorld()->GetTimerManager().SetTimer(DeathTimerHandle, this, &AEnemy::HideEnemy, HideTime, false);
 
-        // 일정 시간 후 사라지도록 설정
-        GetWorld()->GetTimerManager().SetTimer(DeathTimerHandle, this, &AEnemy::HideEnemy, HideTime, false);
-
-        // AI 컨트롤러 중지
-        AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-        if (AICon)
-        {
-            AICon->StopAI();
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("AIController is NULL! Can not stop AI."));
-        }
-
-        // 이동 비활성화
-        GetCharacterMovement()->DisableMovement();
-        GetCharacterMovement()->StopMovementImmediately();
-        SetActorTickEnabled(false); // AI Tick 중지
-
-}
-
-
-void AEnemy::InstantDeath()
-{
-    if (bIsDead)
+    // AI 컨트롤러 중지
+    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    if (AICon)
     {
-        return; // 이미 죽은 상태면 리턴
+        AICon->StopAI();
     }
-
-    UE_LOG(LogTemp, Warning, TEXT("Enemy %s killed instantly for boss spawn"), *GetName());
-
-    // 현재 체력을 0으로 설정
-    Health = 0.0f;
-
-    // 기존 Die() 함수 호출 (자연스러운 사망 처리)
-    Die();
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("AIController is NULL! Can not stop AI."));
+    }
+    // 이동 비활성화
+    GetCharacterMovement()->DisableMovement();
+    GetCharacterMovement()->StopMovementImmediately();
+    SetActorTickEnabled(false); // AI Tick 중지
 }
 
 void AEnemy::StopActions()
@@ -319,7 +300,7 @@ void AEnemy::HideEnemy()
 
     UE_LOG(LogTemp, Warning, TEXT("Hiding Enemy - Memory Cleanup"));
 
-    // GameMode에 Enemy 파괴 알림
+    // GameMode에 파괴 알림
     if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
     {
         GameMode->OnEnemyDestroyed(this);

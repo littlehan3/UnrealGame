@@ -6,12 +6,13 @@
 #include "EnemyAnimInstance.h"
 #include "Animation/AnimInstance.h"
 #include "AimSkill2Projectile.h"
-#include "MainGameModeBase.h"
+//#include "MainGameModeBase.h"
 #include "Enemy.generated.h"
 
 //class AEnemyKatana;
+class AMainGameModeBase;
 
-UCLASS()
+UCLASS(Blueprintable)
 class LOCOMOTION_API AEnemy : public ACharacter
 {
     GENERATED_BODY()
@@ -67,14 +68,13 @@ public:
 
     void ApplyBaseWalkSpeed();
 
-    UFUNCTION(BlueprintCallable)
-    void InstantDeath(); // 보스 등장 시 즉시 사망
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
     float Health = 100.0f; // 체력
 
     void PlaySpawnIntroAnimation(); // 등장 애니메이션 재생 함수
     bool bIsPlayingIntro = false; // 등장 애니메이션 재생 중 여부
+
+    void Die();
 
 protected:
     virtual void BeginPlay() override;
@@ -96,8 +96,6 @@ private:
     USoundBase* DodgeSound;
 
     bool bCanAttack = false; // 공격가능 상태 추적을 위한 변수
-
-    void Die();
 
     void SetUpAI(); // AI가 NavMesh에서 이동할 수 있도록 설정
 

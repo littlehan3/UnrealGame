@@ -69,6 +69,9 @@ public:
 
     bool CanStartComboAttack() const { return !bJumpAttackCooldownActive && bCanGroundAction; }
 
+    bool ShouldTeleportToTarget(float DistanceToTarget);
+    void TeleportToTarget(AActor* TargetEnemy);
+
 protected:
     virtual void BeginPlay() override;
 
@@ -119,4 +122,10 @@ private:
     FTimerHandle JumpAttackCooldownHandle;
     bool bJumpAttackCooldownActive = false;
     float JumpAttackCooldownTime = 0.3f;
+
+    float TeleportDistance = 800.0f; // 순간이동 가능 거리
+    float TeleportOffset = 100.0f; // 적 앞쪽으로 얼마나 떨어져서 나타날지
+    float MinTeleportDistance = 150.0f;
+    bool bCanTeleport = true; // 순간이동 가능 여부
+
 };

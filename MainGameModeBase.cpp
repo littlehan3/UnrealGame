@@ -1,13 +1,10 @@
-#include "MainGameModeBase.h"
-#include "Enemy.h"
-#include "BossEnemy.h"
+ï»¿#include "MainGameModeBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "NavigationSystem.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/Pawn.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/Engine.h"
 #include "Async/Async.h"
 
@@ -15,49 +12,573 @@ AMainGameModeBase::AMainGameModeBase()
 {
     PrimaryActorTick.bCanEverTick = false;
 
-    // ±âº»°ª ¼³Á¤
-    SpawnInterval = 10.0f;
-    bSpawnEnabled = true;
-    bEnableWaveSystem = true;
+    // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ ê¸°ë³¸ê°’
+    bWaveSystemEnabled = true;
+    DefaultWaveClearDelay = 3.0f;
+    CurrentWaveIndex = 0;
+    bWaveInProgress = false;
+    bWaveSystemActive = false;
+    bEnableAsyncCleanup = true;
     PreCalculatedLocationCount = 200;
-
-    // ¿şÀÌºê ·¹º§ ½Ã½ºÅÛ ÃÊ±âÈ­
-    CurrentWaveLevel = 1;
-    SpawnStepCount = 0;
-    bIsBossAlive = false;
-    bWaitingForBossTransition = false;
     CurrentLocationIndex = 0;
     bLocationCalculationComplete = false;
+    DroneSpawnHeightOffset = 200.0f;
+
+    // ì  ê´€ë¦¬ ì´ˆê¸°í™”
+    TotalEnemiesInWave = 0;
+    EnemiesKilledInWave = 0;
+    CurrentSpawnEntryIndex = 0;
+    CurrentSpawnCount = 0;
 }
 
 void AMainGameModeBase::BeginPlay()
 {
     Super::BeginPlay();
 
-    if (bEnableWaveSystem)
-    {
-        GetWorldTimerManager().SetTimerForNextTick([this]()
+    // AI í´ë˜ìŠ¤ ë“±ë¡ ìƒíƒœ í™•ì¸
+    UE_LOG(LogTemp, Error, TEXT("=== AI CLASSES REGISTRATION CHECK ==="));
+    UE_LOG(LogTemp, Error, TEXT("EnemyType: %s"), EnemyType ? *EnemyType->GetName() : TEXT("NOT SET"));
+    UE_LOG(LogTemp, Error, TEXT("BossEnemyType: %s"), BossEnemyType ? *BossEnemyType->GetName() : TEXT("NOT SET"));
+    UE_LOG(LogTemp, Error, TEXT("EnemyDogType: %s"), EnemyDogType ? *EnemyDogType->GetName() : TEXT("NOT SET"));
+    UE_LOG(LogTemp, Error, TEXT("EnemyDroneType: %s"), EnemyDroneType ? *EnemyDroneType->GetName() : TEXT("NOT SET"));
+    UE_LOG(LogTemp, Error, TEXT("EnemyGuardianType: %s"), EnemyGuardianType ? *EnemyGuardianType->GetName() : TEXT("NOT SET"));
+    UE_LOG(LogTemp, Error, TEXT("EnemyShooterType: %s"), EnemyShooterType ? *EnemyShooterType->GetName() : TEXT("NOT SET"));
+
+    // ìŠ¤í° ìœ„ì¹˜ ì‚¬ì „ ê³„ì‚° ë° ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ ì‹œì‘
+    GetWorldTimerManager().SetTimerForNextTick([this]()
+        {
+            PreCalculateSpawnLocations();
+
+            GetWorldTimerManager().SetTimer(
+                LocationRefreshTimer,
+                this,
+                &AMainGameModeBase::RefreshSpawnLocations,
+                300.0f,
+                true
+            );
+
+            if (bWaveSystemEnabled)
             {
-                // ½ºÆù À§Ä¡ »çÀü °è»ê
-                PreCalculateSpawnLocations();
-
-                // 5ºĞ¸¶´Ù ½ºÆù À§Ä¡ °»½Å
-                GetWorldTimerManager().SetTimer(
-                    LocationRefreshTimer,
-                    this,
-                    &AMainGameModeBase::RefreshSpawnLocations,
-                    300.0f,
-                    true
-                );
-
+                UE_LOG(LogTemp, Error, TEXT("Starting wave system..."));
                 StartWaveSystem();
-            });
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("Wave system is disabled - No enemies will spawn"));
+            }
+        });
+}
+
+
+// ========================================
+// ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ
+// ========================================
+
+void AMainGameModeBase::StartWaveSystem()
+{
+    if (WaveConfigurations.Num() == 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("No wave configurations found! Please set up waves in Blueprint."));
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Wave System Started - Total Waves: %d"), WaveConfigurations.Num());
+
+    bWaveSystemActive = true;
+    CurrentWaveIndex = 0;
+    StartWave(0);
+}
+
+void AMainGameModeBase::StartWave(int32 WaveIndex)
+{
+    if (WaveIndex >= WaveConfigurations.Num())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("All waves completed! Wave system finished."));
+        bWaveSystemActive = false;
+        return;
+    }
+
+    const FWaveConfiguration& WaveConfig = WaveConfigurations[WaveIndex];
+    CurrentWaveIndex = WaveIndex;
+
+    UE_LOG(LogTemp, Error, TEXT("=== WAVE %d CONFIGURATION DEBUG ==="), WaveIndex + 1);
+    UE_LOG(LogTemp, Error, TEXT("Wave Name: %s"), *WaveConfig.WaveName);
+    UE_LOG(LogTemp, Error, TEXT("Spawn Entries Count: %d"), WaveConfig.SpawnEntries.Num());
+
+    // ê° ìŠ¤í° ì—”íŠ¸ë¦¬ ìƒì„¸ ì¶œë ¥
+    for (int32 i = 0; i < WaveConfig.SpawnEntries.Num(); i++)
+    {
+        const FWaveSpawnEntry& Entry = WaveConfig.SpawnEntries[i];
+        UE_LOG(LogTemp, Error, TEXT("Entry [%d]:"), i);
+        UE_LOG(LogTemp, Error, TEXT("  - EnemyClass: %s"), Entry.EnemyClass ? *Entry.EnemyClass->GetName() : TEXT("NULL"));
+        UE_LOG(LogTemp, Error, TEXT("  - SpawnCount: %d"), Entry.SpawnCount);
+        UE_LOG(LogTemp, Error, TEXT("  - SpawnDelay: %f"), Entry.SpawnDelay);
+        UE_LOG(LogTemp, Error, TEXT("  - SpawnInterval: %f"), Entry.SpawnInterval);
+    }
+
+    // ì›¨ì´ë¸Œ ì‹œì‘ ì „ ì¤€ë¹„
+    bWaveInProgress = true;
+    CurrentSpawnEntryIndex = 0;
+    CurrentSpawnCount = 0;
+    TotalEnemiesInWave = 0;
+    EnemiesKilledInWave = 0;
+
+    // ì´ ìŠ¤í°ë  ì  ìˆ˜ ê³„ì‚°
+    for (const FWaveSpawnEntry& Entry : WaveConfig.SpawnEntries)
+    {
+        if (Entry.EnemyClass)
+        {
+            TotalEnemiesInWave += Entry.SpawnCount;
+        }
+    }
+
+    UE_LOG(LogTemp, Error, TEXT("Total enemies to spawn in wave: %d"), TotalEnemiesInWave);
+    UE_LOG(LogTemp, Error, TEXT("Prepare time: %f seconds"), WaveConfig.PrepareTime);
+
+    // ì¤€ë¹„ ì‹œê°„ í›„ ìŠ¤í° ì‹œì‘
+    if (WaveConfig.PrepareTime > 0.0f)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Starting spawn timer with %f seconds delay"), WaveConfig.PrepareTime);
+        GetWorldTimerManager().SetTimer(
+            WaveStartTimer,
+            this,
+            &AMainGameModeBase::ProcessWaveSpawn,
+            WaveConfig.PrepareTime,
+            false
+        );
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("Wave System is DISABLED - No enemies will spawn"));
+        UE_LOG(LogTemp, Error, TEXT("Starting spawn immediately"));
+        ProcessWaveSpawn();
     }
 }
+
+
+void AMainGameModeBase::ProcessWaveSpawn()
+{
+    UE_LOG(LogTemp, Error, TEXT("=== ProcessWaveSpawn DEBUG ==="));
+    UE_LOG(LogTemp, Error, TEXT("CurrentSpawnEntryIndex: %d / %d"), CurrentSpawnEntryIndex, WaveConfigurations[CurrentWaveIndex].SpawnEntries.Num());
+    UE_LOG(LogTemp, Error, TEXT("CurrentSpawnCount: %d"), CurrentSpawnCount);
+
+    if (!bWaveSystemActive || CurrentWaveIndex >= WaveConfigurations.Num())
+    {
+        UE_LOG(LogTemp, Error, TEXT("Wave system inactive or invalid wave index"));
+        return;
+    }
+
+    const FWaveConfiguration& WaveConfig = WaveConfigurations[CurrentWaveIndex];
+
+    if (CurrentSpawnEntryIndex < WaveConfig.SpawnEntries.Num())
+    {
+        const FWaveSpawnEntry& CurrentEntry = WaveConfig.SpawnEntries[CurrentSpawnEntryIndex];
+
+        UE_LOG(LogTemp, Error, TEXT("Processing entry %d: %s (Count: %d/%d)"),
+            CurrentSpawnEntryIndex,
+            CurrentEntry.EnemyClass ? *CurrentEntry.EnemyClass->GetName() : TEXT("NULL"),
+            CurrentSpawnCount,
+            CurrentEntry.SpawnCount);
+
+        if (CurrentEntry.EnemyClass && CurrentSpawnCount < CurrentEntry.SpawnCount)
+        {
+            // í˜„ì¬ ì—”íŠ¸ë¦¬ì˜ ì  ìŠ¤í°
+            SpawnEnemyFromEntry(CurrentEntry);
+            CurrentSpawnCount++;
+
+            UE_LOG(LogTemp, Error, TEXT("Spawned %d/%d of current entry"), CurrentSpawnCount, CurrentEntry.SpawnCount);
+
+            // ê°™ì€ íƒ€ì…ì„ ë” ìŠ¤í°í•´ì•¼ í•˜ëŠ”ì§€ í™•ì¸
+            if (CurrentSpawnCount < CurrentEntry.SpawnCount)
+            {
+                UE_LOG(LogTemp, Error, TEXT("Scheduling next spawn of same type in %f seconds"), CurrentEntry.SpawnInterval);
+                GetWorldTimerManager().SetTimer(
+                    SpawnTimer,
+                    this,
+                    &AMainGameModeBase::ProcessWaveSpawn,
+                    CurrentEntry.SpawnInterval,
+                    false
+                );
+                return;
+            }
+            else
+            {
+                // í˜„ì¬ ì—”íŠ¸ë¦¬ ì™„ë£Œ, ë‹¤ìŒ ì—”íŠ¸ë¦¬ë¡œ ì´ë™
+                UE_LOG(LogTemp, Error, TEXT("Current entry completed, moving to next entry"));
+                CurrentSpawnEntryIndex++;
+                CurrentSpawnCount = 0;
+
+                // ë‹¤ìŒ ì—”íŠ¸ë¦¬ê°€ ìˆëŠ”ì§€ í™•ì¸
+                if (CurrentSpawnEntryIndex < WaveConfig.SpawnEntries.Num())
+                {
+                    const FWaveSpawnEntry& NextEntry = WaveConfig.SpawnEntries[CurrentSpawnEntryIndex];
+                    UE_LOG(LogTemp, Error, TEXT("Starting next entry %d: %s after %f seconds delay"),
+                        CurrentSpawnEntryIndex,
+                        NextEntry.EnemyClass ? *NextEntry.EnemyClass->GetName() : TEXT("NULL"),
+                        NextEntry.SpawnDelay);
+
+                    // â­ í•µì‹¬ ìˆ˜ì •: ì§€ì—°ì‹œê°„ì´ 0ì´ë©´ ì¦‰ì‹œ ì²˜ë¦¬, ì•„ë‹ˆë©´ íƒ€ì´ë¨¸ ì„¤ì •
+                    if (NextEntry.SpawnDelay <= 0.0f)
+                    {
+                        UE_LOG(LogTemp, Error, TEXT("No delay, processing next entry immediately"));
+                        ProcessWaveSpawn(); // ì¦‰ì‹œ ì¬ê·€ í˜¸ì¶œ
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Error, TEXT("Setting timer for next entry"));
+                        GetWorldTimerManager().SetTimer(
+                            SpawnTimer,
+                            this,
+                            &AMainGameModeBase::ProcessWaveSpawn,
+                            NextEntry.SpawnDelay,
+                            false
+                        );
+                    }
+                    return;
+                }
+            }
+        }
+        else
+        {
+            // ìœ íš¨í•˜ì§€ ì•Šì€ ì—”íŠ¸ë¦¬ì´ê±°ë‚˜ ìŠ¤í° ì™„ë£Œë¨, ë‹¤ìŒ ì—”íŠ¸ë¦¬ë¡œ
+            UE_LOG(LogTemp, Error, TEXT("Invalid entry or completed, moving to next"));
+            CurrentSpawnEntryIndex++;
+            CurrentSpawnCount = 0;
+
+            // ì¦‰ì‹œ ë‹¤ìŒ ì—”íŠ¸ë¦¬ ì²˜ë¦¬
+            ProcessWaveSpawn();
+            return;
+        }
+    }
+
+    // ëª¨ë“  ì—”íŠ¸ë¦¬ ì™„ë£Œ
+    UE_LOG(LogTemp, Error, TEXT("All spawn entries completed! Starting wave completion check."));
+    CheckWaveCompletion();
+}
+
+void AMainGameModeBase::SpawnEnemyFromEntry(const FWaveSpawnEntry& Entry)
+{
+    UE_LOG(LogTemp, Error, TEXT("=== SpawnEnemyFromEntry DEBUG START ==="));
+    UE_LOG(LogTemp, Error, TEXT("Entry.EnemyClass is valid: %s"), Entry.EnemyClass ? TEXT("TRUE") : TEXT("FALSE"));
+
+    if (Entry.EnemyClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("EnemyClass Name: %s"), *Entry.EnemyClass->GetName());
+        UE_LOG(LogTemp, Error, TEXT("EnemyClass Path: %s"), *Entry.EnemyClass->GetPathName());
+
+        // í´ë˜ìŠ¤ê°€ ê°ê° ë¬´ì—‡ì¸ì§€ ì²´í¬
+        if (Entry.EnemyClass->IsChildOf<AEnemy>())
+        {
+            UE_LOG(LogTemp, Error, TEXT("This is AEnemy class"));
+        }
+        else if (Entry.EnemyClass->IsChildOf<AEnemyDog>())
+        {
+            UE_LOG(LogTemp, Error, TEXT("This is AEnemyDog class"));
+        }
+        else if (Entry.EnemyClass->IsChildOf<AEnemyDrone>())
+        {
+            UE_LOG(LogTemp, Error, TEXT("This is AEnemyDrone class"));
+        }
+        else if (Entry.EnemyClass->IsChildOf<AEnemyGuardian>())
+        {
+            UE_LOG(LogTemp, Error, TEXT("This is AEnemyGuardian class"));
+        }
+        else if (Entry.EnemyClass->IsChildOf<AEnemyShooter>())
+        {
+            UE_LOG(LogTemp, Error, TEXT("This is AEnemyShooter class"));
+        }
+        else if (Entry.EnemyClass->IsChildOf<ABossEnemy>())
+        {
+            UE_LOG(LogTemp, Error, TEXT("This is ABossEnemy class"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("Unknown class type - IsChildOf<APawn>: %s"),
+                Entry.EnemyClass->IsChildOf<APawn>() ? TEXT("TRUE") : TEXT("FALSE"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("EnemyClass is NULL! Cannot spawn."));
+        return;
+    }
+
+    FVector SpawnLocation = GetNextSpawnLocation();
+    UE_LOG(LogTemp, Error, TEXT("Spawn Location: %s"), *SpawnLocation.ToString());
+
+    SpawnEnemyAtLocation(Entry.EnemyClass, SpawnLocation);
+    UE_LOG(LogTemp, Error, TEXT("=== SpawnEnemyFromEntry DEBUG END ==="));
+}
+
+
+void AMainGameModeBase::OnWaveCompleted()
+{
+    if (!bWaveInProgress) return;
+
+    bWaveInProgress = false;
+
+    UE_LOG(LogTemp, Warning, TEXT("Wave %d completed! Enemies killed: %d/%d"),
+        CurrentWaveIndex + 1, EnemiesKilledInWave, TotalEnemiesInWave);
+
+    // ë¹„ë™ê¸° ë©”ëª¨ë¦¬ ì •ë¦¬ ì‹œì‘
+    if (bEnableAsyncCleanup)
+    {
+        PerformAsyncCleanup();
+    }
+
+    PrepareNextWave();
+}
+
+void AMainGameModeBase::PrepareNextWave()
+{
+    // ë‹¤ìŒ ì›¨ì´ë¸Œ ì¤€ë¹„
+    GetWorldTimerManager().SetTimer(
+        WaveStartTimer,
+        this,
+        &AMainGameModeBase::StartNextWave,
+        DefaultWaveClearDelay,
+        false
+    );
+}
+
+void AMainGameModeBase::StartNextWave()
+{
+    int32 NextWaveIndex = CurrentWaveIndex + 1;
+
+    if (NextWaveIndex < WaveConfigurations.Num())
+    {
+        StartWave(NextWaveIndex);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("All waves completed! Game finished."));
+        bWaveSystemActive = false;
+    }
+}
+
+// ========================================
+// ìŠ¤í° í•¨ìˆ˜ë“¤
+// ========================================
+
+void AMainGameModeBase::SpawnEnemyAtLocation(TSubclassOf<class APawn> EnemyClass, const FVector& Location)
+{
+    UE_LOG(LogTemp, Error, TEXT("=== SpawnEnemyAtLocation DEBUG START ==="));
+    UE_LOG(LogTemp, Error, TEXT("EnemyClass is valid: %s"), EnemyClass ? TEXT("TRUE") : TEXT("FALSE"));
+
+    if (!EnemyClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("EnemyClass is NULL! Aborting spawn."));
+        return;
+    }
+
+    UE_LOG(LogTemp, Error, TEXT("Attempting to spawn: %s"), *EnemyClass->GetName());
+
+    // ë“œë¡ ì˜ ê²½ìš° ìŠ¤í° ìœ„ì¹˜ ë†’ì´ ì¡°ì •
+    FVector AdjustedLocation = Location;
+    if (EnemyClass->IsChildOf<AEnemyDrone>())
+    {
+        AdjustedLocation.Z += DroneSpawnHeightOffset;
+        UE_LOG(LogTemp, Error, TEXT("Drone detected - Adjusted spawn height by +%f"), DroneSpawnHeightOffset);
+    }
+
+    UE_LOG(LogTemp, Error, TEXT("At location: %s"), *Location.ToString());
+
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+    SpawnParams.Name = NAME_None; // ì–¸ë¦¬ì–¼ì´ ìë™ìœ¼ë¡œ ê³ ìœ í•œ ì´ë¦„ ìƒì„±
+
+    UE_LOG(LogTemp, Error, TEXT("World is valid: %s"), GetWorld() ? TEXT("TRUE") : TEXT("FALSE"));
+
+    // ìŠ¤í° ì‹œë„ ì „
+    UE_LOG(LogTemp, Error, TEXT("About to call SpawnActor..."));
+
+    APawn* SpawnedEnemy = GetWorld()->SpawnActor<APawn>(
+        EnemyClass,
+        AdjustedLocation,
+        FRotator::ZeroRotator,
+        SpawnParams
+    );
+
+    // ìŠ¤í° ê²°ê³¼ í™•ì¸
+    if (SpawnedEnemy)
+    {
+        UE_LOG(LogTemp, Error, TEXT("SUCCESS: Spawned % s"), *SpawnedEnemy->GetClass()->GetName());
+        UE_LOG(LogTemp, Error, TEXT("Spawned Actor Name: %s"), *SpawnedEnemy->GetName());
+        UE_LOG(LogTemp, Error, TEXT("Spawned Actor Location: %s"), *SpawnedEnemy->GetActorLocation().ToString());
+
+        SpawnedEnemies.Add(SpawnedEnemy);
+        UE_LOG(LogTemp, Error, TEXT("Added to SpawnedEnemies array. Total count: %d"), SpawnedEnemies.Num());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("FAILED: Could not spawn %s"), *EnemyClass->GetName());
+        UE_LOG(LogTemp, Error, TEXT("Possible reasons:"));
+        UE_LOG(LogTemp, Error, TEXT("- Invalid spawn location"));
+        UE_LOG(LogTemp, Error, TEXT("- Blueprint compilation issues"));
+        UE_LOG(LogTemp, Error, TEXT("- Missing default constructor"));
+        UE_LOG(LogTemp, Error, TEXT("- Class registration issues"));
+    }
+
+    UE_LOG(LogTemp, Error, TEXT("=== SpawnEnemyAtLocation DEBUG END ==="));
+}
+
+
+
+// ========================================
+// ì  ê´€ë¦¬
+// ========================================
+
+void AMainGameModeBase::OnEnemyDestroyed(APawn* DestroyedEnemy)
+{
+    if (!DestroyedEnemy) return;
+
+    SpawnedEnemies.RemoveAll([DestroyedEnemy](const TWeakObjectPtr<APawn>& EnemyPtr)
+        {
+            return EnemyPtr.Get() == DestroyedEnemy;
+        });
+
+    if (bWaveSystemEnabled && bWaveInProgress)
+    {
+        EnemiesKilledInWave++;
+        UE_LOG(LogTemp, Log, TEXT("Enemy killed. Progress: %d/%d"),
+            EnemiesKilledInWave, TotalEnemiesInWave);
+
+        CheckWaveCompletion();
+    }
+}
+
+// ========================================
+// ì„±ëŠ¥ ìµœì í™”
+// ========================================
+
+void AMainGameModeBase::PerformAsyncCleanup()
+{
+    UE_LOG(LogTemp, Log, TEXT("Starting async cleanup for Wave %d"), CurrentWaveIndex + 1);
+
+    AsyncTask(ENamedThreads::BackgroundThreadPriority, [this]()
+        {
+            FPlatformProcess::Sleep(0.1f);
+
+            AsyncTask(ENamedThreads::GameThread, [this]()
+                {
+                    // ë¬´íš¨í•œ ì°¸ì¡° ì •ë¦¬
+                    SpawnedEnemies.RemoveAll([](const TWeakObjectPtr<APawn>& EnemyPtr)  // AEnemy â†’ APawn
+                        {
+                            return !EnemyPtr.IsValid();
+                        });
+
+                    SpawnedEnemies.Shrink();
+
+                    UE_LOG(LogTemp, Log, TEXT("Async cleanup completed. Active enemies: %d"),
+                        SpawnedEnemies.Num());
+                });
+        });
+}
+
+
+void AMainGameModeBase::ForceCompleteMemoryCleanup()
+{
+    UE_LOG(LogTemp, Warning, TEXT("Performing complete memory cleanup"));
+
+    // ëª¨ë“  ì  ê°•ì œ ì œê±°
+    KillAllEnemies();
+
+    // ë°°ì—´ ì™„ì „ ì´ˆê¸°í™”
+    SpawnedEnemies.Empty();
+    SpawnedEnemies.Shrink();
+
+    // íƒ€ì´ë¨¸ ì •ë¦¬
+    GetWorldTimerManager().ClearTimer(WaveStartTimer);
+    GetWorldTimerManager().ClearTimer(SpawnTimer);
+    GetWorldTimerManager().ClearTimer(CleanupTimer);
+
+    // ê°•ì œ ê°€ë¹„ì§€ ì»¬ë ‰ì…˜
+    if (GEngine)
+    {
+        GEngine->ForceGarbageCollection(true);
+        UE_LOG(LogTemp, Warning, TEXT("Forced garbage collection completed"));
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Complete memory cleanup finished"));
+}
+
+// ========================================
+// ê³µê°œ ì¸í„°í˜ì´ìŠ¤
+// ========================================
+
+void AMainGameModeBase::SetWaveSystemEnabled(bool bEnabled)
+{
+    if (bWaveSystemEnabled == bEnabled) return;
+
+    bWaveSystemEnabled = bEnabled;
+    StopAllSystems();
+
+    if (bWaveSystemEnabled)
+    {
+        StartWaveSystem();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Wave system disabled"));
+    }
+}
+
+FString AMainGameModeBase::GetCurrentWaveName() const
+{
+    if (CurrentWaveIndex < WaveConfigurations.Num())
+    {
+        return WaveConfigurations[CurrentWaveIndex].WaveName;
+    }
+    return TEXT("Unknown Wave");
+}
+
+int32 AMainGameModeBase::GetActiveEnemyCount() const
+{
+    int32 Count = 0;
+    for (const TWeakObjectPtr<APawn>& EnemyPtr : SpawnedEnemies)  // AEnemy â†’ APawn
+    {
+        if (EnemyPtr.IsValid())
+        {
+            Count++;
+        }
+    }
+
+    return Count;
+}
+
+
+void AMainGameModeBase::RestartWaveSystem()
+{
+    StopAllSystems();
+
+    if (bWaveSystemEnabled)
+    {
+        StartWaveSystem();
+    }
+}
+
+void AMainGameModeBase::SkipToWave(int32 WaveIndex)
+{
+    if (WaveIndex >= 0 && WaveIndex < WaveConfigurations.Num())
+    {
+        StopAllSystems();
+        KillAllEnemies();
+        StartWave(WaveIndex);
+    }
+}
+
+void AMainGameModeBase::StopAllSystems()
+{
+    // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ ì •ì§€
+    bWaveSystemActive = false;
+    bWaveInProgress = false;
+    GetWorldTimerManager().ClearTimer(WaveStartTimer);
+    GetWorldTimerManager().ClearTimer(SpawnTimer);
+    GetWorldTimerManager().ClearTimer(CleanupTimer);
+}
+
+// ========================================
+// ìœ í‹¸ë¦¬í‹° í•¨ìˆ˜ë“¤
+// ========================================
 
 void AMainGameModeBase::PreCalculateSpawnLocations()
 {
@@ -68,7 +589,6 @@ void AMainGameModeBase::PreCalculateSpawnLocations()
 
     FVector SpawnCenter = bSpawnAroundPlayer ? GetPlayerLocation() : SpawnCenterLocation;
 
-    // ¿©·¯ ¹İÁö¸§À¸·Î ´Ù¾çÇÑ À§Ä¡ °è»ê
     TArray<float> RadiusValues = { 500.0f, 750.0f, 1000.0f, 1250.0f, 1500.0f };
     int32 LocationsPerRadius = PreCalculatedLocationCount / RadiusValues.Num();
 
@@ -84,7 +604,6 @@ void AMainGameModeBase::PreCalculateSpawnLocations()
         }
     }
 
-    // ºÎÁ·ÇÑ À§Ä¡µé Ãß°¡ °è»ê
     while (PreCalculatedSpawnLocations.Num() < PreCalculatedLocationCount)
     {
         FVector SpawnLocation;
@@ -94,7 +613,7 @@ void AMainGameModeBase::PreCalculateSpawnLocations()
         }
         else
         {
-            break; // NavMesh¿¡¼­ ´õ ÀÌ»ó À§Ä¡¸¦ Ã£À» ¼ö ¾øÀ½
+            break;
         }
     }
 
@@ -105,8 +624,6 @@ void AMainGameModeBase::PreCalculateSpawnLocations()
 void AMainGameModeBase::RefreshSpawnLocations()
 {
     UE_LOG(LogTemp, Warning, TEXT("Refreshing spawn locations..."));
-
-    // ºñµ¿±â·Î »õ À§Ä¡µé °è»ê
     RefillSpawnLocationsAsync();
 }
 
@@ -114,13 +631,11 @@ void AMainGameModeBase::RefillSpawnLocationsAsync()
 {
     if (!bLocationCalculationComplete) return;
 
-    // ¹é±×¶ó¿îµå¿¡¼­ »õ À§Ä¡µé °è»ê (¸ŞÀÎ ½º·¹µå ºí·ÎÅ· ¾øÀ½)
     AsyncTask(ENamedThreads::BackgroundThreadPriority, [this]()
         {
             TArray<FVector> NewLocations;
             FVector SpawnCenter = bSpawnAroundPlayer ? GetPlayerLocation() : SpawnCenterLocation;
 
-            // 50°³ÀÇ »õ À§Ä¡ °è»ê
             for (int32 i = 0; i < 50; i++)
             {
                 FVector SpawnLocation;
@@ -130,12 +645,10 @@ void AMainGameModeBase::RefillSpawnLocationsAsync()
                 }
             }
 
-            // ¸ŞÀÎ ½º·¹µå¿¡¼­ ¹è¿­ ¾÷µ¥ÀÌÆ®
             AsyncTask(ENamedThreads::GameThread, [this, NewLocations]()
                 {
                     if (NewLocations.Num() > 0)
                     {
-                        // ±âÁ¸ À§Ä¡ ÀÏºÎ¸¦ »õ À§Ä¡·Î ±³Ã¼
                         int32 StartIndex = FMath::RandRange(0, FMath::Max(0, PreCalculatedSpawnLocations.Num() - NewLocations.Num()));
                         for (int32 i = 0; i < NewLocations.Num() && StartIndex + i < PreCalculatedSpawnLocations.Num(); i++)
                         {
@@ -162,351 +675,71 @@ FVector AMainGameModeBase::GetNextSpawnLocation()
     return SpawnLocation;
 }
 
-void AMainGameModeBase::StartWaveSystem()
-{
-    UE_LOG(LogTemp, Warning, TEXT("Wave Level System Started - Level %d"), CurrentWaveLevel);
-    StartWaveLevel();
-}
-
-void AMainGameModeBase::StartWaveLevel()
-{
-    UE_LOG(LogTemp, Warning, TEXT("Starting Wave Level %d"), CurrentWaveLevel);
-
-    // ¿şÀÌºê ·¹º§ ½ÃÀÛ ½Ã ÃÊ±âÈ­
-    SpawnStepCount = 0;
-    bIsBossAlive = false;
-    bWaitingForBossTransition = false;
-
-    // Ã¹ ¹øÂ° ½ºÆùÀ» 10ÃÊ ÈÄ¿¡ ½ÃÀÛ
-    GetWorldTimerManager().SetTimer(
-        MainSpawnTimer,
-        this,
-        &AMainGameModeBase::ProcessSpawnStep,
-        SpawnInterval,
-        true
-    );
-}
-
-void AMainGameModeBase::ProcessSpawnStep()
-{
-    if (!bEnableWaveSystem || !bSpawnEnabled)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Spawn skipped - System disabled"));
-        return;
-    }
-
-    // º¸½º »ç¸Á ÈÄ ÀüÈ¯ ´ë±â ÁßÀÌ¸é ½ºÆù Áß´Ü
-    if (bWaitingForBossTransition)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Spawn skipped - Waiting for boss transition"));
-        return;
-    }
-
-    SpawnStepCount++;
-
-    UE_LOG(LogTemp, Warning, TEXT("Processing spawn step %d (Wave Level %d)"), SpawnStepCount, CurrentWaveLevel);
-
-    // ½ºÆù ÆĞÅÏ °áÁ¤
-    if (SpawnStepCount <= 5)
-    {
-        // 10ÃÊ(1¸í), 20ÃÊ(2¸í), 30ÃÊ(3¸í), 40ÃÊ(4¸í), 50ÃÊ(5¸í)
-        SpawnEnemies(SpawnStepCount);
-    }
-    else if (SpawnStepCount == 6)
-    {
-        // 60ÃÊ: º¸½º ½ºÆù
-        SpawnBoss();
-    }
-    else
-    {
-        // 70ÃÊ ÀÌÈÄ´Â ´ÙÀ½ ¿şÀÌºê ·¹º§¿¡¼­ Ã³¸®
-        UE_LOG(LogTemp, Warning, TEXT("Unexpected spawn step: %d"), SpawnStepCount);
-    }
-}
-
-void AMainGameModeBase::SpawnEnemies(int32 Count)
-{
-    if (!DefaultEnemyClass)
-    {
-        UE_LOG(LogTemp, Error, TEXT("Default Enemy Class is null"));
-        return;
-    }
-
-    if (!bLocationCalculationComplete)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Location calculation not complete yet"));
-        return;
-    }
-
-    for (int32 i = 0; i < Count; i++)
-    {
-        FVector SpawnLocation = GetNextSpawnLocation();
-        SpawnActorAtLocation(SpawnLocation);
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Spawned %d enemies at step %d (Wave Level %d) - NavMesh searches: 0"),
-        Count, SpawnStepCount, CurrentWaveLevel);
-}
-
-void AMainGameModeBase::SpawnActorAtLocation(const FVector& Location)
-{
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.SpawnCollisionHandlingOverride =
-        ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-    AEnemy* SpawnedEnemy = GetWorld()->SpawnActor<AEnemy>(
-        DefaultEnemyClass,
-        Location,
-        FRotator::ZeroRotator,
-        SpawnParams
-    );
-
-    if (SpawnedEnemy)
-    {
-        ApplyEnemyStatsForWaveLevel(SpawnedEnemy, CurrentWaveLevel);
-        SpawnedEnemies.Add(SpawnedEnemy);
-    }
-}
-
-void AMainGameModeBase::SpawnBoss()
-{
-    if (bIsBossAlive)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Boss spawn skipped - Boss already alive"));
-        return;
-    }
-
-    if (!DefaultBossClass)
-    {
-        UE_LOG(LogTemp, Error, TEXT("Default Boss Class is null"));
-        return;
-    }
-
-    // º¸½º ½ºÆù Àü ¸ğµç Àû Á¦°Å
-    KillAllEnemies();
-
-    // ¿şÀÌºê ·¹º§ÀÇ ¸ğµç ¸Ş¸ğ¸® Á¤¸®
-    ForceCompleteMemoryCleanup();
-
-    FVector SpawnLocation = GetNextSpawnLocation();
-
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.SpawnCollisionHandlingOverride =
-        ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-    ABossEnemy* SpawnedBoss = GetWorld()->SpawnActor<ABossEnemy>(
-        DefaultBossClass,
-        SpawnLocation,
-        FRotator::ZeroRotator,
-        SpawnParams
-    );
-
-    if (SpawnedBoss)
-    {
-        CurrentBoss = SpawnedBoss;
-        bIsBossAlive = true;
-        UE_LOG(LogTemp, Warning, TEXT("Boss spawned at step %d (Wave Level %d) - NavMesh searches: 0"),
-            SpawnStepCount, CurrentWaveLevel);
-    }
-}
-
-void AMainGameModeBase::OnBossDead()
-{
-    if (!bIsBossAlive) return;
-
-    bIsBossAlive = false;
-    CurrentBoss.Reset();
-    bWaitingForBossTransition = true;
-
-    UE_LOG(LogTemp, Warning, TEXT("Boss died at step %d (Wave Level %d) - Starting transition"),
-        SpawnStepCount, CurrentWaveLevel);
-
-    // ¸ŞÀÎ ½ºÆù Å¸ÀÌ¸Ó ÁßÁö
-    GetWorldTimerManager().ClearTimer(MainSpawnTimer);
-
-    // 10ÃÊ ÈÄ ´ÙÀ½ ¿şÀÌºê ·¹º§ ½ÃÀÛ
-    GetWorldTimerManager().SetTimer(
-        PostBossTransitionTimer,
-        this,
-        &AMainGameModeBase::StartNextWaveLevel,
-        10.0f,
-        false
-    );
-}
-
-void AMainGameModeBase::StartNextWaveLevel()
-{
-    UE_LOG(LogTemp, Warning, TEXT("Starting next wave level transition"));
-
-    // ¿şÀÌºê ·¹º§ Áõ°¡
-    CurrentWaveLevel++;
-
-    // »õ·Î¿î ¿şÀÌºê ·¹º§ ½ÃÀÛ
-    StartWaveLevel();
-}
-
-void AMainGameModeBase::ForceCompleteMemoryCleanup()
-{
-    UE_LOG(LogTemp, Warning, TEXT("Performing complete memory cleanup for Wave Level %d"), CurrentWaveLevel);
-
-    // 1. ¸ğµç Àû °­Á¦ Á¦°Å
-    KillAllEnemies();
-
-    // 2. ¹è¿­ ¿ÏÀü ÃÊ±âÈ­
-    SpawnedEnemies.Empty();
-    SpawnedEnemies.Shrink();
-
-    // 3. º¸½º ÂüÁ¶ Á¤¸®
-    CurrentBoss.Reset();
-
-    // 4. Å¸ÀÌ¸Ó Á¤¸®
-    GetWorldTimerManager().ClearTimer(MainSpawnTimer);
-    GetWorldTimerManager().ClearTimer(PostBossTransitionTimer);
-
-    // 5. °­Á¦ °¡ºñÁö ÄÃ·º¼Ç
-    if (GEngine)
-    {
-        GEngine->ForceGarbageCollection(true);
-        UE_LOG(LogTemp, Warning, TEXT("Forced garbage collection completed"));
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Memory cleanup completed. SpawnedEnemies array size: %d"),
-        SpawnedEnemies.Num());
-}
-
-void AMainGameModeBase::ApplyEnemyStatsForWaveLevel(AEnemy* Enemy, int32 WaveLevel)
-{
-    if (!Enemy) return;
-
-    if (WaveLevel > 1)
-    {
-        // Ã¼·Â Áõ°¡ (·¹º§¸¶´Ù 100% Áõ°¡)
-        float HealthMultiplier = 1.0f + (WaveLevel - 1) * 1.0f;
-        Enemy->Health = Enemy->Health * HealthMultiplier;
-
-        // ÀÌµ¿¼Óµµ Áõ°¡ (·¹º§¸¶´Ù 30% Áõ°¡, ÃÖ´ë 3¹è)
-        float SpeedMultiplier = FMath::Min(1.0f + (WaveLevel - 1) * 0.3f, 3.0f);
-        if (Enemy->GetCharacterMovement())
-        {
-            Enemy->GetCharacterMovement()->MaxWalkSpeed *= SpeedMultiplier;
-        }
-
-        UE_LOG(LogTemp, Warning, TEXT("Enemy enhanced for Wave Level %d - Health: %.1f, Speed multiplier: %.1f"),
-            WaveLevel, Enemy->Health, SpeedMultiplier);
-    }
-}
-
 void AMainGameModeBase::KillAllEnemies()
 {
     int32 KilledCount = 0;
 
-    for (int32 i = SpawnedEnemies.Num() - 1; i >= 0; i--)
+    // ë°°ì—´ ë³µì‚¬ í›„ ìˆœíšŒ (ì•ˆì „í•œ ì‹¤í–‰ì„ ìœ„í•´)
+    TArray<TWeakObjectPtr<APawn>> EnemiesToKill = SpawnedEnemies;
+
+    for (const auto& EnemyPtr : EnemiesToKill)
     {
-        if (SpawnedEnemies[i].IsValid())
+        if (EnemyPtr.IsValid())
         {
-            AEnemy* Enemy = SpawnedEnemies[i].Get();
-            if (Enemy && !Enemy->bIsDead)
+            APawn* EnemyPawn = EnemyPtr.Get();
+
+            // 1. AEnemy íƒ€ì…ì¸ì§€ í™•ì¸
+            if (AEnemy* SpecificEnemy = Cast<AEnemy>(EnemyPawn))
             {
-                // ±âÁ¸ InstantDeath() ÇÔ¼ö »ç¿ë (¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı)
-                Enemy->InstantDeath();
+                SpecificEnemy->Die();
                 KilledCount++;
+                continue; // ë‹¤ìŒ ì ìœ¼ë¡œ ë„˜ì–´ê°
+            }
+
+            // 2. AEnemyDog íƒ€ì…ì¸ì§€ í™•ì¸
+            if (AEnemyDog* SpecificEnemy = Cast<AEnemyDog>(EnemyPawn))
+            {
+                SpecificEnemy->Die();
+                KilledCount++;
+                continue; // ë‹¤ìŒ ì ìœ¼ë¡œ ë„˜ì–´ê°
+            }
+
+            // 3. AEnemyDrone íƒ€ì…ì¸ì§€ í™•ì¸
+            if (AEnemyDrone* SpecificEnemy = Cast<AEnemyDrone>(EnemyPawn))
+            {
+                SpecificEnemy->Die();
+                KilledCount++;
+                continue;
+            }
+
+            // 4. AEnemyGuardian íƒ€ì…ì¸ì§€ í™•ì¸
+            if (AEnemyGuardian* SpecificEnemy = Cast<AEnemyGuardian>(EnemyPawn))
+            {
+                SpecificEnemy->Die();
+                KilledCount++;
+                continue;
+            }
+
+            // 5. AEnemyShooter íƒ€ì…ì¸ì§€ í™•ì¸
+            if (AEnemyShooter* SpecificEnemy = Cast<AEnemyShooter>(EnemyPawn))
+            {
+                SpecificEnemy->Die();
+                KilledCount++;
+                continue;
+            }
+
+            // 6. BossEnemy íƒ€ì…ì¸ì§€ í™•ì¸
+            if (ABossEnemy* SpecificEnemy = Cast<ABossEnemy>(EnemyPawn))
+            {
+                SpecificEnemy->BossDie();
+                KilledCount++;
+                continue;
             }
         }
     }
-
-    UE_LOG(LogTemp, Warning, TEXT("Killed %d enemies"), KilledCount);
+    UE_LOG(LogTemp, Warning, TEXT("Called Die() on %d enemies"), KilledCount);
 }
 
-void AMainGameModeBase::OnEnemyDestroyed(AEnemy* DestroyedEnemy)
-{
-    if (!DestroyedEnemy) return;
-
-    SpawnedEnemies.RemoveAll([DestroyedEnemy](const TWeakObjectPtr<AEnemy>& EnemyPtr)
-        {
-            return EnemyPtr.Get() == DestroyedEnemy;
-        });
-}
-
-void AMainGameModeBase::StopWaveSystem()
-{
-    UE_LOG(LogTemp, Warning, TEXT("Wave System STOPPED"));
-
-    GetWorldTimerManager().ClearTimer(MainSpawnTimer);
-    GetWorldTimerManager().ClearTimer(PostBossTransitionTimer);
-    GetWorldTimerManager().ClearTimer(LocationRefreshTimer);
-
-    // ·¹°Å½Ã Å¸ÀÌ¸Óµéµµ Á¤¸®
-    for (FTimerHandle& Timer : EnemySpawnTimers)
-    {
-        GetWorldTimerManager().ClearTimer(Timer);
-    }
-    for (FTimerHandle& Timer : BossSpawnTimers)
-    {
-        GetWorldTimerManager().ClearTimer(Timer);
-    }
-
-    EnemySpawnTimers.Empty();
-    BossSpawnTimers.Empty();
-}
-
-void AMainGameModeBase::SetWaveSystemEnabled(bool bEnabled)
-{
-    bEnableWaveSystem = bEnabled;
-
-    if (bEnableWaveSystem)
-    {
-        StartWaveSystem();
-    }
-    else
-    {
-        StopWaveSystem();
-    }
-}
-
-// ·¹°Å½Ã ÇÔ¼öµé
-void AMainGameModeBase::SpawnEnemyWave(int32 EnemyWaveIndex)
-{
-    if (!bEnableWaveSystem)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Legacy enemy spawn blocked - Wave System is disabled"));
-        return;
-    }
-}
-
-void AMainGameModeBase::SpawnBossWave(int32 BossWaveIndex)
-{
-    if (!bEnableWaveSystem)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Legacy boss spawn blocked - Wave System is disabled"));
-        return;
-    }
-}
-
-bool AMainGameModeBase::SpawnActorOnNavMesh(TSubclassOf<class APawn> ActorClass, FVector CenterLocation,
-    float Radius, float ZOffset)
-{
-    if (!ActorClass) return false;
-
-    FVector SpawnLocation;
-    if (FindRandomLocationOnNavMesh(CenterLocation, Radius, SpawnLocation))
-    {
-        SpawnLocation.Z += ZOffset;
-
-        FActorSpawnParameters SpawnParams;
-        SpawnParams.SpawnCollisionHandlingOverride =
-            ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-        APawn* SpawnedActor = GetWorld()->SpawnActor<APawn>(
-            ActorClass,
-            SpawnLocation,
-            FRotator::ZeroRotator,
-            SpawnParams
-        );
-
-        return SpawnedActor != nullptr;
-    }
-    return false;
-}
 
 bool AMainGameModeBase::FindRandomLocationOnNavMesh(FVector CenterLocation, float Radius, FVector& OutLocation)
 {
@@ -529,9 +762,25 @@ FVector AMainGameModeBase::GetPlayerLocation()
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
     if (PlayerCharacter)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Player location obtained: %s"), *PlayerCharacter->GetActorLocation().ToString());
         return PlayerCharacter->GetActorLocation();
     }
-    UE_LOG(LogTemp, Warning, TEXT("Player character not found, returning ZeroVector"));
     return FVector::ZeroVector;
+}
+
+void AMainGameModeBase::CheckWaveCompletion()
+{
+    if (!bWaveInProgress) return; 
+
+    int32 ActiveEnemyCount = GetActiveEnemyCount();
+    UE_LOG(LogTemp, Warning, TEXT("Check Wave Completion - Active enemies: %d"), ActiveEnemyCount);
+
+    if (ActiveEnemyCount == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("All enemies defeated! Wave completed."));
+        OnWaveCompleted();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("Wave still in progress - %d enemies remaining"), ActiveEnemyCount);
+    }
 }

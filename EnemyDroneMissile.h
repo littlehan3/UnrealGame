@@ -10,47 +10,50 @@ class LOCOMOTION_API AEnemyDroneMissile : public AActor
     GENERATED_BODY()
 
 public:
-    AEnemyDroneMissile();
+    AEnemyDroneMissile(); // 생성자
 
-    void SetTarget(AActor* Target);
-    void ResetMissile(FVector SpawnLocation, AActor* NewTarget);
-    void Explode();
+    void SetTarget(AActor* Target); // 추적할 타겟 설정 함수
+    void ResetMissile(FVector SpawnLocation, AActor* NewTarget); // 오브젝트 풀링을 위한 상태 초기화 및 재발사 함수
+    void Explode(); // 폭발 처리 함수
 
+    // 컴포넌트들
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    class UProjectileMovementComponent* ProjectileMovement;
+    class UProjectileMovementComponent* ProjectileMovement; // 투사체 이동을 관리하는 컴포넌트
 
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    class USphereComponent* CollisionComponent;
+    class USphereComponent* CollisionComponent; // 충돌을 감지하는 구체 컴포넌트
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    UStaticMeshComponent* MeshComp;
+    UStaticMeshComponent* MeshComp; // 미사일의 외형을 나타내는 스태틱 메쉬
 
+    // 미사일 속성
     UPROPERTY(EditAnywhere, Category = "Effects")
-    class UNiagaraSystem* ExplosionEffect;
+    class UNiagaraSystem* ExplosionEffect; // 폭발 시 재생될 나이아가라 이펙트
 
     UPROPERTY(EditAnywhere, Category = "Missile")
-    float Damage = 10.f;
+    float Damage = 10.f; // 폭발 시 데미지
 
     UPROPERTY(EditAnywhere, Category = "Missile")
-    float Health = 10.f;
+    float Health = 10.f; // 미사일 자체의 체력 (플레이어가 요격 가능)
 
 private:
-    AActor* TargetActor;
-    FVector LastMoveDirection;
+    AActor* TargetActor; // 추적 대상 액터
+    FVector LastMoveDirection; // 마지막으로 이동했던 방향 (타겟을 놓쳤을 때 사용)
+    bool bExploded = false; // 이미 폭발했는지 여부
 
+    // 충돌(OnHit) 이벤트 발생 시 호출될 함수
     UFUNCTION()
     void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
+    // 미사일이 데미지를 입었을 때 호출될 함수
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
         class AController* EventInstigator, AActor* DamageCauser) override;
 
-    bool bExploded = false;
-
     UPROPERTY(EditAnywhere, Category = "Missile")
-    float ExplosionRadius = 50.f;
+    float ExplosionRadius = 50.f; // 폭발 반경
 };

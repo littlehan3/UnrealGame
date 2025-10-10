@@ -70,7 +70,6 @@ void ABossEnemy::BeginPlay()
 			}
 		}
 	}
-
 }
 
 void ABossEnemy::PlayBossSpawnIntroAnimation()
@@ -1670,11 +1669,11 @@ void ABossEnemy::BossDie()
 	if (bIsBossDead) return; // 이미 사망한 경우 리턴
 	bIsBossDead = true; // 사망상태 트루
 
-	// GameMode에 보스 사망 알림
-	if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
-	{
-		GameMode->OnBossDead();
-	}
+	//// GameMode에 보스 사망 알림
+	//if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
+	//{
+	//	GameMode->OnBossDead();
+	//}
 
 	// 사망 사운드 재생
 	if (BossDieSound)
@@ -1770,6 +1769,12 @@ void ABossEnemy::HideBossEnemy()
 	if (!bIsBossDead) return; // 이미 사망한 경우 리턴
 
 	UE_LOG(LogTemp, Warning, TEXT("Hiding Boss Enemy - Memory Cleanup"));
+
+	// GameMode에 파괴 알림
+	if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
+	{
+		GameMode->OnEnemyDestroyed(this);
+	}
 
 	// 1. 이벤트 및 델리게이트 정리 (최우선)
 	GetWorld()->GetTimerManager().ClearAllTimersForObject(this); // 모든 타이머 해제

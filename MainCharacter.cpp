@@ -294,6 +294,25 @@ void AMainCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    bool bCurrentlyFalling = GetCharacterMovement()->IsFalling();
+    bool bCurrentlyOnGround = GetCharacterMovement()->IsMovingOnGround();
+
+    if (bCurrentlyFalling && !bIsInAir)
+    {
+        bIsInAir = true;
+    }
+    else if (bCurrentlyOnGround && bIsInAir)
+    {
+        // 이미 Landed에서 처리했으므로 중복 처리 방지
+        if (!bIsLanding)
+        {
+            bIsInAir = false;
+            bIsJumping = false;
+            bIsInDoubleJump = false;
+            bCanDoubleJump = true;
+        }
+    }
+
     FVector Velocity = GetVelocity();
     Speed = Velocity.Size();
 
@@ -339,6 +358,8 @@ void AMainCharacter::Tick(float DeltaTime)
         AnimInstance->AimPitch = AimPitch; // Pitch 값 전달
         AnimInstance->bIsUsingAimSkill1 = (SkillComponent && SkillComponent->IsUsingAimSkill1());
         AnimInstance->bIsUsingAimSkill2 = (SkillComponent && SkillComponent->IsUsingAimSkill2());
+        // 착지 애니메이션 상태도 전달 (필요시 CustomAnimInstance에 변수 추가)
+        // AnimInstance->bIsPlayingLandingAnimation = bIsPlayingLandingAnimation;
     }
 
     if (bIsAiming || (SkillComponent && SkillComponent->IsUsingAimSkill1() || (SkillComponent && SkillComponent->IsUsingAimSkill2())))
@@ -423,34 +444,43 @@ void AMainCharacter::HandleJump()
 {
     if (SkillComponent &&
         (SkillComponent->IsUsingSkill1() || SkillComponent->IsUsingSkill2() || SkillComponent->IsUsingSkill3() ||
-            SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2()) || SkillComponent->IsUsingAimSkill3())
+            SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2() || SkillComponent->IsUsingAimSkill3()))
         return;
 
     if (MeleeCombatComponent && !MeleeCombatComponent->CanAirAction())
     {
         UE_LOG(LogTemp, Warning, TEXT("Jump Blocked - Air action Disabled"));
-
         return;
     }
 
-    // 공격 중이거나 대쉬중에 점프 불가
-    if (bIsDashing)
+    // 대쉬 중이거나 착지 애니메이션 재생 중일 때 점프 불가
+    if (bIsDashing || bIsPlayingLandingAnimation)
     {
+        if (bIsPlayingLandingAnimation)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Jump Blocked - Landing animation is playing"));
+        }
         return;
     }
 
-    if (!bIsJumping)
+    // 빠른 연타 방지: 이미 공중에 있고 아직 착지하지 않았다면 더블점프만 허용
+    if (GetCharacterMovement()->IsFalling() && !bCanDoubleJump)
+    {
+        return;  // 이미 더블점프를 사용했다면 더 이상 점프 불가
+    }
+
+    if (!bIsJumping && GetCharacterMovement()->IsMovingOnGround())
     {
         LaunchCharacter(FVector(0, 0, 500), false, true);
-        //Jump();
         bIsJumping = true;
+        bIsInAir = true;  // 즉시 공중 상태로 설정
     }
-
-    else if (bCanDoubleJump)
+    else if (bCanDoubleJump && GetCharacterMovement()->IsFalling())
     {
         HandleDoubleJump();
     }
 }
+
 
 void AMainCharacter::HandleDoubleJump()
 {
@@ -481,10 +511,15 @@ void AMainCharacter::Landed(const FHitResult& Hit)
 {
     Super::Landed(Hit);
 
+    // 즉시 점프 상태 초기화
+    bIsJumping = false;
+    bIsInDoubleJump = false;
+    bIsInAir = false;
+    bCanDoubleJump = true;
+
     if (MeleeCombatComponent)
     {
         MeleeCombatComponent->OnCharacterLanded();
-        // 착지 시 점프공격 큐 클리어
         if (MeleeCombatComponent->IsJumpAttackQueued())
         {
             MeleeCombatComponent->ClearJumpAttackQueue();
@@ -492,20 +527,35 @@ void AMainCharacter::Landed(const FHitResult& Hit)
         }
     }
 
-    // 착지 상태 활성화
+    // 착지 상태 활성화 (짧게 설정)
     bIsLanding = true;
+    bIsPlayingLandingAnimation = true;  // 착지 애니메이션 재생 상태 활성화
 
-    // 착지 후 설정한 시간 뒤에 상태 초기화
-    GetWorldTimerManager().SetTimer(LandingTimerHandle, this, &AMainCharacter::ResetLandingState, 0.5f, false);
+    // 착지 애니메이션 지속시간 계산 (더블점프 착지인지 확인)
+    float LandingAnimDuration = 0.5f;  // 기본 착지 애니메이션 시간
 
-    // 착지 시 중력을 원래대로 복구
+    // 더블점프에서 착지했다면 더 긴 애니메이션 시간 적용 (필요시)
+    // if (bWasInDoubleJump) LandingAnimDuration = 0.7f;
+
+    // 착지 애니메이션이 완전히 끝날 때까지 대기
+    GetWorldTimerManager().SetTimer(LandingAnimationTimerHandle, this, &AMainCharacter::OnLandingAnimationFinished, LandingAnimDuration, false);
+
+    // 착지 상태를 더 짧게 유지 (0.2초로 단축)
+    GetWorldTimerManager().SetTimer(LandingTimerHandle, this, &AMainCharacter::ResetLandingState, 0.2f, false);
+
+    // 중력과 낙하 속도 즉시 복구
     GetCharacterMovement()->GravityScale = 1.0f;
+    GetCharacterMovement()->FallingLateralFriction = 0.5f;
 
-    // 낙하 속도 원래대로 복구
-    GetCharacterMovement()->FallingLateralFriction = 0.5f;  // 기본값 복구
-
-    UE_LOG(LogTemp, Warning, TEXT("Landed! Gravity & Falling Speed Reset. Character Rotation: %s"), *GetActorRotation().ToString());
+    UE_LOG(LogTemp, Warning, TEXT("Landed! All jump states reset immediately"));
 }
+
+void AMainCharacter::OnLandingAnimationFinished()
+{
+    bIsPlayingLandingAnimation = false;
+    UE_LOG(LogTemp, Warning, TEXT("Landing Animation Finished! Ready for normal jump"));
+}
+
 
 void AMainCharacter::ResetLandingState()
 {
@@ -572,7 +622,7 @@ void AMainCharacter::FireWeapon()
         {
             CurrentSpreadAngle = CrosshairComponent->GetBulletSpreadAngle();
             CrosshairComponent->StartExpansion(1.0f);
-            ApplyCameraRecoil();  
+            ApplyCameraRecoil();
         }
         Rifle->Fire(CurrentSpreadAngle);
     }
