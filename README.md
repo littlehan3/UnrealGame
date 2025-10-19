@@ -34,6 +34,9 @@ https://drive.google.com/file/d/1l_OHdKEopPomFlDee4dHjost6mtDsDFe/view?usp=shari
 ### 7. 2025년 7월 1일 ~ 8월 1일까지의 노트입니다.
 https://drive.google.com/file/d/1Qnv0xIWh6RjjixkGRun9uKB-a2mltIlF/view?usp=sharing
 
+### 8. 2025년 8월 1일 ~ 10월 1일까지의 노트입니다.
+https://drive.google.com/file/d/1KgF0Eh50LIkYunVWrbQ-Ek3pEn4tUVkZ/view?usp=sharing
+
 ## 2025-02-13 업데이트 내용
 
 ### 1. 레이캐스트 발사 위치 변경
