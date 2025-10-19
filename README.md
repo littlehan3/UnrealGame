@@ -598,7 +598,6 @@ ChasePlayer 상태에서의 행동:
 - 웨이브 전환: 보스 사망 시 10초 대기 후 CurrentWaveLevel++
 - 반복: 새로운 웨이브 레벨에서 1단계부터 다시 시작
 
-
 ### 11. EnemyBoss 추가
 - 전신공격 (정지공격), 상반신공격(움직이면서공격), 후퇴텔레포트(플레이어로부터 멀어짐), 원거리공격, 플레이어뒤로 즉시 텔레포트 후 공격, 스텔스 모드 등의 다양한 공격 패턴을 가짐.
 
@@ -723,5 +722,311 @@ NormalAttack 상태에서 공격 패턴 결정
 - 해당 맵의 블룸과 라이팅 설정으로 인한 특정 이펙트의 과도한 눈부심 현상 발생
 - 시각적 편의성을 위한 적절한 설정값 조정 작업 진행중
 
+##10월 18일 업데이트
 
+### 1. 보스 (Boss) AI
+- 다양한 특수 패턴과 예측 불가능한 움직임을 결합하여 플레이어를 압박하는 복합형 AI
+
+- 1) 주요 시스템 및 로직
+- 메인 클래스: ABossEnemy, ABossEnemyAIController, AEnemyBossKatana, ABossProjectile
+- 상하체 분리 시스템: UBossEnemyAnimInstance의 bUseUpperBodyBlend 플래그를 통해, 이동 중에도 상체는 독립적으로 공격 애니메이션을 재생할 수 있어 지속적인 압박 가능
+- 텔레포트 시스템: 두 가지 종류의 텔레포트를 전술적으로 사용
+- 후퇴 텔레포트: 플레이어로부터 멀어지는 방향으로 이동하며, 텔레포트 후 잠시 멈춘 뒤 원거리 공격 또는 공격형 텔레포트를 연계
+- 공격 텔레포트: 플레이어의 등 뒤 사각지대로 빠르고 기습적으로 이동하여 즉시 공격을 시작
+- 무적(Invincibility) 시스템: 텔레포트 및 스텔스 공격의 특정 구간에서는 bIsInvincible 플래그가 활성화되어 모든 피해를 무시
+- 메모리 관리: 사망 시 HideBossEnemy() 함수를 통해 장착된 무기, AI 컨트롤러, 타이머, 델리게이트 등 모든 종속 객체를 안전하게 정리하고 SetTimerForNextTick을 이용해 다음 프레임에 액터를 파괴
+
+- 2) AI 상태머신 시스템
+- 메인 클래스: ABossEnemyAIController - 보스의 모든 행동을 제어하고 상태를 관리
+- 상태 열거형: EBossEnemyAIState - Idle, MoveToPlayer, NormalAttack 3가지 핵심 상태를 가짐
+- 상태 전환: UpdateBossAIState() 함수에서 플레이어와의 거리에 따라 상태를 자동으로 변경
+- 상태 잠금: bIsFullBodyAttacking, bIsBossTeleporting 등 보스의 전신 애니메이션이 재생되는 동안에는 AI 상태가 NormalAttack으로 고정되어 다른 행동으로 전환되지 않음
+
+- 3) 스텔스(Stealth) 공격 시스템
+- 6단계 시퀀스: 보스의 가장 강력한 특수 패턴으로, 6개의 정해진 단계에 따라 순차적으로 진행
+- 1단계 (시작): StealthStartMontage를 재생하며 스텔스에 진입
+- 2단계 (돌진): StealthDiveMontage를 재생하며 지면으로 파고드는 듯한 모션을 취함
+- 3단계 (은신 및 추적): SetActorHiddenInGame(true)로 완전히 투명해진 뒤, 타이머(StealthWaitTimer)를 이용해 5초 동안 주기적으로 플레이어 주변의 텔레포트 위치를 갱신하며 추적
+- 4단계 (텔레포트): 5초 후, 마지막으로 갱신된 위치(플레이어의 전후좌우 중 랜덤)로 즉시 텔레포트
+- 5단계 (킥 공격): 모습을 드러내며 StealthKickMontage를 재생하고, LineTrace 판정으로 플레이어를 타격
+- 6단계 (피니시): 킥 공격에 맞은 플레이어는 LaunchCharacter에 의해 공중에 뜨고 중력이 0이 되어 무력화되며, 보스는 StealthFinishMontage를 재생하여 LineTrace 판정의 연계 마무리 공격 수행
+- 쿨다운 관리: 스텔스 공격이 완전히 종료되면 StealthCooldown 타이머가 작동하여 연속 사용을 방지
+
+- 4) AI 작동 순서
+- 1단계: 특수 상태 확인: Tick 함수에서 가장 먼저 보스가 등장 중(bIsPlayingBossIntro)이거나 스텔스 공격 중(IsExecutingStealthAttack())인지 확인하고, 해당될 경우 다른 모든 AI 로직을 중단
+- 2단계: 거리 측정: 플레이어와의 거리를 계산하여 UpdateBossAIState()를 호출하고, 현재 상태를 갱신
+- 3단계: 행동 실행: 현재 CurrentState에 따라 BossMoveToPlayer()(이동) 또는 BossNormalAttack()(공격 결정) 함수를 호출
+- 4단계: 공격 패턴 결정: BossNormalAttack() 함수 내에서 현재 거리, 각종 쿨타임, 확률(50%)을 종합적으로 판단하여 근접 공격, 상체 공격, 텔레포트, 스텔스 등 가장 적절한 공격 패턴을 최종적으로 선택하고 실행
+
+- 5) 전투 시스템
+- 카타나 공격: AEnemyBossKatana는 공격 애니메이션이 재생되는 동안 Tick 함수에서 SweepMultiByChannel 판정을 지속적으로 발생시켜, 빠르고 넓은 범위의 공격 판정을 생성
+- 스텔스 킥 & 피니시: 킥 공격이 명중하면 LaunchCharacter를 통해 플레이어를 공중에 띄우고 GravityScale을 0으로 만들어 무력화시킵니다. 이후 이어지는 피니시 공격이 명중하거나 빗나가면 플레이어의 중력은 다시 1.0으로 복구
+- 투사체 공격: ABossProjectile은 발사 후 직선으로 날아가며, 충돌 시 ApplyAreaDamage()를 호출하여 DamageRadius 범위 내의 모든 플레이어에게 광역 피해를 입힘
+
+### 1. EnemyDog AI
+- 다수의 적들이 플레이어를 자연스럽게 포위하면서도 조직적인 전투 행동을 수행
+- AI 상태머신 시스템
+- 메인 클래스: AEnemyDogAIController - EnemyDog의 이동, 추적, 공격 등 모든 행동을 제어
+- 상태 열거형: EEnemyDogAIState - Idle, ChasePlayer 2가지 상태를 가짐
+- 상태 전환: UpdateAIState() 함수에서 플레이어와의 거리에 따라 상태를 자동으로 변경
+
+- 1) 포위 로직 시스템
+- 원형 포위 전략: ChasePlayer 상태일 때, 플레이어를 중심으로 반지름 100 단위(SurroundRadius)의 원 위에 자신의 위치를 계산하여 이동
+- 각도 분산: 월드에 존재하는 모든 EnemyDog 수와 각자의 고유한 인덱스를 기반으로 360도를 균등하게 분배하여 목표 각도를 할당함으로써 서로 겹치지 않고 포위 진형을 형성
+- 동적 위치 선정: TActorIterator를 사용해 실시간으로 아군 수를 파악하고 자신의 인덱스를 찾아내므로, 아군이 죽거나 새로 스폰되어도 유동적으로 포위 위치를 재조정
+
+- 2) AI 작동 순서
+- 1단계: 거리 측정: Tick 함수 내에서 FVector::Dist()를 사용해 플레이어와의 거리를 실시간으로 계산
+- 2단계: 상태 판정: 2000 단위 초과: Idle 상태 (추적 중단 및 제자리 대기)
+- 150 ~ 2000 단위: ChasePlayer 상태 (포위 이동)
+- 150 단위 이하: NormalAttack 상태 (포위 이동 중단 및 공격 실행)
+- 3단계: 행동 실행: 결정된 상태에 따라 ChasePlayer() 또는 NormalAttack() 함수를 호출하여 실제 행동을 수행
+
+- 3) 포위 위치 계산 로직
+- 각도 계산: 360.0f / (전체 EnemyDog 수)로 기본 각도를 계산하고, 자신의 인덱스를 곱하여 고유 각도를 할당
+
+- 4) 위치 생성
+- FVector(Cos(각도), Sin(각도), 0) * SurroundRadius 공식을 통해 플레이어 중심의 원형 좌표를 생성합니다. 
+
+- 5) 내비게이션 이동
+- MoveToLocation() 함수를 사용해 계산된 포위 위치로 이동합니다.
+
+- 6) 성능 최적화
+- 틱 빈도 제한: AI 업데이트 주기를 0.05초 (초당 20회)로 제한하여 Tick 함수의 과도한 호출을 방지
+- 회전 보간 최적화: 플레이어를 바라보는 회전을 FMath::RInterpTo 함수를 통해 프레임에 독립적인 부드러운 움직임으로 처리
+
+- 7) 전투 시스템
+- NormalAttack 상태에서의 행동:
+공격 실행: 150 단위 내에서 bCanAttack이 true일 때 NormalAttack() 함수를 호출합니다.
+- 애니메이션 연계: AEnemyDog의 PlayNormalAttackAnimation() 함수를 호출하여 실제 공격 애니메이션과 피해 판정을 실행
+- 쿨다운 관리: 공격 후 AttackCooldown 타이머가 작동하여 ResetAttack() 함수가 호출되기 전까지는 연속 공격을 방지
+- 상태별 동작
+- Idle: 모든 이동을 중단하고 플레이어가 탐지 범위에 들어오기를 기다림
+- ChasePlayer: 계산된 포위 위치로 이동하며 플레이어와의 거리를 유지
+- NormalAttack: 이동을 멈추고 플레이어를 향해 즉시 회전한 후, EnemyDog에게 공격 명령
+
+### 2. EnemyDrone AI
+- 공중에서 플레이어 주위를 맴돌며 장애물을 회피하고 지속적으로 사격하는 비행형 AI
+
+- 1) AI 상태머신 시스템
+메인 클래스: AEnemyDroneAIController - EnemyDrone의 궤도 비행, 장애물 회피, 고도 조절 등 복잡한 공중 기동을 제어
+
+- 2) 상태 열거형: 별도의 상태 열거형 대신 bRising(긴급 상승 중), bTriedReverse(장애물 충돌 후 방향 전환 시도) 등 Boolean 플래그를 조합하여 상태를 관리
+
+- 3) 상태 전환: Tick 함수 내에서 플레이어와의 거리, 장애물 충돌 여부, 끼임 상태 등을 종합적으로 판단하여 각 플래그를 동적으로 변경
+
+- 4) 핵심 행동 로직 시스템 
+- 궤도 비행 전략: 플레이어를 중심으로 반지름 500 단위(OrbitRadius)와 높이 300 단위(HeightOffset)를 유지하며 원형으로 비행하는 것을 기본 행동으로 함
+- 장애물 회피: LineTrace를 이용해 자신의 이동 경로에 장애물이 있는지 지속적으로 확인함
+- 아군 드론 충돌 시: HeightOffset을 랜덤하게 변경하여 상하로 회피함
+- 지형지물 충돌 시: bClockwise 플래그를 반전시켜 궤도 방향을 바꿈
+- 끼임 탈출 로직: 방향 전환 후에도 계속 장애물에 막힐 경우(MaxStuckTime 초과), 고도를 급격히 높여 해당 지역을 완전히 벗어남
+- 궤도 이탈 복귀: 설정된 궤도 반경을 일정 시간 이상 벗어날 경우, 끼임 탈출 로직과 동일하게 고도를 급상승하여 궤도로 복귀를 시도함
+
+- 5) AI 작동 순서
+- 1단계: 상태 및 거리 측정: 플레이어와의 2D 거리, 궤도 이탈 여부, 장애물 충돌 여부를 Tick마다 계산함
+- 2단계: 긴급 행동 판정: 궤도를 이탈했거나 장애물에 끼인 상태가 감지되면, 다른 모든 로직을 무시하고 긴급 상승(bRising = true) 상태로 전환함
+- 3단계: 일반 행동 실행: 긴급 상황이 아닐 경우, 계산된 궤도 위치로 이동하고 플레이어를 향해 지속적으로 회전함
+
+- 6) 궤도 위치 계산 로직
+- 각도 계산: CurrentAngle 변수를 OrbitSpeed에 따라 매 틱마다 증감시켜 현재 목표 각도를 계산 
+- 위치 생성: FVector(Cos(각도), Sin(각도), HeightOffset) 공식을 통해 플레이어 중심의 3D 원형 좌표를 생성
+- 이동 보간: FMath::VInterpTo를 사용해 현재 위치에서 목표 위치로 부드럽게 이동
+
+- 7) 성능 최적화
+- 틱 빈도 제한: EnemyDrone 액터 자체의 틱 주기를 0.2초로 제한하여 비싼 연산을 줄임
+- 전투 시스템
+- 독립적인 발사 시스템: AI는 이동만 제어하고, 공격은 AEnemyDrone 액터가 자체적으로 MissileCooldown 타이머에 따라 독립적으로 수행함
+- 지속적인 조준: 이동 중에도 Tick 함수에서 LookAtPlayerWithConstraints를 통해 항상 플레이어를 정확히 조준하여 미사일 발사에 대비함
+
+- 8) 상태별 동작
+- 궤도 비행: 기본 상태. 플레이어 주위를 돌며 거리를 유지
+- 장애물 회피: LineTrace에 장애물이 감지되면 궤도 방향을 바꾸거나 고도를 변경함
+- 긴급 상승: 장애물에 끼었거나 궤도를 너무 많이 이탈했을 때, 고도를 급격히 높여 위기를 탈출함
+
+### 3. EnemyShooter AI
+- 아군과 진형을 유지하고 엄폐물을 활용하며, 시야가 막히면 수류탄을 사용하는 전략적인 원거리 AI
+
+- 1) AI 상태머신 시스템
+- 메인 클래스: AEnemyShooterAIController - EnemyShooter의 복잡한 전투 행동과 상태를 관리 
+
+- 2) 상태 열거형
+- EEnemyShooterAIState - Idle, Detecting, Moving, Shooting, Retreating 5가지의 명확한 상태를 가짐
+
+- 3) 상태 전환
+- UpdateAIState()를 통해 현재 상태에서 다른 상태로 전환할 조건을 매번 검사하고, 상황에 맞는 상태로 변경
+
+- 4) 핵심 행동 로직 시스템
+- 포메이션(진형) 전략: 플레이어를 중심으로 반지름 600 단위(FormationRadius)의 원형 진형을 유지하려고 시도
+
+- 5) 아군 이격
+- 다른 아군과 최소 180 단위(MinAllyDistance) 이상 거리를 유지하여 서로 뭉치거나 시야를 가리는 것을 방지
+
+- 6) 사선 확보시스템
+- LineTrace를 통해 플레이어 사이에 다른 아군이나 지형지물이 있는지 주기적으로 확인
+
+- 7) 전술적 판단
+- 사선이 다른 EnemyShooter에 의해 막히면, 자리를 바꾸기 위해 Moving 상태로 전환함
+
+- 8) 사선이 EnemyGuardian(방패병)에 의해 막히면, 제자리에 서서 수류탄 투척을 시도하는 특수 패턴으로 전환함
+
+- 9) 작동 순서
+- 1단계: 데이터 캐싱: Tick 함수에서 매번 비싼 연산을 하는 것을 막기 위해 타이머를 사용함
+- 1초 주기: 주변 아군 목록(CachedAllies) 갱신
+- 0.3초 주기: 사선 확보 여부(bCachedHasClearShot) 갱신
+- 1초 주기: 자신의 포메이션 위치(AssignedPosition) 갱신
+- 2단계: 상태 판정: 캐시된 데이터와 플레이어와의 거리를 기반으로 UpdateAIState()에서 다음에 전환할 상태를 결정
+- 3단계: 행동 실행: 현재 상태에 맞는 Handle...State() 함수가 호출되어 이동, 사격, 후퇴 등의 행동을 실행
+
+- 10) 포메이션 위치 계산 로직
+각도 계산: 모든 아군 EnemyShooter 중 자신의 고유 인덱스를 찾아 360도를 균등하게 나눈 각도를 할당받음
+
+- 11) 위치 생성: 플레이어 위치에 FVector(Cos(각도), Sin(각도), 0) * FormationRadius를 더해 이상적인 위치를 계산함
+
+- 12) 위치 보정: 계산된 위치에 이미 다른 아군이 있다면, 자리가 비워질 때까지 45도씩 회전하며 새로운 위치를 재탐색함
+
+- 13) 성능 최적화
+- 틱 빈도 제한: EnemyShooter 액터의 틱 주기를 0.2초로 제한함
+
+- 14) 타이머 기반 갱신
+- 아군 탐색, 사선 확인, 진형 위치 계산 등 주요 로직을 각각 1초, 0.3초, 1초 간격으로 나누어서 실행하여 Tick의 부하를 분산
+
+- 15) 전투 시스템
+- AEnemyShooterGun은 플레이어의 움직임을 예측하고 사전에 경고하는 지능형 무기를 사용
+- 주요 시스템 및 로직
+- 지연 발사 메커니즘: FireGun()이 호출되면 즉시 발사되지 않고, 설정된 AimWarningTime만큼 지연된 후 ExecuteDelayedShot() 함수가 실행되는 2단계 발사 구조, 이를 통해 플레이어에게 대응할 시간을 주는 조준 경고 기능을 구현
+- 플레이어 예측 시스템: CalculatePredictedPlayerPosition 함수를 통해 플레이어의 현재 속도(CurrentVelocity)를 기반으로 PredictionTime 후의 미래 위치를 계산하여 조준. 이로 인해 가만히 서 있는 플레이어는 정확히 맞추지만, 움직이는 플레이어는 이동 방향으로 예측하여 사격
+- 조준 경고 시스템: bShowAimWarning이 활성화된 경우, 발사 전 예측된 위치까지 AimingLaserMesh라는 UStaticMeshComponent를 사용. SetupLaserTransform 함수는 총구와 목표 지점 사이의 거리를 계산하여 메쉬의 X축 스케일을 동적으로 조절하고, 목표 방향으로 회전시켜 레이저 조준선을 시각적으로 완벽하게 표현
+- 명중률 시스템: Accuracy 값(0.0~1.0)에 따라 명중 여부를 확률적으로 결정. 빗나갈 경우 MaxSpreadRadius 내에서, 명중하더라도 약간의 오차 범위 내에서 ApplyAccuracySpread 함수가 최종 탄착군을 형성
+
+- AEnemyGrenade: EnemyGuardian에 의해 사선이 막혔을 때, SuggestProjectileVelocity를 이용해 포물선 궤도를 계산하여 수류탄을 투척
+- 물리 기반 투사체 시스템: UProjectileMovementComponent를 사용하여 중력(ProjectileGravityScale)의 영향을 받는 현실적인 포물선 궤적을 그림
+- 환경 상호작용: bShouldBounce가 활성화되어 있으며, Bounciness(탄성)와 Friction(마찰) 값을 통해 지형이나 벽에 튕기고 구르는 움직임을 구현
+- 시간차 폭발 (Time-Based Fuse): BeginPlay 시점에 FuseTime(기본 3초)으로 설정된 타이머가 시작됩니다. 수류탄은 지형과의 충돌 여부와 관계없이, 이 시간이 지나면 Explode() 함수를 호출하여 폭발
+- 발사 로직: AEnemyShooterAIController가 LaunchGrenade 함수를 호출하여 계산된 발사 속도(LaunchVelocity)를 전달하면, ProjectileMovement 컴포넌트가 활성화되어 물리 시뮬레이션을 시작
+- 광역 피해 (Area-of-Effect Damage): Explode() 함수는 OverlapMultiByChannel을 사용하여 폭발 지점(ExplosionCenter)을 중심으로 ExplosionRadius 범위 내의 모든 Pawn을 감지합니다. 감지된 플레이어 캐릭터에게 ExplosionDamage 만큼의 피해를 적용
+- 쿨다운 관리: 사격과 수류탄은 각각 독립적인 쿨다운 타이머(ShootCooldown, GrenadeCooldown)를 가짐
+
+- 16) 상태별 동작
+- Idle: 플레이어가 탐지 범위 밖에 있을 때 대기
+- Moving: 사격 또는 진형 유지를 위해 계산된 목표 위치로 이동
+- Shooting: 사격 범위 내에 있고 사선이 확보되면 이동을 멈추고 사격 및 수류탄 투척 패턴을 실행
+- Retreating: 플레이어가 너무 가까워지면(MinShootDistance 이하) 뒷걸음질치며 거리를 벌림
+
+### 4. EnemyGuardian AI
+- 방패(EnemyGuardianShield)의 체력 여부에 따라 아군 슈터 보호와 적 포위의 두 가지 역할을 수행하는 하이브리드형 AI
+
+- 1) AI 상태머신 시스템
+- 메인 클래스: AEnemyGuardianAIController - EnemyGuardian의 모든 행동을 제어
+- 상태 열거형: 별도의 상태 열거형 대신, AEnemyGuardian의 bIsShieldDestroyed 플래그를 핵심적인 상태 전환 조건으로 사용
+- 상태 전환: Tick 함수에서 매번 bIsShieldDestroyed 값을 확인하여, true이면 포위 모드로 false이면 보호 모드로 행동 패턴을 즉시 변경
+
+- 2) 핵심 행동 로직 시스템 (상태 기반)
+- 슈터 보호 전략 (방패가 파괴되지 않았을 시)
+- 자신에게 가장 가까운 아군 EnemyShooter를 찾아 그 정면으로 이동하여 방패 역할을 수행
+- 자신과 같은 슈터를 보호하는 다른 가디언들을 찾아내어, 슈터 정면을 기준으로 좌우로 대칭되게 방어선을 구축.  이 과정에서 각 가디언은 고유 ID 기반의 정렬을 통해 자신의 위치를 스스로 찾아감
+
+- 원형 포위 전략 (방패 파괴 시):
+- 슈터 보호를 포기하고 공격적인 EnemyDog처럼 플레이어를 직접 공격하기 위해 포위 진형에 합류
+- 각도 분산: 활동 가능한 모든 EnemyGuardian의 수와 자신의 인덱스를 기반으로 360도를 균등 분배하여 포위 위치를 계산
+
+- 3) AI 작동 순서
+- 1단계: 공격 가능 여부 확인: Tick의 최우선 순위로 플레이어가 ShieldAttackRadius 또는 BatonAttackRadius 내에 있는지 확인
+- 2단계: 상태 판정: 공격 범위 내가 아닐 경우, Guardian->bIsShieldDestroyed 플래그를 확인하여 '보호 모드' 또는 '포위 모드'를 결정
+- 3단계:행동실행: 결정된 모드에 따라 PerformShooterProtection() 또는 PerformSurroundMovement() 함수를 호출하여 이동 로직을 수행
+
+- 4) 전투 시스템
+- 방패 공격: 방패가 파괴되지 않은 상태에서 플레이어가 150 단위 내로 접근하면 발동
+- AEnemyGuardianShield의 Tick 함수가 지속적인 LineTrace를 발생시켜 전방에 피해 영역을 생성
+- 진압봉 공격: 방패가 파괴된 후 플레이어가 200 단위 내로 접근하면 발동 
+- AEnemyGuardianBaton의 Tick 함수가 지속적인 Sweep 판정을 발생시켜 넓은 범위에 피해를 입힘
+- 방패 파괴 및 스턴: 방패가 파괴되면 가디언은 잠시동안 Stun() 상태에 빠져 무방비 상태에 돌입
+
+- 5) 성능 최적화
+- 캐싱 시스템: 매 Tick마다 주변 아군을 검색하는 대신, 주기적으로 아군 목록을 갱신하는 캐싱 시스템을 도입하여 성능 부하를 크게 줄임
+- 주기적 갱신: BeginPlay 시점에 타이머(AllyCacheUpdateTimerHandle)를 설정하여, AllyCacheUpdateInterval(기본 2초)마다 한 번씩만 UpdateAllyCaches() 함수를 호출
+- 데이터 재사용: UpdateAllyCaches() 함수는 월드의 모든 EnemyShooter와 EnemyGuardian을 검색하여 CachedShooters와 CachedGuardians 배열에 저장. Tick 함수 내의 AI 로직은 매번 검색을 수행하는 대신 이 캐시된 데이터를 사용
+- 안전한 참조: 캐시된 목록은 TWeakObjectPtr를 사용하여 아군을 참조. 이를 통해 아군이 사망하여 파괴되더라도 포인터가 자동으로 무효화되어 크래쉬를 방지하는 안정성을 확보
+
+- 6) 상태별 동작
+- 보호 기동 (Protection): 계산된 보호 위치로 이동하며, 항상 몸은 플레이어를 향해 회전하여 방패로 막을 준비를 함
+- 포위 기동 (Surround): 계산된 포위 위치로 이동하며, 항상 플레이어를 향해 회전하여 공격 기회를 엿봄 
+- 공격 (Attack): 모든 이동을 멈추고 제자리에서 플레이어를 향해 즉시 회전한 후, 조건에 맞는 공격 애니메이션을 재생
+
+### 5. 라이플 리코일 및 화면 흔들림 시스템
+- 사격 시 시각적인 반동과 화면 흔들림을 생성하여 타격감을 강화했습니다.
+
+- 1) 시스템 구조:
+- 사격 시(FireWeapon) ApplyCameraRecoil() 함수가 호출됩니다.
+- ApplyCameraRecoil()은 수직/수평 반동의 목표 값(TargetRecoil)을 랜덤하게 설정하고 , bIsRecoiling 상태를 활성화함과 동시에 ApplyCameraShake()를 호출하여 즉각적인 화면 흔들림을 유발
+- Tick 함수는 bIsRecoiling 상태일 때 매 프레임 UpdateRecoil()을 호출
+- UpdateRecoil()은 FMath::Vector2DInterpTo를 사용해 현재 반동 값을 목표 값까지 부드럽게 보간하며 AddControllerPitchInput과 AddControllerYawInput으로 카메라를 지속적으로 움직임
+
+- 2) 라이플 화면 흔들림:
+- ApplyCameraShake() 함수는 Camera 컴포넌트의 상대 위치에 ShakeIntensity를 기반으로 한 랜덤 오프셋을 직접 더함
+- ShakeDuration 시간이 지난 후 타이머를 통해 카메라 위치를 원래대로 복구시켜 짧고 강렬한 흔들림을 구현
+
+- 3) 재장전 시 비활성화:
+- FireWeapon() 함수는 실제 발사 로직 이전에 Rifle->IsReloading()을 확인
+- 재장전 중일 경우 함수가 즉시 반환되므로, ApplyCameraRecoil()과 ApplyCameraShake()가 호출되지 않아 반동 및 화면 흔들림이 발생하지 않음
+
+### 6. 다이나믹 크로스헤어 시스템
+- 플레이어의 상태에 따라 크로스헤어의 크기와 색상이 실시간으로 변경되어 현재 탄착군 분산도를 시각적으로 표현
+
+- 1) 주요 기능:
+- 이동 번짐: AMainCharacter의 Tick 함수에서 현재 이동 속도(MovementSpeed)를 계산하여 CrosshairComponent->SetMovementSpread()를 호출함으로써 크로스헤어가 벌어짐
+- 격발 번짐: FireWeapon() 함수에서 CrosshairComponent->StartExpansion()을 호출하여 크로스헤어를 즉시 확장
+- 연속 사격 번짐: StartExpansion() 함수는 ConsecutiveShotWindow 내의 연속적인 호출을 감지하여 ConsecutiveShots 카운트를 증가시키고, 이를 통해 추가적인 분산도 배율을 적용
+
+- 2) 실제 발사 연관성:
+- 현재까지는 총알은 항상 카메라 정면(CameraRotation.Vector())으로 발사되며, 시각적인 크로스헤어 번짐과 실제 탄도는 서로 영향을 주지 않는 상태입니다.
+크로스헤어 번짐에 따라 실제 탄착군도 동일하게 번질 수 있도록 연구중에 있습니다.
+
+### 7. 라이플 비주얼 이펙트 (VFX)
+- 사격 시 총구 섬광과 피격 지점의 임팩트 효과를 통해 시각적 피드백을 강화했습니다.
+
+- 머즐 플래시:
+- Fire() 함수에서 MuzzleSocket 위치에 나이아가라 시스템(MuzzleFlash)을 부착하여 스폰
+- 생성된 이펙트는 MuzzleFlashDuration 시간이 지난 후 타이머에 의해 StopMuzzleFlash() 함수가 호출되어 안전하게 제거
+
+- 히트 임팩트:
+- 총알이 목표에 명중했을 때, ProcessHit 함수 내에서 해당 위치(HitResult.ImpactPoint)에 나이아가라 시스템(ImpactEffect)을 스폰
+- 이펙트는 ImpactEffectDuration 시간이 지난 후 타이머를 통해 StopImpactEffect() 함수가 호출되어 정리
+
+### 8. 라이플 헤드샷 데미지 시스템
+- 헤드샷 데미지 배율:
+- ProcessHit 함수는 총알이 맞은 부위의 본(Bone) 이름을 확인
+- 본 이름이 "Head" 또는 "CC_Base_Head"일 경우, 기본 데미지(Damage)의 100배에 해당하는 피해를 ApplyPointDamage를 통해 적용
+
+### 9. 이동 속도 제어 시스템
+- 기본 이동 속도 설정: 생성자에서 CharacterMovementComponent의 MaxWalkSpeed를 DefaultWalkSpeed(700.0f)로 초기화
+- 에임 모드 시 이동 속도 저하:
+- UpdateMovementSpeed() 함수는 캐릭터가 조준 중(bIsAiming)이거나 특정 조준 스킬을 사용하는지 확인
+- 해당 조건이 참일 경우, MaxWalkSpeed를 AimWalkSpeed(500.0f)로 변경하여 이동 속도를 감소
+- 이 함수는 Tick, EnterAimMode, ExitAimMode에서 각각 호출되어 상태가 변경될 때마다 속도를 갱신
+
+### 10. BS 의 이동 애니메이션 에셋 교체
+- 기본 이동 애니메이션, 에임모드 이동 애니메이션 전면 교체
+- 기존 애니메이션은 지나치게 역동적이여서 상하체 연동 애니메이션 재생 시 부자연스럽게 튀는 현상이 있었음
+
+### 11. 근접 전투 시스템 개선: 자동 조준 및 텔레포트 돌진
+- UMeleeCombatComponent에 근접 공격 시 주변의 적을 자동으로 조준하고, 특정 조건 만족 시 적에게 순간이동하여 공격을 이어가는 기능 추가
+- 통합 타겟팅 시스템: AdjustAttackDirection 함수는 GetAllActorsOfClass를 통해 월드에 존재하는 모든 종류의 적(Enemy, EnemyDog, EnemyShooter, EnemyGuardian, BossEnemy)을 단일 배열로 통합하여 탐색
+- 타겟 선별:
+- 거리 우선: MaxAutoAimDistance 범위 내에서 가장 가까운 적을 우선 타겟으로 선정
+- 유효성 검사: 각 적 클래스에 맞는 상태 변수(bIsDead, bIsInAirStun 등)를 확인하여, 공격 불가능한 상태의 적은 타겟에서 제외
+- 사선 확보: 가장 가까운 적을 찾더라도, 플레이어와 적 사이에 장애물이 있는지 LineTrace를 통해 확인하며 장애물에 가려진 적은 최종 타겟으로 선정되지 않음
+- 텔레포트 돌진:
+- 조건부 발동: AdjustAttackDirection 함수는 선정된 타겟과의 거리를 측정한 후, ShouldTeleportToTarget 함수를 호출하여 텔레포트 가능 여부를 판단
+- 거리 조건: 타겟이 MinTeleportDistance보다는 멀고, TeleportDistance보다는 가까이 있을 때만 텔레포트를 시도
+- 상태 조건: 플레이어가 공중에 있거나, bCanTeleport 플래그가 false(쿨다운 상태)일 경우 텔레포트는 발동하지 않음
+- 텔레포트 로직:
+- TeleportToTarget 함수는 타겟의 정면 TeleportOffset 만큼 떨어진 위치로 즉시 이동(SetActorLocation)함
+- 이동 후에는 즉시 타겟을 바라보도록 캐릭터의 회전(SetActorRotation)을 보정하여 다음 공격이 빗나가지 않도록 함
+- 방향 보정: 텔레포트 조건이 만족되지 않거나 타겟이 너무 가까울 경우, 텔레포트 대신 캐릭터의 방향만 타겟을 향하도록 즉시 회전시켜주는 기존의 공격 방향 보정만 수행
+
+### 12. 기타 벨런싱 및 버그 수정
+- 에임스킬3 투사체 떨어지는 시간 감소 
+- 스킬3 투사체가 간헐적으로 앞에서 멈추는 현상 수정: 메쉬를 사용하지 않기에 메쉬 관련 코드 전부 삭제 및 투사체 발사 시작 위치를 더 앞으로 수정하고 투사체 비행속도 증가
+- 점프 짧게 연타 시 점프 애니메이션 밀리는 현상 수정: 문제해결노트 35번 참고
 

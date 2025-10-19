@@ -33,16 +33,23 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Behavior")
     float SurroundRadius = 150.0f; // 플레이어를 포위할 때 유지할 거리
 
+    // 성능 최적화 설정
+    UPROPERTY(EditAnywhere, Category = "AI Performance")
+    float AllyCacheUpdateInterval = 2.0f; // 주변 아군 목록을 갱신하는 주기
+
 private:
     APawn* PlayerPawn; // 플레이어 폰에 대한 참조
 
-    // 4방향 이동 패턴 관련 변수 (현재는 포위 로직으로 대체됨)
-    FTimerHandle MoveTimerHandle; // 이동 방향 전환 타이머
-    float MoveDuration; // 이동 지속 시간
-    int32 DirectionIndex; // 현재 이동 방향 인덱스
-
     // 핵심 행동 로직 함수
-    void MoveInDirection(); // 특정 방향으로 이동 (현재 미사용)
     void PerformShooterProtection(); // 아군 슈터를 보호하는 로직
     void PerformSurroundMovement(); // 플레이어를 포위하는 로직
+
+    // 최적화를 위한 캐싱 시스템
+    void UpdateAllyCaches(); // 주기적으로 호출되어 아군 목록을 갱신하는 함수
+
+    FTimerHandle AllyCacheUpdateTimerHandle; // 아군 캐시 갱신을 위한 타이머
+
+    // 캐시된 아군 목록 (TWeakObjectPtr로 사용하여 아군이 죽어도 메모리 누수 방지)
+    TArray<TWeakObjectPtr<AEnemyShooter>> CachedShooters;
+    TArray<TWeakObjectPtr<AEnemyGuardian>> CachedGuardians;
 };

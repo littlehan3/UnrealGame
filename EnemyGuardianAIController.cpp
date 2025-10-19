@@ -16,9 +16,14 @@ void AEnemyGuardianAIController::BeginPlay()
     Super::BeginPlay(); // 부모 클래스 BeginPlay 호출
     PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0); // 플레이어 폰 찾아 저장
 
-    // 4방향 이동 패턴을 위한 타이머 설정 (현재는 사용되지 않음)
+    // 게임 시작 시 한 번, 그리고 AllyCacheUpdateInterval(2초)마다 주기적으로 UpdateAllyCaches 함수를 호출하도록 타이머 설정
     GetWorld()->GetTimerManager().SetTimer(
-        MoveTimerHandle, this, &AEnemyGuardianAIController::MoveInDirection, MoveDuration, true
+        AllyCacheUpdateTimerHandle,
+        this,
+        &AEnemyGuardianAIController::UpdateAllyCaches,
+        AllyCacheUpdateInterval,
+        true, // 반복 실행
+        0.1f  // 초기 지연 (모든 액터가 스폰될 시간을 줌)
     );
 }
 
@@ -95,67 +100,93 @@ void AEnemyGuardianAIController::Tick(float DeltaTime)
     }
 }
 
+// 주기적으로 호출되어 아군 목록을 갱신하고 캐시에 저장하는 함수
+void AEnemyGuardianAIController::UpdateAllyCaches()
+{
+    // 기존 캐시 초기화
+    CachedShooters.Empty();
+    CachedGuardians.Empty();
+
+    // 월드에 있는 모든 슈터를 찾아 유효한 경우 캐시에 추가
+    for (TActorIterator<AEnemyShooter> It(GetWorld()); It; ++It)
+    {
+        AEnemyShooter* Shooter = *It;
+        if (Shooter && !Shooter->bIsDead && !Shooter->bIsPlayingIntro)
+        {
+            CachedShooters.Add(Shooter);
+        }
+    }
+
+    // 월드에 있는 모든 가디언을 찾아 유효한 경우 캐시에 추가
+    for (TActorIterator<AEnemyGuardian> It(GetWorld()); It; ++It)
+    {
+        AEnemyGuardian* Guardian = *It;
+        if (Guardian && !Guardian->bIsDead && !Guardian->bIsPlayingIntro && !Guardian->bIsStunned)
+        {
+            CachedGuardians.Add(Guardian);
+        }
+    }
+}
+
 // 아군 슈터를 보호하는 AI 행동 로직
 void AEnemyGuardianAIController::PerformShooterProtection()
 {
     AEnemyGuardian* Guardian = Cast<AEnemyGuardian>(GetPawn());
     if (!Guardian) return;
 
-    // 1. 월드에 있는 모든 살아있는 슈터를 수집
-    TArray<AEnemyShooter*> AllShooters;
-    for (TActorIterator<AEnemyShooter> It(GetWorld()); It; ++It)
+    // 1. 캐시된 슈터 목록이 비어있으면 보호 행동 중단
+    if (CachedShooters.Num() == 0)
     {
-        AEnemyShooter* Shooter = *It;
-        if (Shooter && !Shooter->bIsDead && !Shooter->bIsPlayingIntro)
-        {
-            AllShooters.Add(Shooter);
-        }
-    }
-
-    if (AllShooters.Num() == 0) // 보호할 슈터가 없으면
-    {
-        // 플레이어를 바라보고 제자리에 서 있도록 함
         FVector ToPlayer = PlayerPawn->GetActorLocation() - Guardian->GetActorLocation();
         FRotator LookRotation = ToPlayer.Rotation();
         Guardian->SetActorRotation(FRotator(0.0f, LookRotation.Yaw, 0.0f));
         return;
     }
 
-    // 2. 자신에게 가장 가까운 슈터를 찾음
+    // 2. 자신에게 가장 가까운 슈터를 캐시된 목록에서 찾음
     AEnemyShooter* NearestShooter = nullptr;
     float MinDistance = FLT_MAX;
-    for (AEnemyShooter* Shooter : AllShooters)
+    for (const auto& WeakShooter : CachedShooters)
     {
-        float Distance = FVector::Dist(Guardian->GetActorLocation(), Shooter->GetActorLocation());
-        if (Distance < MinDistance)
+        if (WeakShooter.IsValid()) // 약한 참조가 유효한지 확인
         {
-            MinDistance = Distance;
-            NearestShooter = Shooter;
+            AEnemyShooter* Shooter = WeakShooter.Get();
+            float Distance = FVector::Dist(Guardian->GetActorLocation(), Shooter->GetActorLocation());
+            if (Distance < MinDistance)
+            {
+                MinDistance = Distance;
+                NearestShooter = Shooter;
+            }
         }
     }
-    if (!NearestShooter) return;
+    if (!NearestShooter) return; // 유효한 슈터를 찾지 못했다면 중단
 
-    // 3. 자신과 '같은 슈터'를 보호하려는 다른 모든 가디언을 찾음
+    // 3. 자신과 '같은 슈터'를 보호하려는 다른 모든 가디언을 캐시된 목록에서 찾음
     TArray<AEnemyGuardian*> GuardiansProtectingSameShooter;
-    for (TActorIterator<AEnemyGuardian> It(GetWorld()); It; ++It)
+    for (const auto& WeakGuardian : CachedGuardians)
     {
-        AEnemyGuardian* OtherGuardian = *It;
-        if (OtherGuardian && !OtherGuardian->bIsDead && !OtherGuardian->bIsPlayingIntro &&
-            !OtherGuardian->bIsStunned && !OtherGuardian->bIsShieldDestroyed)
+        if (WeakGuardian.IsValid())
         {
+            AEnemyGuardian* OtherGuardian = WeakGuardian.Get();
+            // 방패가 파괴된 가디언은 보호 임무에서 제외
+            if (OtherGuardian->bIsShieldDestroyed) continue;
+
             // 다른 가디언의 가장 가까운 슈터도 '나의 목표 슈터'와 같은지 확인
             AEnemyShooter* OtherNearestShooter = nullptr;
             float OtherMinDistance = FLT_MAX;
-            for (AEnemyShooter* Shooter : AllShooters)
+            for (const auto& WeakShooter : CachedShooters)
             {
-                float Distance = FVector::Dist(OtherGuardian->GetActorLocation(), Shooter->GetActorLocation());
-                if (Distance < OtherMinDistance)
+                if (WeakShooter.IsValid())
                 {
-                    OtherMinDistance = Distance;
-                    OtherNearestShooter = Shooter;
+                    AEnemyShooter* Shooter = WeakShooter.Get();
+                    float Distance = FVector::Dist(OtherGuardian->GetActorLocation(), Shooter->GetActorLocation());
+                    if (Distance < OtherMinDistance)
+                    {
+                        OtherMinDistance = Distance;
+                        OtherNearestShooter = Shooter;
+                    }
                 }
             }
-
             if (OtherNearestShooter == NearestShooter) // 목표가 같다면
             {
                 GuardiansProtectingSameShooter.Add(OtherGuardian); // 같은 조로 편성
@@ -167,7 +198,7 @@ void AEnemyGuardianAIController::PerformShooterProtection()
     FVector ShooterForward = NearestShooter->GetActorForwardVector();
     FVector BaseProtectionLocation = NearestShooter->GetActorLocation() + ShooterForward * ProtectionDistance;
 
-    // 5. 같은 조에 있는 가디언들을 정렬하여 고유한 인덱스 부여 (뭉침 방지)
+    // 5. 같은 조에 있는 가디언들을 정렬하여 고유한 인덱스 부여
     GuardiansProtectingSameShooter.Sort([](const AEnemyGuardian& A, const AEnemyGuardian& B) {
         return A.GetUniqueID() < B.GetUniqueID();
         });
@@ -175,13 +206,12 @@ void AEnemyGuardianAIController::PerformShooterProtection()
         return G == Guardian;
         });
 
-    // 6. 인덱스를 기반으로 기본 위치에서 좌/우로 분산된 최종 목표 위치 계산
+    // 6. 인덱스를 기반으로 최종 목표 위치 계산
     FVector FinalTargetLocation = BaseProtectionLocation;
     if (GuardiansProtectingSameShooter.Num() > 1 && MyIndex != INDEX_NONE)
     {
         float SpreadDistance = 80.0f; // 가디언 사이의 간격
         int32 TotalGuardians = GuardiansProtectingSameShooter.Num();
-        // (자신의 인덱스) - (전체 인원의 중간값) 을 통해 중앙을 기준으로 한 자신의 상대 위치를 구함
         float OffsetFromCenter = (MyIndex - (TotalGuardians - 1) * 0.5f) * SpreadDistance;
         FinalTargetLocation += NearestShooter->GetActorRightVector() * OffsetFromCenter;
     }
@@ -193,10 +223,10 @@ void AEnemyGuardianAIController::PerformShooterProtection()
 
     // 8. 최종 목표 위치로 이동
     float DistanceToTarget = FVector::Dist(Guardian->GetActorLocation(), FinalTargetLocation);
-    if (DistanceToTarget > MinDistanceToTarget) // 아직 목표 위치에 도달하지 못했다면
+    if (DistanceToTarget > MinDistanceToTarget)
     {
         FVector DirectionToTarget = (FinalTargetLocation - Guardian->GetActorLocation()).GetSafeNormal();
-        Guardian->AddMovementInput(DirectionToTarget, 1.0f); // 목표를 향해 이동
+        Guardian->AddMovementInput(DirectionToTarget, 1.0f);
     }
 }
 
@@ -206,45 +236,45 @@ void AEnemyGuardianAIController::PerformSurroundMovement()
     AEnemyGuardian* Guardian = Cast<AEnemyGuardian>(GetPawn());
     if (!Guardian) return;
 
-    // 1. 월드에 있는 모든 살아있는 가디언 수집
-    TArray<AActor*> AllGuardians;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyGuardian::StaticClass(), AllGuardians);
-
-    // 그 중 실제로 활동 가능한(죽거나 스턴이 아닌) 가디언만 필터링
+    // 1. 활동 가능한(죽거나 스턴이 아닌) 가디언만 캐시에서 필터링
     TArray<AEnemyGuardian*> ActiveGuardians;
-    for (AActor* Actor : AllGuardians)
+    for (const auto& WeakGuardian : CachedGuardians)
     {
-        AEnemyGuardian* OtherGuardian = Cast<AEnemyGuardian>(Actor);
-        if (OtherGuardian && !OtherGuardian->bIsDead && !OtherGuardian->bIsPlayingIntro && !OtherGuardian->bIsStunned)
+        if (WeakGuardian.IsValid())
         {
-            ActiveGuardians.Add(OtherGuardian);
+            // 방패가 파괴된 가디언만 포위 기동에 참여
+            if (WeakGuardian.Get()->bIsShieldDestroyed)
+            {
+                ActiveGuardians.Add(WeakGuardian.Get());
+            }
         }
     }
+    // 자기 자신 추가 (캐시에는 방패 파괴 전의 자신이 포함되지 않을 수 있으므로)
+    if (!ActiveGuardians.Contains(Guardian))
+    {
+        ActiveGuardians.Add(Guardian);
+    }
 
-    // 활동 가능한 가디언이 1명 뿐이면 단순하게 플레이어에게 접근
+
+    // 2. 활동 가능한 가디언이 1명 뿐이면 단순하게 플레이어에게 접근
     if (ActiveGuardians.Num() <= 1)
     {
-        FVector ToPlayer = PlayerPawn->GetActorLocation() - Guardian->GetActorLocation();
-        FRotator LookRotation = ToPlayer.Rotation();
-        Guardian->SetActorRotation(FRotator(0.0f, LookRotation.Yaw, 0.0f));
         MoveToActor(PlayerPawn, 50.0f);
         return;
     }
 
-    // 2. 전체 가디언 목록에서 자신의 고유한 인덱스를 찾음
+    // 3. 전체 가디언 목록에서 자신의 고유한 인덱스를 찾음
     int32 MyIndex = ActiveGuardians.IndexOfByKey(Guardian);
     if (MyIndex == INDEX_NONE)
     {
-        MoveToActor(PlayerPawn, 50.0f); // 만약 못찾으면 그냥 플레이어에게 접근
+        MoveToActor(PlayerPawn, 50.0f);
         return;
     }
 
-    // 3. 포위 위치 계산
-    float AngleDeg = 360.0f / ActiveGuardians.Num(); // 360도를 가디언 수로 나누어 각도 간격 계산
-    float MyAngleDeg = AngleDeg * MyIndex; // 자신의 인덱스에 따른 목표 각도
-    float MyAngleRad = FMath::DegreesToRadians(MyAngleDeg); // 라디안으로 변환
-
-    // 4. 플레이어를 중심으로 한 원형 포위 위치 계산
+    // 4. 포위 위치 계산
+    float AngleDeg = 360.0f / ActiveGuardians.Num();
+    float MyAngleDeg = AngleDeg * MyIndex;
+    float MyAngleRad = FMath::DegreesToRadians(MyAngleDeg);
     FVector PlayerLocation = PlayerPawn->GetActorLocation();
     FVector Offset = FVector(FMath::Cos(MyAngleRad), FMath::Sin(MyAngleRad), 0) * SurroundRadius;
     FVector TargetLocation = PlayerLocation + Offset;
@@ -258,10 +288,9 @@ void AEnemyGuardianAIController::PerformSurroundMovement()
     MoveToLocation(TargetLocation, 50.0f);
 }
 
-void AEnemyGuardianAIController::MoveInDirection()
+void AEnemyGuardianAIController::StopAI() 
 {
-    // 현재 사용되지 않는 4방향 이동 패턴 로직
-    DirectionIndex = (DirectionIndex + 1) % 4;
+    // AI 동작 중지 로직
+    GetWorld()->GetTimerManager().ClearTimer(AllyCacheUpdateTimerHandle); // 타이머 정리
+    StopMovement();
 }
-
-void AEnemyGuardianAIController::StopAI() {}

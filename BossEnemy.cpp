@@ -1567,30 +1567,41 @@ void ABossEnemy::EndAttack()
 float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	if (bIsBossDead) return 0.0f; // 이미 사망했다면 데미지 무시
-	float DamageApplied = FMath::Min(BossHealth, DamageAmount); // 보스의 체력과 데미지를 불러옴
-	BossHealth -= DamageApplied; // 체력에서 데미지만큼 차감
-	UE_LOG(LogTemp, Warning, TEXT("Boss took %f damage, Health remaining: %f"), DamageAmount, BossHealth);
 
-	// 무적 상태 체크 추가
+	// 무적 상태일 때 데미지 무시
 	if (bIsInvincible)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Boss is invulnerable - damage ignored"));
 		return 0.0f;
 	}
+
+	// 등장 중일 때 데미지 무시
 	if (bIsPlayingBossIntro)
 	{
-		return 0.0f; // 등장 중에는 데미지 무효화
+		return 0.0f;
 	}
 
-	if (BossHitSound) // 사운드가 있다면
+	// 1. 체력 감소 (이 부분은 항상 실행됨)
+	float DamageApplied = FMath::Min(BossHealth, DamageAmount);
+	BossHealth -= DamageApplied;
+	UE_LOG(LogTemp, Warning, TEXT("Boss took %f damage, Health remaining: %f"), DamageAmount, BossHealth);
+
+	// 2. 피격 사운드 재생 (항상 실행됨)
+	if (BossHitSound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, BossHitSound, GetActorLocation()); // 해당 엑터의 위치에서 소리재생
+		UGameplayStatics::PlaySoundAtLocation(this, BossHitSound, GetActorLocation());
 	}
 
-	if (BossHitReactionMontages.Num() > 0)
+	// 3. 슈퍼아머 상태 확인
+	// 전신 공격(일반공격, 텔레포트 등) 중이거나 상체 공격 중일 때는 피격 애니메이션을 재생하지 않음
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	bool bIsUninterruptible = bIsFullBodyAttacking || (AnimInstance && AnimInstance->bUseUpperBodyBlend);
+
+	// 4. 피격 애니메이션 재생 (슈퍼아머가 아닐 때만 실행)
+	if (BossHitReactionMontages.Num() > 0 && !bIsUninterruptible)
 	{
-		bIsBossHit = true; // 히트중 여부 true
-		bCanBossAttack = false; // 공격가능 여부 false
+		bIsBossHit = true;
+		bCanBossAttack = false;
 
 		// AI 이동 중지
 		ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
@@ -1599,46 +1610,46 @@ float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent
 			AICon->StopMovement();
 		}
 
-		UBossEnemyAnimInstance* BossAnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-		if (BossAnimInstance)
+		// 현재 재생 중인 다른 몽타주 중지
+		if (AnimInstance)
 		{
-			BossAnimInstance->bUseUpperBodyBlend = false;
-			BossAnimInstance->Montage_Stop(0.5f); // 기존 몽타주 중지
+			AnimInstance->bUseUpperBodyBlend = false;
+			AnimInstance->Montage_Stop(0.5f);
 		}
 
+		// 랜덤 피격 몽타주 재생
 		int32 RandomIndex = FMath::RandRange(0, BossHitReactionMontages.Num() - 1);
 		UAnimMontage* SelectedMontage = BossHitReactionMontages[RandomIndex];
 		if (SelectedMontage)
 		{
-			UAnimInstance* HitAnimInstance = GetMesh()->GetAnimInstance(); // 다른 이름 사용
-			if (HitAnimInstance)
+			if (AnimInstance)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("AnimInstance is valid before playing hit montage"));
-				float PlayResult = HitAnimInstance->Montage_Play(SelectedMontage, 1.0f);
+				float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
 
-				// 피격 몽타주 종료 델리게이트 추가
+				// 피격 몽타주 종료 시 상태를 복원하도록 델리게이트 바인딩
 				if (PlayResult > 0.0f)
 				{
 					FOnMontageEnded HitEndDelegate;
 					HitEndDelegate.BindUObject(this, &ABossEnemy::OnHitReactionMontageEnded);
-					HitAnimInstance->Montage_SetEndDelegate(HitEndDelegate, SelectedMontage);
+					AnimInstance->Montage_SetEndDelegate(HitEndDelegate, SelectedMontage);
 				}
 			}
 			else
 			{
-				UE_LOG(LogTemp, Error, TEXT("AnimInstance is NULL before playing hit montage"));
-				bIsBossHit = false; // 히트중 여부 초기화
-				bCanBossAttack = true; // 공격가능 여부 초기화
+				// 애님 인스턴스가 없는 예외 상황 처리
+				bIsBossHit = false;
+				bCanBossAttack = true;
 			}
 		}
 	}
 
-	if (BossHealth <= 0.0f) // 체력이 0이하인 경우
+	// 5. 사망 체크 (항상 실행됨)
+	if (BossHealth <= 0.0f)
 	{
-		BossDie(); // 사망함수 호출
+		BossDie();
 	}
-	
-	return DamageApplied; // 받은 피해 초기화
+
+	return DamageApplied;
 }
 
 void ABossEnemy::OnHitReactionMontageEnded(UAnimMontage* Montage, bool bInterrupted)

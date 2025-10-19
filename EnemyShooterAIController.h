@@ -73,7 +73,7 @@ protected:
     float AlliesSearchInterval = 1.0f; // 주변 아군을 검색하는 주기
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Performance")
-    float ClearShotCheckInterval = 0.3f; // 사선 확보(LOS)를 확인하는 주기
+    float ClearShotCheckInterval = 0.3f; // 사선 확보를 확인하는 주기
 
 private:
     APawn* PlayerPawn = nullptr; // 플레이어 폰에 대한 참조

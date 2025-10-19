@@ -331,19 +331,19 @@ private:
 
     // 반동 변수
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
-    float VerticalRecoilMin = 1.5f;  // 수직 반동 최솟값
+    float VerticalRecoilMin = 1.0f;  // 수직 반동 최솟값
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
-    float VerticalRecoilMax = 3.0f;  // 수직 반동 최댓값
+    float VerticalRecoilMax = 2.0f;  // 수직 반동 최댓값
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
-    float HorizontalRecoilMin = -1.0f;  // 수평 반동 최솟값
+    float HorizontalRecoilMin = -7.0f;  // 수평 반동 최솟값
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
-    float HorizontalRecoilMax = 1.0f;   // 수평 반동 최댓값
+    float HorizontalRecoilMax = 7.0f;   // 수평 반동 최댓값
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
-    float RecoilDuration = 0.2f; // 반동 지속시간
+    float RecoilDuration = 0.25f; // 반동 지속시간
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
     float RecoilRecoverySpeed = 5.0f; // 반동 회복속도

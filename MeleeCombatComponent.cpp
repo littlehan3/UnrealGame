@@ -7,6 +7,10 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
+#include "EnemyGuardian.h"
+#include "EnemyShooter.h"
+#include "EnemyDog.h"
+#include "BossEnemy.h"
 
 UMeleeCombatComponent::UMeleeCombatComponent()
 {
@@ -263,17 +267,74 @@ void UMeleeCombatComponent::AdjustAttackDirection()
     AActor* TargetEnemy = nullptr;
     float ClosestDistance = MaxAutoAimDistance;
 
-    TArray<AActor*> FoundEnemies;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), FoundEnemies);
+    // 1. 모든 종류의 적을 하나의 배열로 통합
+    TArray<AActor*> AllEnemies;
+    TArray<AActor*> FoundActors;
+
+    // 각 적 유형별로 액터를 찾아 AllEnemies 배열에 추가
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), FoundActors);
+    AllEnemies.Append(FoundActors);
+
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyDog::StaticClass(), FoundActors);
+    AllEnemies.Append(FoundActors);
+
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyShooter::StaticClass(), FoundActors);
+    AllEnemies.Append(FoundActors);
+
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyGuardian::StaticClass(), FoundActors);
+    AllEnemies.Append(FoundActors);
+
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABossEnemy::StaticClass(), FoundActors);
+    AllEnemies.Append(FoundActors);
 
     FVector StartLocation = OwnerCharacter->GetActorLocation();
 
-    // 모든 적들을 검사하여 가장 가까운 유효한 적 찾기
-    for (AActor* Enemy : FoundEnemies)
+    // 2. 통합된 모든 적들을 검사하여 가장 가까운 유효한 적 찾기
+    for (AActor* Enemy : AllEnemies)
     {
-        AEnemy* EnemyCharacter = Cast<AEnemy>(Enemy);
-        if (!EnemyCharacter || EnemyCharacter->bIsDead || EnemyCharacter->bIsInAirStun) continue;
+        if (!Enemy) continue;
 
+        // 3. 각 적 유형에 맞춰 상태(사망, 스턴 등)를 확인하여 유효한 타겟인지 검사
+        bool bIsTargetValid = true;
+        if (AEnemy* GenericEnemy = Cast<AEnemy>(Enemy))
+        {
+            if (GenericEnemy->bIsDead || GenericEnemy->bIsInAirStun)
+            {
+                bIsTargetValid = false;
+            }
+        }
+        else if (AEnemyDog* Dog = Cast<AEnemyDog>(Enemy))
+        {
+            if (Dog->bIsDead || Dog->bIsInAirStun)
+            {
+                bIsTargetValid = false;
+            }
+        }
+        else if (AEnemyShooter* Shooter = Cast<AEnemyShooter>(Enemy))
+        {
+            if (Shooter->bIsDead || Shooter->bIsInAirStun)
+            {
+                bIsTargetValid = false;
+            }
+        }
+        else if (AEnemyGuardian* Guardian = Cast<AEnemyGuardian>(Enemy))
+        {
+            if (Guardian->bIsDead)
+            {
+                bIsTargetValid = false;
+            }
+        }
+        else if (ABossEnemy* Boss = Cast<ABossEnemy>(Enemy))
+        {
+             if (Boss->bIsBossDead)
+             {
+                 bIsTargetValid = false;
+             }
+        }
+
+        if (!bIsTargetValid) continue; // 유효하지 않은 타겟이면 건너뜀
+
+        // 4. 거리 및 장애물 검사
         FVector EnemyLocation = Enemy->GetActorLocation();
         float Distance = FVector::Dist(StartLocation, EnemyLocation);
 
@@ -289,15 +350,8 @@ void UMeleeCombatComponent::AdjustAttackDirection()
             EndLocation.Z = StartLocation.Z; // 같은 높이로 맞춤
 
             bool bHit = GetWorld()->LineTraceSingleByChannel(
-                HitResult,
-                StartLocation,
-                EndLocation,
-                ECC_Visibility,
-                Params
+                HitResult, StartLocation, EndLocation, ECC_Visibility, Params
             );
-
-            // 파란색으로 레이캐스트 시각화 (모든 검사에서 표시)
-            DrawDebugLine(GetWorld(), StartLocation, EndLocation, FColor::Blue, false, 2.0f, 0, 3.0f);
 
             // 장애물이 없거나 장애물이 적보다 멀리 있으면 타겟으로 설정
             if (!bHit || FVector::Dist(StartLocation, HitResult.Location) > Distance * 0.9f)
@@ -308,29 +362,22 @@ void UMeleeCombatComponent::AdjustAttackDirection()
         }
     }
 
+    // 5. 최종 타겟이 정해지면 텔레포트 또는 방향 보정 실행
     if (TargetEnemy)
     {
-        // 적까지의 거리 계산
         float DistanceToEnemy = FVector::Dist(OwnerCharacter->GetActorLocation(), TargetEnemy->GetActorLocation());
 
-        // 최소 텔레포트 거리보다 가까우면 방향 보정만 수행
         if (DistanceToEnemy < MinTeleportDistance)
         {
             // 방향 보정만 수행
-            FVector DirectionToEnemy = TargetEnemy->GetActorLocation() - OwnerCharacter->GetActorLocation();
+            FVector DirectionToEnemy = (TargetEnemy->GetActorLocation() - OwnerCharacter->GetActorLocation()).GetSafeNormal();
             DirectionToEnemy.Z = 0.0f;
-            DirectionToEnemy.Normalize();
-
-            FRotator NewRot = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator();
+            FRotator NewRot = DirectionToEnemy.Rotation();
             OwnerCharacter->SetActorRotation(NewRot);
-
             LastAttackDirection = DirectionToEnemy;
-
-            UE_LOG(LogTemp, Warning, TEXT("Direction adjusted only - enemy too close for teleport: %f"), DistanceToEnemy);
         }
         else
         {
-            // 텔레포트 거리 범위 내에 있으면 텔레포트 조건 체크
             if (ShouldTeleportToTarget(DistanceToEnemy))
             {
                 TeleportToTarget(TargetEnemy);
@@ -338,23 +385,15 @@ void UMeleeCombatComponent::AdjustAttackDirection()
             else
             {
                 // 텔레포트 조건이 안 맞으면 기존 방향 보정만 수행
-                FVector DirectionToEnemy = TargetEnemy->GetActorLocation() - OwnerCharacter->GetActorLocation();
+                FVector DirectionToEnemy = (TargetEnemy->GetActorLocation() - OwnerCharacter->GetActorLocation()).GetSafeNormal();
                 DirectionToEnemy.Z = 0.0f;
-                DirectionToEnemy.Normalize();
-
-                FRotator NewRot = FRotationMatrix::MakeFromX(DirectionToEnemy).Rotator();
+                FRotator NewRot = DirectionToEnemy.Rotation();
                 OwnerCharacter->SetActorRotation(NewRot);
-
                 LastAttackDirection = DirectionToEnemy;
-
-                UE_LOG(LogTemp, Warning, TEXT("Direction adjusted - teleport conditions not met: %f"), DistanceToEnemy);
             }
         }
     }
 }
-
-
-
 bool UMeleeCombatComponent::ShouldTeleportToTarget(float DistanceToTarget)
 {
     // 순간이동 조건들 체크

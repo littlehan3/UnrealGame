@@ -94,10 +94,10 @@ private:
     float MuzzleFlashScale = 0.1f; // 머즐 플래시 크기 조절
 
     UPROPERTY(EditAnywhere, Category = "Effects", meta = (ClampMin = "0.5", ClampMax = "3.0"))
-    float MuzzleFlashPlayRate = 2.0f; // 머즐 플래시 재생 속도
+    float MuzzleFlashPlayRate = 3.0f; // 머즐 플래시 재생 속도
 
     UPROPERTY(EditAnywhere, Category = "Effects", meta = (ClampMin = "0.1", ClampMax = "5.0"))
-    float ImpactEffectDuration = 0.3f; // 히트 이펙트 재생 시간
+    float ImpactEffectDuration = 0.2f; // 히트 이펙트 재생 시간
 
     FTimerHandle MuzzleFlashTimerHandle; // 머즐 플래시 타이머
     FTimerHandle ImpactEffectTimerHandle; // 히트 이팩트 타이머

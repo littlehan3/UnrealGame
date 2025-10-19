@@ -72,7 +72,7 @@ public:
 	bool bIsFullBodyAttacking = false;// 전신공격중 여부
 	bool bHasExecutedKickRaycast = false; // 킥 레이캐스트 여부
 
-	float BossHealth = 200.0f; // 체력
+	float BossHealth = 2000.0f; // 체력
 
 	UFUNCTION() // 애님 노티파이에서 호출할 함수
 	void SpawnBossProjectile();

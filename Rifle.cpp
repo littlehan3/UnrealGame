@@ -1,5 +1,4 @@
 #include "Rifle.h"
-#include "Enemy.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/StaticMeshComponent.h"
