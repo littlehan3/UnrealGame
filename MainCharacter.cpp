@@ -15,7 +15,12 @@
 #include "Cannon.h"
 #include "Kismet/GameplayStatics.h"
 #include "CrossHairWidget.h"  // 헤더 추가
-
+#include "Blueprint/UserWidget.h"
+#include "SettingsSaveGame.h"
+#include "SettingsGameInstance.h"
+#include "SkillComponent.h"
+#include "Animation/AnimInstance.h"
+#include "MainGameModeBase.h"
 
 AMainCharacter::AMainCharacter()
 {
@@ -31,7 +36,18 @@ AMainCharacter::AMainCharacter()
     CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
     CameraBoom->bUsePawnControlRotation = true;
 
-    CameraBoom->bDoCollisionTest = false;
+    // [수정 1] 이 값을 'true'로 변경하여 카메라 충돌을 활성화합니다.
+    CameraBoom->bDoCollisionTest = true; //true로 변경
+
+    // [수정 2 - 권장] 충돌 테스트 시 얇은 선 대신 구체(Sphere)를 사용합니다.
+    // 이렇게 하면 얇은 모서리 등을 '뚫고' 지나가는 현상을 방지할 수 있습니다.
+    CameraBoom->ProbeSize = 12.0f; // (적절한 기본값)
+
+    // [수정 3 - 권장] 충돌로 인해 카메라가 '순간이동'하는 것을 방지하고
+    // 부드럽게 따라오도록 카메라 래그(Lag)를 활성화합니다.
+    CameraBoom->bEnableCameraLag = true;
+
+    CameraBoom->CameraLagSpeed = 10.0f; // (이 값을 조절하여 부드러운 정도를 설정)
 
     // Camera Component
     Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
@@ -66,9 +82,119 @@ AMainCharacter::AMainCharacter()
 
     CurrentHealth = MaxHealth;
     bIsDead = false;
+    bIsBigHitReacting = false;
 
     // 크로스헤어 컴포넌트 생성
     CrosshairComponent = CreateDefaultSubobject<UCrossHairComponent>(TEXT("CrosshairComponent"));
+
+    // [추가] 쿨타임 사운드 재생용 컴포넌트 생성 (사운드 중복 방지용)
+    CooldownAudioComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("CooldownAudioComponent"));
+    CooldownAudioComponent->SetupAttachment(GetRootComponent());
+    CooldownAudioComponent->bAutoActivate = false; // 자동 재생 방지
+
+    DeathPostProcessComponent = CreateDefaultSubobject<UPostProcessComponent>(TEXT("DeathPostProcess"));
+    DeathPostProcessComponent->SetupAttachment(RootComponent); // 캐릭터에 부착
+
+    // 초기 설정: 기본적으로 이펙트의 가중치(Blend Weight)는 0으로 둡니다.
+    // 죽을 때 1.0으로 올릴 것이기 때문입니다.
+    DeathPostProcessComponent->BlendWeight = 0.0f;
+
+    // 이 컴포넌트가 활성화되도록 설정
+    DeathPostProcessComponent->bEnabled = true;
+}
+
+void AMainCharacter::ResumeGame()
+{
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC) return;
+
+    if (PauseMenuWidget)
+    {
+        // [수정] 위젯을 뷰포트에서 제거
+        PauseMenuWidget->RemoveFromParent(); // <--- RemoveFromViewport() 대신 사용
+    }
+
+    // (중요) 게임 일시정지 해제
+    PC->SetPause(false);
+
+    // (중요) 마우스 커서 숨김
+    PC->SetShowMouseCursor(false);
+
+    // (중요) 입력 모드를 '게임 전용'으로 변경
+    FInputModeGameOnly InputMode;
+    PC->SetInputMode(InputMode);
+}
+
+void AMainCharacter::HandleRestartGame()
+{
+    // 현재 레벨 이름을 가져옵니다.
+    FName CurrentLevelName = FName(UGameplayStatics::GetCurrentLevelName(this));
+
+    // [수정] 공통 로딩 함수를 호출합니다.
+    ShowLoadingScreenAndLoad(CurrentLevelName);
+}
+
+void AMainCharacter::HandleBackToMainMenu()
+{
+    // [수정] 공통 로딩 함수를 호출합니다. (MainMenuLevel 이름은 실제 이름으로 사용하세요)
+    ShowLoadingScreenAndLoad(FName("MainMenutest"));
+}
+
+void AMainCharacter::PlayCooldownSound()
+{
+    if (!SkillCooldownSound || !CooldownAudioComponent) return;
+
+    // 이미 재생 중이면 다시 재생하지 않고 함수 종료
+    if (CooldownAudioComponent->IsPlaying())
+    {
+        return;
+    }
+
+    // 쿨타임 사운드 설정 및 재생
+    CooldownAudioComponent->SetSound(SkillCooldownSound);
+    CooldownAudioComponent->Play();
+
+    UE_LOG(LogTemp, Warning, TEXT("Cooldown Sound Played."));
+}
+
+void AMainCharacter::PlayWavePrepareSound()
+{
+    if (WavePrepareSound)
+    {
+        UGameplayStatics::PlaySound2D(GetWorld(), WavePrepareSound);
+        UE_LOG(LogTemp, Warning, TEXT("Wave Prepare Sound Played."));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("WavePrepareSound is NULL! Cannot play prepare sound."));
+    }
+}
+
+void AMainCharacter::GiveReward(float HealthAmount, int32 AmmoAmount)
+{
+    // 1. 체력 지급
+    float HealthBefore = CurrentHealth;
+    CurrentHealth = FMath::Clamp(CurrentHealth + HealthAmount, 0.0f, MaxHealth);
+
+    if (CurrentHealth > HealthBefore)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Character gained %f Health. Current: %f/%f"),
+            HealthAmount, CurrentHealth, MaxHealth);
+    }
+
+    // 2. 탄약 지급 (Rifle이 장착되어 있고 유효한 경우)
+    if (Rifle)
+    {
+        Rifle->AddTotalAmmo(AmmoAmount);
+        UE_LOG(LogTemp, Warning, TEXT("Character gained %d Ammo. Total: %d"),
+            AmmoAmount, Rifle->GetTotalAmmo());
+    }
+
+    // 3. 보상 획득 사운드 재생
+    if (RewardSound)
+    {
+        UGameplayStatics::PlaySound2D(GetWorld(), RewardSound);
+    }
 }
 
 void AMainCharacter::BeginPlay()
@@ -131,7 +257,6 @@ void AMainCharacter::BeginPlay()
         Montages.Add(ComboAttackMontage5);
 
         MeleeCombatComponent->SetComboMontages(Montages);
-        MeleeCombatComponent->SetJumpAttackMontages(JumpAttackMontage, DoubleJumpAttackMontage);
     }
 
     if (MachineGunClass)
@@ -174,6 +299,52 @@ void AMainCharacter::BeginPlay()
                 CrossHairWidget->SetCrossHairComponentReference(CrosshairComponent);
             }
         }
+    }
+
+    // 플레이어 HUD 위젯 생성 
+    if (PlayerHUDWidgetClass)
+    {
+        PlayerHUDWidget = CreateWidget<UUserWidget>(GetWorld(), PlayerHUDWidgetClass);
+
+        if (PlayerHUDWidget)
+        {
+            PlayerHUDWidget->AddToViewport();
+            // HUD는 기본적으로 보여야 하므로 Hidden 처리 안 함
+        }
+    }
+
+    // [신규 추가] 일시정지 메뉴 위젯 생성 (하지만 뷰포트에는 추가하지 않음)
+    if (PauseMenuWidgetClass)
+    {
+        // GetOwningController() 대신 GetController()를 사용합니다.
+        APlayerController* PC = Cast<APlayerController>(GetController());
+        if (PC)
+        {
+            PauseMenuWidget = CreateWidget<UUserWidget>(PC, PauseMenuWidgetClass);
+            // 위젯은 생성만 해두고, 뷰포트에 AddToViewport()는 하지 않습니다.
+            // TogglePauseMenu()에서 필요할 때 추가합니다.
+        }
+    }
+
+    // [신규 추가] 마우스 감도 설정 로드
+    // 1. GameInstance를 가져옵니다.
+    USettingsGameInstance* SettingsGI = Cast<USettingsGameInstance>(UGameplayStatics::GetGameInstance(GetWorld()));
+
+    // 2. GameInstance와 CurrentSettings가 유효한지 확인합니다.
+    if (SettingsGI && SettingsGI->CurrentSettings)
+    {
+        // 3. GameInstance에 저장된 값을 캐릭터의 변수로 복사합니다.
+        MouseSensitivityMultiplier = SettingsGI->CurrentSettings->MouseSensitivity;
+    }
+
+    if (GameStartSound)
+    {
+        // ImpactPoint 대신 캐릭터의 위치(GetActorLocation())에서 사운드를 재생합니다.
+        UGameplayStatics::PlaySoundAtLocation(
+            GetWorld(),
+            GameStartSound,
+            GetActorLocation() // 재생 위치를 캐릭터의 위치로 설정
+        );
     }
 }
 
@@ -294,8 +465,41 @@ void AMainCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    if (bIsBigHitReacting)
+    {
+        // 빅 히트 중에도 AimPitch는 업데이트 (카메라는 움직일 수 있으므로)
+        if (bIsAiming || (SkillComponent && SkillComponent->IsUsingAimSkill1() || (SkillComponent && SkillComponent->IsUsingAimSkill2())))
+        {
+            APlayerController* PlayerController = Cast<APlayerController>(GetController());
+            if (PlayerController)
+            {
+                FRotator ControlRotation = PlayerController->GetControlRotation();
+                AimPitch = FMath::Clamp(FMath::UnwindDegrees(ControlRotation.Pitch), -90.0f, 90.0f);
+            }
+        }
+
+        // 애님 인스턴스에 상태 전달
+        if (UCustomAnimInstance* AnimInstance = Cast<UCustomAnimInstance>(GetMesh()->GetAnimInstance()))
+        {
+            // 빅히트 중에는 속도/방향을 강제로 0으로 설정
+            AnimInstance->Speed = 0.0f;
+            AnimInstance->Direction = 0.0f;
+            AnimInstance->bIsJumping = bIsJumping;
+            AnimInstance->bIsInDoubleJump = bIsInDoubleJump;
+            AnimInstance->bIsInAir = bIsInAir;
+            AnimInstance->bIsAiming = bIsAiming;
+            AnimInstance->AimPitch = AimPitch;
+            AnimInstance->bIsUsingAimSkill1 = (SkillComponent && SkillComponent->IsUsingAimSkill1());
+            AnimInstance->bIsUsingAimSkill2 = (SkillComponent && SkillComponent->IsUsingAimSkill2());
+        }
+        return; // 나머지 틱 로직(이동, 줌, 반동) 중단
+    }
+
     bool bCurrentlyFalling = GetCharacterMovement()->IsFalling();
     bool bCurrentlyOnGround = GetCharacterMovement()->IsMovingOnGround();
+    //[수정] 이동 중 크로스헤어 확산 적용 로직(Tick 함수 후반부)
+    // [수정] 크로스헤어 활성화 조건 (라이플 에임 또는 머신건 스킬)
+    bool bIsCrosshairActive = bIsAiming || (SkillComponent && SkillComponent->IsUsingAimSkill1()); // [cite: 65, 210]
 
     if (bCurrentlyFalling && !bIsInAir)
     {
@@ -421,8 +625,8 @@ void AMainCharacter::Tick(float DeltaTime)
         CrosshairComponent->SetMovementSpread(MovementSpread);
         CrosshairComponent->SetCrosshairActive(true);
 
-        // 반동 업데이트
-        if (bIsRecoiling)
+        // 반동 업데이트는 라이플 에임(bIsAiming) 중에만 작동
+        if (bIsAiming && bIsRecoiling)
         {
             UpdateRecoil(DeltaTime);
         }
@@ -442,16 +646,14 @@ void AMainCharacter::Tick(float DeltaTime)
 
 void AMainCharacter::HandleJump()
 {
+    // [신규] 빅 히트 중 행동 불가
+    if (bIsBigHitReacting || bIsDead) return;
+
     if (SkillComponent &&
         (SkillComponent->IsUsingSkill1() || SkillComponent->IsUsingSkill2() || SkillComponent->IsUsingSkill3() ||
             SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2() || SkillComponent->IsUsingAimSkill3()))
         return;
-
-    if (MeleeCombatComponent && !MeleeCombatComponent->CanAirAction())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Jump Blocked - Air action Disabled"));
-        return;
-    }
+    if (bIsDead) return;
 
     // 대쉬 중이거나 착지 애니메이션 재생 중일 때 점프 불가
     if (bIsDashing || bIsPlayingLandingAnimation)
@@ -484,12 +686,10 @@ void AMainCharacter::HandleJump()
 
 void AMainCharacter::HandleDoubleJump()
 {
-    if (MeleeCombatComponent && MeleeCombatComponent->IsJumpAttacked()) // 공중액션 불가능시 점프 차단
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Double Jump Blocked Jump Attack Used"));
+    // [신규] 빅 히트 중 행동 불가
+    if (bIsBigHitReacting || bIsDead) return;
 
-        return;
-    }
+    if (bIsDead) return;
 
     LaunchCharacter(FVector(0, 0, 1200), false, true);
     bCanDoubleJump = false;
@@ -516,16 +716,6 @@ void AMainCharacter::Landed(const FHitResult& Hit)
     bIsInDoubleJump = false;
     bIsInAir = false;
     bCanDoubleJump = true;
-
-    if (MeleeCombatComponent)
-    {
-        MeleeCombatComponent->OnCharacterLanded();
-        if (MeleeCombatComponent->IsJumpAttackQueued())
-        {
-            MeleeCombatComponent->ClearJumpAttackQueue();
-            UE_LOG(LogTemp, Warning, TEXT("Jump attack queue cleared on landing"));
-        }
-    }
 
     // 착지 상태 활성화 (짧게 설정)
     bIsLanding = true;
@@ -556,6 +746,121 @@ void AMainCharacter::OnLandingAnimationFinished()
     UE_LOG(LogTemp, Warning, TEXT("Landing Animation Finished! Ready for normal jump"));
 }
 
+void AMainCharacter::TogglePauseMenu()
+{
+    // 1. 메인 메뉴 씬인지 확인
+    FName CurrentLevelName = FName(UGameplayStatics::GetCurrentLevelName(this));
+    if (CurrentLevelName == FName("MainMenutest"))
+    {
+        return; // 메인 메뉴에서는 일시정지 작동 안 함
+    }
+
+    // 2. PlayerController 가져오기
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC) return;
+
+    // 3. 위젯이 유효한지 확인
+    if (!PauseMenuWidget)
+    {
+        UE_LOG(LogTemp, Error, TEXT("PauseMenuWidget is not valid!"));
+        return;
+    }
+
+    // 4. 이미 일시정지 상태인지 확인 (위젯이 뷰포트에 있거나, 게임이 Paused 상태)
+    if (PC->IsPaused()) // 또는 if (PauseMenuWidget->IsInViewport())
+    {
+        // 이미 켜져있음 -> 게임 재개
+        ResumeGame();
+    }
+    else
+    {
+        // 5. 일시정지 상태가 아님 -> 일시정지
+
+        // 위젯을 뷰포트에 추가
+        PauseMenuWidget->AddToViewport();
+
+        // (중요) 게임을 일시정지시킴
+        PC->SetPause(true);
+
+        // (중요) 마우스 커서 표시
+        PC->SetShowMouseCursor(true);
+
+        // (중요) 입력 모드를 '게임 및 UI'로 변경
+        // 이렇게 해야 UI 버튼도 클릭되고, ESC 키 입력도 계속 받을 수 있습니다.
+        FInputModeGameAndUI InputMode;
+        InputMode.SetWidgetToFocus(PauseMenuWidget->GetCachedWidget());
+        InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        PC->SetInputMode(InputMode);
+    }
+}
+
+void AMainCharacter::ShowLoadingScreenAndLoad(FName LevelName)
+{
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC) return;
+
+    // 1. 일시정지 해제 및 커서 숨김 (커서는 UI모드에서 다시 처리)
+    PC->SetPause(false);
+    // PC->SetShowMouseCursor(false); // <- 일단 대기
+
+ // [수정] 2. 일시정지 메뉴 제거
+    if (PauseMenuWidget)
+    {
+        PauseMenuWidget->RemoveFromParent(); // <--- RemoveFromViewport() 대신 사용
+    }
+
+    // 3. 로딩 위젯 생성 및 표시
+    UUserWidget* LoadingWidget = nullptr; // 위젯 포인터를 저장
+    if (LoadingScreenWidgetClass)
+    {
+        LoadingWidget = CreateWidget<UUserWidget>(PC, LoadingScreenWidgetClass);
+        if (LoadingWidget)
+        {
+            LoadingWidget->AddToViewport();
+            UE_LOG(LogTemp, Warning, TEXT("Loading Screen displayed."));
+        }
+    }
+
+    // 4. [수정] 입력 모드를 '게임 전용'이 아닌 'UI 전용'으로 변경
+    // FInputModeGameOnly InputMode; // <-- 이 코드 대신
+    // PC->SetInputMode(InputMode); // <-- 이 코드 대신
+
+    FInputModeUIOnly InputMode;
+    //if (LoadingWidget)
+    //{
+    //    // 로딩 위젯이 혹시 포커스를 받을 수 있다면 설정 (필수는 아님)
+    //    InputMode.SetWidgetToFocus(LoadingWidget->TakeWidget());
+    //}
+
+    // 마우스가 로딩 화면 밖으로 나가지 않게 잠급니다.
+    InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
+    PC->SetInputMode(InputMode);
+
+    // 로딩 화면에서는 마우스 커서가 필요 없을 수 있으니 숨깁니다.
+    PC->SetShowMouseCursor(false);
+
+
+    // 5. 로드할 레벨 이름 저장
+    PendingLevelToLoad = LevelName;
+
+    // 6. 2초 뒤 레벨 로드
+    FTimerHandle TimerHandle;
+    GetWorld()->GetTimerManager().SetTimer(TimerHandle, this, &AMainCharacter::LoadPendingLevel, 2.0f, false);
+}
+
+void AMainCharacter::LoadPendingLevel()
+{
+    if (PendingLevelToLoad != NAME_None)
+    {
+        UGameplayStatics::OpenLevel(this, PendingLevelToLoad, true);
+        PendingLevelToLoad = NAME_None; // 혹시 모르니 초기화
+    }
+}
+
+void AMainCharacter::UpdateMouseSensitivity(float NewSensitivity)
+{
+    MouseSensitivityMultiplier = NewSensitivity;
+}
 
 void AMainCharacter::ResetLandingState()
 {
@@ -570,6 +875,7 @@ void AMainCharacter::Move(const FInputActionValue& Value)
     FVector2D MovementVector = Value.Get<FVector2D>();
 
     if (!Controller) return;
+    if (bIsBigHitReacting || bIsDead) return;
 
     const FRotator Rotation = Controller->GetControlRotation();
     const FRotator YawRotation(0.0f, Rotation.Yaw, 0.0f);
@@ -586,19 +892,24 @@ void AMainCharacter::Look(const FInputActionValue& Value)
     FVector2D LookVector = Value.Get<FVector2D>();
 
     if (!Controller) return;
+    if (bIsDead) return;
 
-    AddControllerYawInput(LookVector.X);
-    AddControllerPitchInput(LookVector.Y);
+    AddControllerYawInput(LookVector.X * MouseSensitivityMultiplier);
+    AddControllerPitchInput(LookVector.Y * MouseSensitivityMultiplier);
 }
 
 void AMainCharacter::FireWeapon()
 {
+    if (bIsBigHitReacting || bIsDead) return;
+
     if (SkillComponent &&
         (SkillComponent->IsUsingSkill1() ||
             SkillComponent->IsUsingSkill2() ||
             SkillComponent->IsUsingSkill3() ||
             SkillComponent->IsUsingAimSkill1()))
         return;
+
+    if (bIsDead) return;
 
     if (bIsAiming && Rifle)
     {
@@ -632,28 +943,6 @@ void AMainCharacter::FireWeapon()
         ComboAttack();
     }
 
-    // 점프 상태 체크
-    if (GetCharacterMovement()->IsFalling())
-    {
-        // 에임모드 중에는 점프공격 비활성화
-        if (bIsAiming)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Jump Attack Blocked - Aim Mode Active"));
-            return; // 에임모드 중에는 점프공격 실행하지 않음
-        }
-
-        if (MeleeCombatComponent)
-        {
-            if (MeleeCombatComponent->IsAttacking())
-            {
-                MeleeCombatComponent->QueueJumpAttack(); // 함수 사용
-                return;
-            }
-            MeleeCombatComponent->TriggerJumpAttack(IsInDoubleJump());
-        }
-        return;
-    }
-
     // 크로스헤어 확산 트리거
     if (CrosshairComponent)
     {
@@ -663,16 +952,22 @@ void AMainCharacter::FireWeapon()
 
 void AMainCharacter::ReloadWeapon()
 {
+    if (bIsBigHitReacting || bIsDead) return;
+
     if (!Rifle)
     {
         return;
     }
+
+    if (bIsDead) return;
 
     Rifle->Reload();
 }
 
 void AMainCharacter::EnterAimMode()
 {
+    if (bIsBigHitReacting || bIsDead) return;
+
     if (SkillComponent &&
         (SkillComponent->IsUsingSkill1() ||
             SkillComponent->IsUsingSkill2() ||
@@ -681,6 +976,8 @@ void AMainCharacter::EnterAimMode()
             SkillComponent->IsUsingAimSkill2()))
         return;
 
+    if (bIsDead) return;
+
     if (!bIsAiming)
     {
         PreviousZoom = TargetZoom; // 현재 타겟 줌 값을 저장
@@ -688,6 +985,13 @@ void AMainCharacter::EnterAimMode()
         TargetZoom = AimZoom; // 에임 모드 진입 시 즉시 줌 변경
         UE_LOG(LogTemp, Warning, TEXT("Entered Aim Mode"));
         CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 50.0f);
+
+        // [신규 추가] 에임 모드 진입 사운드 재생
+        if (AimModeEnterSound)
+        {
+            // 2D 사운드로 재생 (UI 피드백에 적합)
+            UGameplayStatics::PlaySound2D(GetWorld(), AimModeEnterSound);
+        }
 
         AttachRifleToHand(); // 손으로 이동
         AttachKnifeToBack();
@@ -710,6 +1014,8 @@ void AMainCharacter::EnterAimMode()
 
 void AMainCharacter::ExitAimMode()
 {
+    if (bIsDead) return;
+
     if (bIsAiming)
     {
         bIsAiming = false;
@@ -819,9 +1125,29 @@ void AMainCharacter::ApplyCameraShake()
     }
 }
 
+void AMainCharacter::ShowCrosshairWidget()
+{
+    if (CrossHairWidget)
+    {
+        CrossHairWidget->SetVisibility(ESlateVisibility::Visible);
+    }
+}
+
+void AMainCharacter::HideCrosshairWidget()
+{
+    if (CrossHairWidget)
+    {
+        CrossHairWidget->SetVisibility(ESlateVisibility::Hidden);
+    }
+}
+
 void AMainCharacter::ComboAttack()
 {
+    if (bIsBigHitReacting || bIsDead) return;
+
     if (!MeleeCombatComponent || !SkillComponent) return;
+
+    if (bIsDead) return;
 
     if (bIsDashing || SkillComponent->IsUsingAimSkill1())
     {
@@ -839,11 +1165,27 @@ void AMainCharacter::ComboAttack()
 
 void AMainCharacter::Dash()
 {
+    if (bIsBigHitReacting || bIsDead) return;
+
     if (!bCanDash || bIsDashing || !Controller || bIsJumping || bIsInDoubleJump) return;
 
-    if (SkillComponent &&
-        (SkillComponent->IsUsingAimSkill1() || SkillComponent->IsUsingAimSkill2()))
-        return;
+    // 에임스킬1 사용 중 대시하면 스킬을 캔슬하고 대시
+    if (SkillComponent)
+    {
+        if (SkillComponent->IsUsingAimSkill1())
+        {
+            // 스킬 컴포넌트에 캔슬 및 쿨타임 재시작을 요청
+            SkillComponent->CancelAimSkill1ByDash();
+            // return하지 않고 대시 로직을 계속 진행합니다.
+        }
+        // 에임스킬2(캐논)는 여전히 대시를 막습니다.
+        else if (SkillComponent->IsUsingAimSkill2())
+        {
+            return;
+        }
+    }
+
+    if (bIsDead) return;
 
     FVector DashDirection = FVector::ZeroVector;
     FVector InputVector = GetCharacterMovement()->GetLastInputVector();
@@ -999,6 +1341,7 @@ void AMainCharacter::ResetDashCooldown() // 대쉬 쿨타임 해제
 void AMainCharacter::ZoomIn()
 {
     if (bIsAiming) return; // 에임 모드일 때는 줌 불가능
+    if (bIsDead) return;
 
     TargetZoom = FMath::Clamp(TargetZoom - ZoomStep, MinZoom, MaxZoom);
 
@@ -1013,6 +1356,7 @@ void AMainCharacter::ZoomIn()
 
 void AMainCharacter::ZoomOut()
 {
+    if (bIsDead) return;
     if (bIsAiming) return; // 에임 모드일 때는 줌 불가능
 
     TargetZoom = FMath::Clamp(TargetZoom + ZoomStep, MinZoom, MaxZoom);
@@ -1028,36 +1372,68 @@ void AMainCharacter::ZoomOut()
 
 void AMainCharacter::UseSkill1()
 {
+    if (bIsBigHitReacting || bIsDead) return;
+
     UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseSkill1 triggered"));
     if (SkillComponent)
     {
-        if (bIsAiming && SkillComponent->CanUseAimSkill1()) // 에임 중이고, 에임스킬1 사용 가능하면
+        if (bIsAiming) // 에임 스킬 1
         {
-            UE_LOG(LogTemp, Warning, TEXT("UseAimSkill1"));
-            SkillComponent->UseAimSkill1(); // 에임 스킬1
+            if (SkillComponent->CanUseAimSkill1())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("UseAimSkill1"));
+                SkillComponent->UseAimSkill1();
+            }
+            else // 쿨타임일 경우 사운드 재생 (통합)
+            {
+                PlayCooldownSound();
+            }
         }
-        else
+        else // 일반 스킬 1
         {
-            UE_LOG(LogTemp, Warning, TEXT("UseSkill1"));
-            SkillComponent->UseSkill1(); // 일반 스킬1
+            if (SkillComponent->CanUseSkill1())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("UseSkill1"));
+                SkillComponent->UseSkill1();
+            }
+            else // 쿨타임일 경우 사운드 재생 (통합)
+            {
+                PlayCooldownSound();
+            }
         }
     }
 }
 
 void AMainCharacter::UseSkill2()
 {
+    if (bIsBigHitReacting || bIsDead) return;
+
     UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseSkill2 triggered"));
     if (SkillComponent)
     {
-        if (bIsAiming && SkillComponent->CanUseAimSkill2()) // 에임 중이고, 에임스킬2 사용 가능하면
+        if (bIsAiming) // 에임 스킬 2
         {
-            UE_LOG(LogTemp, Warning, TEXT("UseAimSkill2"));
-            SkillComponent->UseAimSkill2(); // 에임 스킬2
+            if (SkillComponent->CanUseAimSkill2())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("UseAimSkill2"));
+                SkillComponent->UseAimSkill2();
+            }
+            else // 쿨타임일 경우 사운드 재생 (통합)
+            {
+                PlayCooldownSound();
+            }
         }
-        else
+        else // 일반 스킬 2
         {
-            UE_LOG(LogTemp, Warning, TEXT("UseSkill2"));
-            SkillComponent->UseSkill2(); // 일반 스킬2
+            if (SkillComponent->CanUseSkill2())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("UseSkill2"));
+                SkillComponent->UseSkill2();
+            }
+            else // 쿨타임일 경우 사운드 재생 (통합)
+            {
+                PlayCooldownSound();
+            }
         }
     }
 }
@@ -1065,17 +1441,32 @@ void AMainCharacter::UseSkill2()
 void AMainCharacter::UseSkill3()
 {
     UE_LOG(LogTemp, Warning, TEXT("AMainCharacter::UseSkill3 triggered"));
+    if (bIsBigHitReacting || bIsDead) return;
     if (SkillComponent)
     {
-        if (bIsAiming && SkillComponent->CanUseAimSkill3()) // 에임 중이고, 에임스킬3 사용 가능하면
+        if (bIsAiming) // 에임 스킬 3
         {
-            UE_LOG(LogTemp, Warning, TEXT("UseAimSkill3"));
-            SkillComponent->UseAimSkill3(); // 에임 스킬3
+            if (SkillComponent->CanUseAimSkill3())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("UseAimSkill3"));
+                SkillComponent->UseAimSkill3();
+            }
+            else // 쿨타임일 경우 사운드 재생 (통합)
+            {
+                PlayCooldownSound();
+            }
         }
-        else
+        else // 일반 스킬 3
         {
-            UE_LOG(LogTemp, Warning, TEXT("UseSkill3"));
-            SkillComponent->UseSkill3(); // 일반 스킬3
+            if (SkillComponent->CanUseSkill3())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("UseSkill3"));
+                SkillComponent->UseSkill3();
+            }
+            else // 쿨타임일 경우 사운드 재생 (통합)
+            {
+                PlayCooldownSound();
+            }
         }
     }
 }
@@ -1099,8 +1490,14 @@ float AMainCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
         }
     }
 
+    // [수정] 빅 히트 리액션 중에는 일반 피격 몽타주 재생 안 함
+    if (bIsBigHitReacting)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Damage received during Big Hit - skip normal hit montage"));
+    }
+
     // 스킬 시전 중이 아닐 때만 히트 몽타주 재생
-    if (SkillComponent && !SkillComponent->IsCastingSkill())
+    else if (SkillComponent && !SkillComponent->IsCastingSkill())
     {
         if (NormalHitMontages.Num() > 0)
         {
@@ -1134,7 +1531,25 @@ void AMainCharacter::Die()
 {
     if (bIsDead) return;
     bIsDead = true;
+    bIsBigHitReacting = false;
     ExitAimMode();
+
+    // 줌 값 즉시 복구 (ExitAimMode() 내 TargetZoom 복구 외 추가)
+    CurrentZoom = TargetZoom = DefaultZoom;
+    CameraBoom->TargetArmLength = CurrentZoom;
+
+    // ⭐ 2. [신규/핵심] 애님 인스턴스에 강제 업데이트 요청 ⭐
+    // 에임 자세가 즉시 해제되도록 애니메이션을 강제로 한 번 업데이트합니다.
+    if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+    {
+        // 애님 인스턴스의 플래그 업데이트
+        // (ABP에서 bIsAiming 변수명을 사용한다고 가정합니다. 아니라면 변수명을 맞춰야 합니다.)
+        // 하지만 C++에서 이미 ExitAimMode()를 통해 bIsAiming = false를 설정했으므로,
+        // ABP가 이를 인식하는 데 걸리는 딜레이를 줄여야 합니다.
+
+        // Tick 그룹 변경 시도: 애니메이션 업데이트 우선순위를 높여 다음 틱에서 즉시 반영되도록 합니다.
+        GetMesh()->SetTickGroup(ETickingGroup::TG_PostPhysics);
+    }
 
     if (SkillComponent)
     {
@@ -1144,7 +1559,7 @@ void AMainCharacter::Die()
     APlayerController* PC = Cast<APlayerController>(GetController());
     if (PC)
     {
-        DisableInput(PC);
+        //DisableInput(PC);
     }
 
     if (DieSound)
@@ -1166,6 +1581,134 @@ void AMainCharacter::Die()
         }
     }
     UE_LOG(LogTemp, Warning, TEXT("MainCharacter Dead!"));
+
+    // [추가] 최고 기록 저장 로직
+    if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
+    {
+        // 현재 진행 중이던 웨이브 인덱스 - 1이 마지막 클리어 웨이브 인덱스
+        int32 LastClearedWaveIndex = GameMode->GetCurrentWaveIndex() - 1;
+
+        // -1보다 큰 경우(최소 0번 웨이브 이상 클리어)에만 저장 시도
+        if (LastClearedWaveIndex >= -1)
+        {
+            GameMode->CheckAndSaveBestWaveRecord(LastClearedWaveIndex);
+        }
+    }
+
+    if (DeathPostProcessComponent)
+    {
+        // 1. BlendWeight는 UPostProcessComponent의 공개 변수에 직접 접근하여 설정합니다.
+        // SetBlendWeight() 함수는 존재하지 않습니다.
+        DeathPostProcessComponent->BlendWeight = 1.0f; // 즉시 100% 적용
+
+        // 2. 채도(Desaturation)를 0.0으로 설정하여 회색 화면을 만듭니다.
+        // 해당 항목의 오버라이드 플래그를 true로 설정합니다.
+        DeathPostProcessComponent->Settings.bOverride_ColorSaturation = true;
+
+        // ColorSaturation 항목에 흑백/회색톤(0.0) 적용
+        // FVector4(R, G, B, A) 모두 0.0을 주면 Desaturation 효과가 나타납니다.
+        DeathPostProcessComponent->Settings.ColorSaturation = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
+
+        // 3. (선택적) 비네팅 효과를 추가하여 화면 가장자리를 어둡게 만듭니다.
+        DeathPostProcessComponent->Settings.bOverride_VignetteIntensity = true;
+        DeathPostProcessComponent->Settings.VignetteIntensity = 0.5f;
+
+        // 주의: FPostProcessSettings 멤버가 아닌 'bOverride_PostProcessDetails'는 제거되었습니다.
+    }
+}
+
+// [신규] 빅 히트 리액션 재생 함수
+void AMainCharacter::PlayBigHitReaction()
+{
+    // 이미 죽었거나, 이미 빅 히트 리액션 중이면 중복 실행 방지
+    if (bIsDead || bIsBigHitReacting) return;
+
+    if (!BigHitMontage || !BigHitRecoverMontage)
+    {
+        UE_LOG(LogTemp, Error, TEXT("PlayBigHitReaction Failed: Montages not set!"));
+        return;
+    }
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (!AnimInstance) return;
+
+    UE_LOG(LogTemp, Warning, TEXT("BIG HIT REACTION TRIGGERED!"));
+
+    // 1. 빅 히트 상태로 전환
+    bIsBigHitReacting = true;
+
+    // 2. 모든 스킬 및 에임 모드 강제 캔슬
+    if (SkillComponent)
+    {
+        SkillComponent->CancelAllSkills();
+    }
+    if (bIsAiming)
+    {
+        ExitAimMode();
+    }
+    // 콤보 공격도 중단 (MeleeCombatComponent에 중단 함수가 있다면 호출)
+    // if (MeleeCombatComponent)
+    // {
+    //    MeleeCombatComponent->StopComboAttack(); 
+    // }
+
+    // 3. 빅 히트 (넘어지는) 몽타주 재생
+    float MontageDuration = AnimInstance->Montage_Play(BigHitMontage, 1.0f); // [수정] 재생 시간을 변수에 저장
+
+    // 4. 빅 히트 사운드 재생
+    if (BigHitSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, BigHitSound, GetActorLocation());
+    }
+
+    // [수정] 5. 첫 번째 몽타주 80% 지점에서 리커버리 몽타주를 재생하도록 타이머 설정
+    if (MontageDuration > 0.0f)
+    {
+        float RecoverPlayTime = MontageDuration * 0.8f;
+        GetWorldTimerManager().SetTimer(BigHitRecoverTimerHandle, this, &AMainCharacter::StartBigHitRecover, RecoverPlayTime, false);
+    }
+    else
+    {
+        // 몽타주 재생 실패 시 (길이가 0), 즉시 리커버리 시도
+        StartBigHitRecover();
+    }
+}
+
+// [신규] 빅 히트 몽타주 90% 지점에서 타이머로 호출될 함수
+void AMainCharacter::StartBigHitRecover()
+{
+    // 1. 사망했다면 리커버리 재생 안 함
+    if (bIsDead)
+    {
+        bIsBigHitReacting = false; // 혹시 모르니 상태 해제
+        return;
+    }
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (!AnimInstance || !BigHitRecoverMontage)
+    {
+        bIsBigHitReacting = false; // 몽타주가 없으면 그냥 상태 해제
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Big Hit 90%% reached. Playing Recover Montage..."));
+
+    // 2. 두 번째 몽타주 (일어나기) 재생
+    AnimInstance->Montage_Play(BigHitRecoverMontage, 1.0f);
+
+    // 3. 두 번째 몽타주 종료 시 호출될 델리게이트 바인딩
+    FOnMontageEnded EndDelegate;
+    EndDelegate.BindUObject(this, &AMainCharacter::OnBigHitRecoverMontageEnded);
+    AnimInstance->Montage_SetEndDelegate(EndDelegate, BigHitRecoverMontage);
+}
+
+// [신규] 빅 히트 리커버 몽타주(일어남)가 끝났을 때 호출됨
+void AMainCharacter::OnBigHitRecoverMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    UE_LOG(LogTemp, Warning, TEXT("Big Hit RECOVERED. Character control restored."));
+
+    // 1. 빅 히트 상태를 최종적으로 해제하여 모든 행동 가능하도록 복구
+    bIsBigHitReacting = false;
 }
 
 void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -1188,5 +1731,6 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
         EnhancedInputComponent->BindAction(Skill1Action, ETriggerEvent::Started, this, &AMainCharacter::UseSkill1);
         EnhancedInputComponent->BindAction(Skill2Action, ETriggerEvent::Started, this, &AMainCharacter::UseSkill2);
         EnhancedInputComponent->BindAction(Skill3Action, ETriggerEvent::Started, this, &AMainCharacter::UseSkill3);
+        EnhancedInputComponent->BindAction(PauseAction, ETriggerEvent::Started, this, &AMainCharacter::TogglePauseMenu);
     }
 }

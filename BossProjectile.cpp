@@ -84,7 +84,7 @@ void ABossProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 void ABossProjectile::ApplyAreaDamage()
 {
     const FVector Center = GetActorLocation();
-    DrawDebugSphere(GetWorld(), Center, DamageRadius, 32, FColor::Red, false, 3.0f);
+    /*DrawDebugSphere(GetWorld(), Center, DamageRadius, 32, FColor::Red, false, 3.0f);*/
 
     // 반경 내 액터 직접 찾기
     TArray<FOverlapResult> Overlaps;

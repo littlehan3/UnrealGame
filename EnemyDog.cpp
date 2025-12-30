@@ -25,6 +25,7 @@ void AEnemyDog::BeginPlay()
 	Super::BeginPlay(); // 부모 클래스의 BeginPlay 함수 호출
 	SetCanBeDamaged(true); // 이 액터가 데미지를 받을 수 있도록 설정
 	SetActorTickInterval(0.05f); // Tick 함수 호출 주기를 0.05초로 설정하여 최적화 (초당 20번)
+	Health = MaxHealth; //최대 체력으로 현재 체력 초기화
 
 	if (!GetController()) // AI 컨트롤러가 할당되지 않았다면
 	{
@@ -178,16 +179,38 @@ float AEnemyDog::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent,
 
 	if (Health <= 0.0f) // 체력이 0 이하라면
 	{
-		Die(); // 사망 처리 함수 호출
+		Die();
 	}
 
-	return DamageApplied; // 실제 적용된 데미지 양 반환
+	// 모든 로직이 끝난 후 Super::TakeDamage 호출
+	Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+	return DamageApplied;
+}
+
+float AEnemyDog::GetHealthPercent_Implementation() const
+{
+	if (bIsDead || Health <= 0.0f)
+	{
+		return 0.0f;
+	}
+	if (MaxHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(Health / MaxHealth, 0.0f, 1.0f);
+}
+
+bool AEnemyDog::IsEnemyDead_Implementation() const
+{
+	return bIsDead;
 }
 
 void AEnemyDog::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	if (bIsDead) return; // 이미 사망 상태면 아무것도 하지 않음
 
+	AEnemyDogAIController* AICon = Cast<AEnemyDogAIController>(GetController()); //
 	UEnemyDogAnimInstance* AnimInstance = Cast<UEnemyDogAnimInstance>(GetMesh()->GetAnimInstance());
 	if (bIsInAirStun) // 공중 스턴 상태에서 피격 몽타주가 끝났다면
 	{
@@ -206,6 +229,17 @@ void AEnemyDog::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 				0.4f,
 				true
 			);
+		}
+		else // 지상에서 피격 몽타주가 끝났다면
+		{
+			// [추가] AI 이동 재개
+			if (AICon)
+			{
+				// AI가 멈춰있다가 다시 플레이어를 추적하게 함
+				AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+			}
+
+			UE_LOG(LogTemp, Warning, TEXT("Hit animation ended on ground. No need to resume InAirStunMontage."));
 		}
 	}
 	else // 지상에서 피격 몽타주가 끝났다면
@@ -321,7 +355,7 @@ void AEnemyDog::Explode()
 	}
 
 	// 디버그용 폭발 범위 시각화
-	DrawDebugSphere(GetWorld(), ExplosionCenter, ExplosionRadius, 32, FColor::Red, false, 1.0f, 0, 2.0f);
+	//DrawDebugSphere(GetWorld(), ExplosionCenter, ExplosionRadius, 32, FColor::Red, false, 1.0f, 0, 2.0f);
 
 	// 폭발 이펙트 생성
 	if (ExplosionEffect)
@@ -347,6 +381,8 @@ void AEnemyDog::Explode()
 void AEnemyDog::HideEnemy()
 {
 	if (!bIsDead) return; // 사망 상태가 아니면 실행하지 않음
+
+	DisableGravityPull();
 
 	UE_LOG(LogTemp, Warning, TEXT("Hiding EnemyDog - Memory Cleanup"));
 
@@ -566,46 +602,111 @@ void AEnemyDog::ExitInAirStunState()
 	bIsInAirStun = false; // 스턴 상태 최종 해제
 }
 
-void AEnemyDog::ApplyGravityPull(FVector ExplosionCenter, float PullStrength)
+void AEnemyDog::EnableGravityPull(FVector ExplosionCenter, float PullStrength)
 {
-	if (bIsDead) return; // 죽은 적은 끌어당기지 않음
+	if (bIsDead) return; // 죽은 적은 끌어당기지 않음 [cite: 120]
 
-	// 폭발 중심점 방향으로 힘을 적용하는 로직
-	FVector Direction = ExplosionCenter - GetActorLocation(); // 현재 위치에서 중심점까지의 방향 벡터
-	float Distance = Direction.Size(); // 중심점까지의 거리
-	Direction.Normalize();  // 방향 벡터 정규화
+	// 중력장 상태 업데이트
+	bIsTrappedInGravityField = true;
+	GravityFieldCenter = ExplosionCenter;
 
-	// 거리에 따라 힘을 조절 (가까울수록 강하게)
-	float DistanceFactor = FMath::Clamp(1.0f - (Distance / 500.0f), 0.1f, 1.0f);
-	float AdjustedPullStrength = PullStrength * DistanceFactor; // 최종 적용될 힘
-
-	// 캐릭터가 공중에 있다면 더 강한 힘을 적용
-	if (GetCharacterMovement()->IsFalling())
+	// 1. AI·이동 전면 차단 (AEnemy와 동일)
+	if (AEnemyDogAIController* AICon = Cast<AEnemyDogAIController>(GetController()))
 	{
-		AdjustedPullStrength *= 1.5f;
+		AICon->StopMovement();
+		AICon->SetActorTickEnabled(false); // AI Tick 완전 중지
 	}
 
-	// 계산된 힘으로 속도 설정
-	FVector NewVelocity = Direction * AdjustedPullStrength;
-	GetCharacterMovement()->Velocity = NewVelocity;
+	// 2. 무브먼트 정지 (AEnemy와 동일)
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->DisableMovement();
+	GetCharacterMovement()->SetMovementMode(MOVE_Flying); // 중심 고정에 유리 [based on cite: 125]
 
-	// 잠시 비행 모드로 전환하여 자유롭게 움직이게 함
-	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+	// 3. 중력장 중앙으로 강제 이동 로직 (AEnemy와 동일)
+	FVector Direction = GravityFieldCenter - GetActorLocation();
+	float Distance = Direction.Size();
 
-	// 0.5초 후에 다시 네비게이션 보행 모드로 복귀
-	FTimerHandle ResetMovementHandle;
-	GetWorld()->GetTimerManager().SetTimer(
-		ResetMovementHandle,
-		[this]()
-		{
-			GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
-		},
-		0.5f,
-		false
-	);
-	UE_LOG(LogTemp, Warning, TEXT("EnemyDog %s pulled toward explosion center with strength %f"),
-		*GetName(), AdjustedPullStrength);
+	// 너무 중앙에 가까우면 바로 가운데 고정
+	if (Distance < 50.f)
+	{
+		SetActorLocation(GravityFieldCenter, true);
+	}
+	else
+	{
+		// AEnemy의 로직을 따름 (단순 SetVelocity가 아닌 SetActorLocation)
+		Direction.Normalize();
+		float PullSpeed = PullStrength * 10.f; // 강도 강화
+		FVector NewLocation = GetActorLocation() + Direction * PullSpeed * GetWorld()->GetDeltaSeconds();
+		SetActorLocation(NewLocation, true);
+	}
+
+	// 4. 중력장에 붙잡힌 상태에서 절대 못 빠져나가도록 위치·이동 고정
+	GetCharacterMovement()->Velocity = FVector::ZeroVector;
 }
+
+void AEnemyDog::DisableGravityPull()
+{
+	if (!bIsTrappedInGravityField) return;
+
+	bIsTrappedInGravityField = false;
+
+	// 이동 모드 복구
+	ApplyBaseWalkSpeed();
+		GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
+		GetCharacterMovement()->SetDefaultMovementMode();
+	GetCharacterMovement()->StopMovementImmediately();
+
+		// AI 복구
+		if (AEnemyDogAIController* AICon = Cast<AEnemyDogAIController>(GetController()))
+		{
+			// 다시 플레이어를 추적하게 함
+			AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+				AICon->SetActorTickEnabled(true); // AI Tick 다시 활성화
+		}
+
+	UE_LOG(LogTemp, Warning, TEXT("EnemyDog %s has been released from gravity field"), *GetName());
+}
+
+//void AEnemyDog::ApplyGravityPull(FVector ExplosionCenter, float PullStrength)
+//{
+//	if (bIsDead) return; // 죽은 적은 끌어당기지 않음
+//
+//	// 폭발 중심점 방향으로 힘을 적용하는 로직
+//	FVector Direction = ExplosionCenter - GetActorLocation(); // 현재 위치에서 중심점까지의 방향 벡터
+//	float Distance = Direction.Size(); // 중심점까지의 거리
+//	Direction.Normalize();  // 방향 벡터 정규화
+//
+//	// 거리에 따라 힘을 조절 (가까울수록 강하게)
+//	float DistanceFactor = FMath::Clamp(1.0f - (Distance / 500.0f), 0.1f, 1.0f);
+//	float AdjustedPullStrength = PullStrength * DistanceFactor; // 최종 적용될 힘
+//
+//	// 캐릭터가 공중에 있다면 더 강한 힘을 적용
+//	if (GetCharacterMovement()->IsFalling())
+//	{
+//		AdjustedPullStrength *= 1.5f;
+//	}
+//
+//	// 계산된 힘으로 속도 설정
+//	FVector NewVelocity = Direction * AdjustedPullStrength;
+//	GetCharacterMovement()->Velocity = NewVelocity;
+//
+//	// 잠시 비행 모드로 전환하여 자유롭게 움직이게 함
+//	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+//
+//	// 0.5초 후에 다시 네비게이션 보행 모드로 복귀
+//	FTimerHandle ResetMovementHandle;
+//	GetWorld()->GetTimerManager().SetTimer(
+//		ResetMovementHandle,
+//		[this]()
+//		{
+//			GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
+//		},
+//		0.5f,
+//		false
+//	);
+//	UE_LOG(LogTemp, Warning, TEXT("EnemyDog %s pulled toward explosion center with strength %f"),
+//		*GetName(), AdjustedPullStrength);
+//}
 
 void AEnemyDog::RaycastAttack()
 {
@@ -635,19 +736,41 @@ void AEnemyDog::RaycastAttack()
 
 	if (bHit && HitResult.GetActor() == PlayerPawn) // 레이가 플레이어에게 맞았다면
 	{
-		// 디버그용 시각화 (빨간색 라인과 구체)
-		DrawDebugLine(GetWorld(), StartLocation, HitResult.Location, FColor::Red, false, 3.0f, 0, 5.0f);
-		DrawDebugSphere(GetWorld(), HitResult.Location, 20.0f, 12, FColor::Red, false, 3.0f);
+		//// 디버그용 시각화 (빨간색 라인과 구체)
+		//DrawDebugLine(GetWorld(), StartLocation, HitResult.Location, FColor::Red, false, 3.0f, 0, 5.0f);
+		//DrawDebugSphere(GetWorld(), HitResult.Location, 20.0f, 12, FColor::Red, false, 3.0f);
 
 		// 플레이어에게 포인트 데미지 적용
 		UGameplayStatics::ApplyPointDamage(
 			PlayerPawn, Damage, StartLocation, HitResult, nullptr, this, nullptr
 		);
+
+		// *** 나이아가라 이펙트 스폰 로직 수정 ***
+		if (UNiagaraSystem* HitNiagara = this->WeaponHitNiagaraEffect)
+		{
+			// HitResult의 정보를 사용하여 이펙트를 스폰합니다.
+			// HitResult.ImpactNormal.Rotation()으로 피격 면의 법선 방향을 회전으로 사용합니다.
+			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+				GetWorld(),
+				HitNiagara,
+				HitResult.ImpactPoint, // 히트 지점 사용
+				HitResult.ImpactNormal.Rotation(), // 피격 면의 노멀 방향 사용
+				FVector(1.0f),
+				true,
+				true
+			);
+		}
+
+		if (AttackHitSound)
+		{
+			// 피격 위치(ImpactPoint)에서 사운드 재생
+			UGameplayStatics::PlaySoundAtLocation(this, AttackHitSound, HitResult.ImpactPoint);
+		}
 	}
 	else // 레이가 빗나갔다면
 	{
 		// 디버그용 시각화 (초록색 라인)
-		DrawDebugLine(GetWorld(), StartLocation, EndLocation, FColor::Green, false, 3.0f, 0, 5.0f);
+		/*DrawDebugLine(GetWorld(), StartLocation, EndLocation, FColor::Green, false, 3.0f, 0, 5.0f);*/
 	}
 }
 

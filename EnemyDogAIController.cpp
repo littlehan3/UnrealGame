@@ -46,10 +46,29 @@ void AEnemyDogAIController::Tick(float DeltaTime)
 		return;
 	}
 
+	if (EnemyDogCharacter->bIsTrappedInGravityField)
+	{
+		StopMovement();
+		return;
+	}
+
 	if (!PlayerPawn) // 플레이어 폰 참조가 없다면
 	{
 		PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0); // 다시 찾아봄
 		if (!PlayerPawn) return; // 그래도 없으면 Tick 함수 종료
+	}
+
+	UEnemyDogAnimInstance* AnimInstance = Cast<UEnemyDogAnimInstance>(EnemyDogCharacter->GetMesh()->GetAnimInstance());
+	if (AnimInstance && EnemyDogCharacter->HitMontages.Num() > 0)
+	{
+		for (UAnimMontage* Montage : EnemyDogCharacter->HitMontages)
+		{
+			if (Montage && AnimInstance->Montage_IsPlaying(Montage))
+			{
+				StopMovement();
+				return; // 피격 몽타주 재생 중이면 즉시 Tick 종료
+			}
+		}
 	}
 
 	// AI가 항상 플레이어를 바라보도록 설정
@@ -138,7 +157,7 @@ void AEnemyDogAIController::ChasePlayer()
 	MoveToLocation(TargetLocation, 10.0f); // 계산된 목표 지점으로 이동
 
 	// 디버그용: 목표 지점을 작은 구체로 시각화
-	DrawDebugSphere(GetWorld(), TargetLocation, 25.0f, 8, FColor::Red, false, 0.05f);
+	/*DrawDebugSphere(GetWorld(), TargetLocation, 25.0f, 8, FColor::Red, false, 0.05f);*/
 }
 
 void AEnemyDogAIController::NormalAttack()

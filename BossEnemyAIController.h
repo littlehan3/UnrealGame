@@ -67,7 +67,7 @@ private:
 	float BossMovingAttackRange = 250.0f; // 상체분리 공격 범위
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float BossDetectRadius = 2000.0f; // 보스가 플레이어를 인식하는 거리
+	float BossDetectRadius = 3000.0f; // 보스가 플레이어를 인식하는 거리
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	float BossAttackCooldown = 1.0f; // 공격 쿨타임 1초
@@ -84,7 +84,7 @@ private:
 	void BossNormalAttack(); // 일반공격 함수
 
 	void UpdateBossAIState(float DistanceToPlayer); // 상태 업데이트 함수
-	void DrawDebugInfo(); // 디버그 시각화 함수
+	//void DrawDebugInfo(); // 디버그 시각화 함수
 
 	// 스텔스 공격 설정값들
 	UPROPERTY(EditDefaultsOnly, Category = "AI")

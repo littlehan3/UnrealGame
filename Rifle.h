@@ -21,7 +21,20 @@ public:
     void Fire(float CrosshairSpreadAngle = 0.0f); // 크로스헤어 벌어짐 각도를 인자로 받는 발사 함수
 
     bool IsReloading() const { return bIsReloading; } // 재장전 상태 반환 getter
+
+    // UMG 바인딩을 위해 UFUNCTION으로 노출
+    UFUNCTION(BlueprintPure, Category = "Weapon Stats")
     int32 GetCurrentAmmo() const { return CurrentAmmo; } // 현재 총알 수 반환 getter
+
+    // UMG 바인딩을 위해 UFUNCTION으로 노출
+    UFUNCTION(BlueprintPure, Category = "Weapon Stats")
+    int32 GetMaxAmmo() const { return MaxAmmo; } // 최대 총알 수 반환 Getter
+
+    UFUNCTION(BlueprintPure, Category = "Weapon Stats")
+    int32 GetTotalAmmo() const { return TotalAmmo;  } // 전체 총알 수 반환 Getter
+
+    // [신규] 전체 탄약 수를 추가하는 함수 선언
+    void AddTotalAmmo(int32 AmmoToAdd);
 
 protected:
     virtual void BeginPlay() override;
@@ -64,7 +77,7 @@ private:
     int32 MaxAmmo = 30; // 탄창 최대 총알 수
 
     UPROPERTY(EditAnywhere, Category = "Weapon Stats")
-    int32 TotalAmmo = 300; // 전체 총알 수 
+    int32 TotalAmmo = 90; // 전체 총알 수 
 
     UPROPERTY(EditAnywhere, Category = "Weapon Stats")
     float FireRate = 0.15f; // 연사속도
@@ -73,7 +86,7 @@ private:
     float ReloadTime = 2.0f; // 재장전 시간
 
     UPROPERTY(EditAnywhere, Category = "Weapon Stats")
-    float Damage = 30.0f; // 데미지
+    float Damage = 15.0f; // 데미지
 
     UPROPERTY(EditAnywhere, Category = "Weapon Stats")
     float Range = 5000.0f; // 사정거리
@@ -111,4 +124,12 @@ private:
     void StopMuzzleFlash(); // 머즐 플래시 정지 함수
     void StopImpactEffect(); // 히트 이펙트 정지 함수 추가
 
+    UPROPERTY(EditAnywhere, Category = "Effects")
+    USoundBase* ReloadAnnouncementSound; // 재장전 알림 사운드
+
+    UPROPERTY(EditAnywhere, Category = "Effects")
+    USoundBase* HitSound; // 재장전 알림 사운드
+
+    UPROPERTY(EditAnywhere, Category = "Effects")
+    USoundBase* HeadShotSound;
 };

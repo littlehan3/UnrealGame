@@ -6,14 +6,15 @@
 #include "EnemyAnimInstance.h"
 #include "Animation/AnimInstance.h"
 #include "AimSkill2Projectile.h"
-//#include "MainGameModeBase.h"
+#include "HealthInterface.h"
 #include "Enemy.generated.h"
 
 //class AEnemyKatana;
 class AMainGameModeBase;
+class UNiagaraSystem;
 
 UCLASS(Blueprintable)
-class LOCOMOTION_API AEnemy : public ACharacter
+class LOCOMOTION_API AEnemy : public ACharacter, public IHealthInterface
 {
     GENERATED_BODY()
 
@@ -43,7 +44,7 @@ public:
     void EnterInAirStunState(float Duration); // 공중 스턴 상태 진입
 
     bool bIsInAirStun = false; // 공중 스턴 상태 여부
-    
+
     void EnableGravityPull(FVector ExplosionCenter, float PullStrength); // 중력장으로 적을 잡아둠
     void DisableGravityPull(); // 중력장 효과 해제
 
@@ -69,16 +70,31 @@ public:
     void ApplyBaseWalkSpeed();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
-    float Health = 100.0f; // 체력
+    float MaxHealth = 100.0f; // [추가] MaxHealth (기존 Health를 CurrentHealth로 사용)
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+    float Health = 100.0f; // (CurrentHealth로 사용)
+
+    /** 현재 체력 비율 (0.0 ~ 1.0)을 반환합니다. */
+    virtual float GetHealthPercent_Implementation() const override;
+
+    /** 현재 액터가 죽었는지 여부를 반환합니다. */
+    virtual bool IsEnemyDead_Implementation() const override;
 
     void PlaySpawnIntroAnimation(); // 등장 애니메이션 재생 함수
     bool bIsPlayingIntro = false; // 등장 애니메이션 재생 중 여부
 
     void Die();
 
+    void PlayWeaponHitSound();
+
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* HitReactionMontage; // 피격 애니메이션
+
+    FORCEINLINE class UNiagaraSystem* GetWeaponHitNiagaraEffect() const { return WeaponHitNiagaraEffect; }
+
 protected:
     virtual void BeginPlay() override;
-
 private:
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* HitSound;
@@ -126,9 +142,6 @@ private:
     TArray<UAnimMontage*> JumpAttackMontages; // 점프 공격 애니메이션
 
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
-    UAnimMontage* HitReactionMontage; // 피격 애니메이션
-
-    UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DeadMontage; // 사망 애니메이션
 
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
@@ -139,7 +152,7 @@ private:
 
     void ExitInAirStunState(); // 공중 스턴 상태 해제
     FTimerHandle StunTimerHandle; // 스턴 상태 해제를 위한 타이머
-	void HideEnemy(); // 적 숨기기
+    void HideEnemy(); // 적 숨기기
     void OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 에어본 상태에서 히트시 상태를 관리하기 위한 함수
 
     UPROPERTY()
@@ -156,4 +169,9 @@ private:
     UFUNCTION()
     void OnIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 등장 몽타주 종료 델리게이트
 
+    UPROPERTY(EditAnywhere, Category = "Effets")
+    USoundBase* EnemyWeaponHitSound;
+
+    UPROPERTY(EditDefaultsOnly, Category = "FX")
+    class UNiagaraSystem* WeaponHitNiagaraEffect = nullptr;
 };

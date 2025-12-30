@@ -40,6 +40,15 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Missile")
     float Health = 10.f; // 미사일 자체의 체력 (플레이어가 요격 가능)
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Audio")
+    class UAudioComponent* FlightLoopAudio; // 비행 루핑 사운드 컴포넌트
+
+    UPROPERTY(EditAnywhere, Category = "Audio")
+    USoundBase* FlightLoopSound; // 비행 루핑 사운드 애셋
+
+    UPROPERTY(EditAnywhere, Category = "Audio")
+    USoundBase* ExplosionSound;
+
 private:
     AActor* TargetActor; // 추적 대상 액터
     FVector LastMoveDirection; // 마지막으로 이동했던 방향 (타겟을 놓쳤을 때 사용)

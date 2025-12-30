@@ -43,6 +43,12 @@ private:
 	bool bIsAttacking = false; // 현재 공격 판정이 활성화되었는지 여부
 	void ApplyDamage(AActor* OtherActor); // 감지된 액터에게 데미지를 적용하는 함수
 
+	// [신규] 현재 공격 사이클에서 사운드를 재생했는지 여부
+	bool bHasPlayedHitSound = false;
+
+	// [신규] 피격음 재생 함수 (가디언에 요청)
+	void PlayWeaponHitSound();
+
 	TArray<AActor*> EnemyActorsCache; // 아군 가디언 목록 캐시 (현재 사용되지 않음)
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attack", meta = (AllowPrivateAccess = "true"))

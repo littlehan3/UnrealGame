@@ -6,6 +6,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "DrawDebugHelpers.h" // 디버그 시각화용 헤더
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 
 AKnife::AKnife()
 {
@@ -45,18 +47,28 @@ void AKnife::InitializeKnife(EKnifeType NewType)
 }
 
 // 콤보 인덱스에 맞는 데미지 설정 후 히트박스 활성화
-void AKnife::EnableHitBox(int32 ComboIndex)
+void AKnife::EnableHitBox(int32 ComboIndex, float KnockbackStrength)
 {
     if (ComboIndex == 3) return; // 발차기 예외 처리
 
     if (ComboDamages.IsValidIndex(ComboIndex)) // 콤보 인덱스가 유효한 경우 해당 데미지 설정
     {
         CurrentDamage = ComboDamages[ComboIndex];
+        CurrentKnockbackStrength = KnockbackStrength;
     }
     else
     {
         UE_LOG(LogTemp, Error, TEXT("Invalid ComboIndex: %d! Cannot retrieve damage."), ComboIndex);
         return;
+    }
+
+    if (AMainCharacter* MainChar = Cast<AMainCharacter>(GetOwner()))
+    {
+        KnifeHitEffectOffset = MainChar->GetKnifeEffectOffset();
+    }
+    else
+    {
+        KnifeHitEffectOffset = 0.0f;
     }
 
     RaycastAttack(); // 레이캐스트 실행하여 맞은 적 저장
@@ -99,6 +111,11 @@ void AKnife::RaycastAttack()
     Params.AddIgnoredActor(OwnerActor);
 
     RaycastHitActors.Empty();
+    // [추가] FirstHitResult 초기화
+    FirstHitResult.Reset();
+    bool bNiagaraPlayed = false; // [추가] 이펙트 재생 여부 플래그
+    bool bSoundPlayed = false;
+    FVector ForwardVector = OwnerActor->GetActorForwardVector();
 
     for (int i = 0; i < RayCount; ++i)
     {
@@ -120,8 +137,8 @@ void AKnife::RaycastAttack()
         );
 
         // 디버그 라인 그리기
-        FColor TraceColor = bHit ? FColor::Red : FColor::Green;
-        DrawDebugLine(GetWorld(), StartLocation, EndLocation, TraceColor, false, 1.0f, 0, 2.0f);
+       /* FColor TraceColor = bHit ? FColor::Red : FColor::Green;
+        DrawDebugLine(GetWorld(), StartLocation, EndLocation, TraceColor, false, 1.0f, 0, 2.0f);*/
 
         if (bHit)
         {
@@ -131,7 +148,36 @@ void AKnife::RaycastAttack()
                 if (HitActor && !RaycastHitActors.Contains(HitActor))
                 {
                     RaycastHitActors.Add(HitActor);
-                    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 10.0f, 12, FColor::Red, false, 1.0f);
+                    /*DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 10.0f, 12, FColor::Red, false, 1.0f);*/
+                    FVector ImpactPointWithOffset = Hit.ImpactPoint + (ForwardVector * KnifeHitEffectOffset);
+
+                    // ----------------------------------------
+                    // ⭐ [신규] 히트 나이아가라 이펙트 재생 ⭐
+                    // ----------------------------------------
+                    if (HitNiagaraEffect && !bNiagaraPlayed) // 이펙트는 한 번만 재생
+                    {
+                        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                            GetWorld(),
+                            HitNiagaraEffect,
+                            ImpactPointWithOffset, // <-- 디버그 구체와 동일한 위치
+                            Hit.Normal.Rotation(), // <-- 피격 면의 노멀 방향으로 회전
+                            FVector(1.0f),
+                            true,
+                            true
+                        );
+                        bNiagaraPlayed = true;
+                    }
+
+                    if (HitSound && !bSoundPlayed) // 사운드도 한 번만 재생
+                    {
+                        UGameplayStatics::PlaySoundAtLocation(
+                            GetWorld(),
+                            HitSound, // 추가된 HitSound 에셋 사용
+                            ImpactPointWithOffset, // 이펙트와 동일한 위치에서 재생
+                            Hit.Normal.Rotation()
+                        );
+                        bSoundPlayed = true; // 사운드 재생 플래그 설정
+                    }
                 }
             }
         }
@@ -147,6 +193,23 @@ void AKnife::OnHitBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActor* O
     if (RaycastHitActors.Contains(OtherActor) && !DamagedActors.Contains(OtherActor))
     {
         UGameplayStatics::ApplyDamage(OtherActor, CurrentDamage, nullptr, this, nullptr);
+
+        // --- [신규] 나이프 넉백 적용 ---
+        ACharacter* HitCharacter = Cast<ACharacter>(OtherActor);
+        AActor* OwnerActor = GetOwner(); // GetOwner()는 AMainCharacter입니다.
+
+        if (HitCharacter && HitCharacter->GetCharacterMovement() && OwnerActor)
+        {
+            // Owner(플레이어)의 전방 벡터를 넉백 방향으로 사용합니다.
+            FVector LaunchDir = OwnerActor->GetActorForwardVector();
+            LaunchDir.Z = 0; // 수평으로만 밀어냅니다.
+            LaunchDir.Normalize();
+
+            // 저장해둔 넉백 강도를 사용합니다.
+            HitCharacter->LaunchCharacter(LaunchDir * CurrentKnockbackStrength, true, false);
+        }
+        // --- [신규] 종료 ---
+
         DamagedActors.Add(OtherActor);
 
         UE_LOG(LogTemp, Warning, TEXT("Knife Hit! Applied %f Damage to %s"), CurrentDamage, *OtherActor->GetName());

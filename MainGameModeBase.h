@@ -115,6 +115,12 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Performance")
     bool bEnableAsyncCleanup = true;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System|Reward")
+    float HealthRewardOnClear = 200.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System|Reward")
+    int32 AmmoRewardOnClear = 60;
+
 private:
     // === 웨이브 시스템 변수 ===
     int32 CurrentWaveIndex = 0;
@@ -206,4 +212,10 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Enemy Info")
     int32 GetPreCalculatedLocationCount() const { return PreCalculatedSpawnLocations.Num(); }
+
+    // 최고 기록을 체크하고 저장하는 함수
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    void CheckAndSaveBestWaveRecord(int32 LastClearedWaveIndex);
+
+    FTimerHandle WaveSystemStartDelayTimer;
 };

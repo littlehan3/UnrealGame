@@ -50,9 +50,9 @@ void ACannon::FireProjectile()
     FVector SpawnLocation = GetActorLocation() + ShootDirection * 200.f + FVector(0.f, 0.f, -150.f); // 캐논 위치 그대로
     FRotator SpawnRotation = ShootDirection.Rotation();
 
-    DrawDebugSphere(GetWorld(), SpawnLocation, 15.f, 12, FColor::Green, false, 2.0f);
-    DrawDebugDirectionalArrow(GetWorld(), SpawnLocation, SpawnLocation + ShootDirection * 200.f,
-        120.f, FColor::Red, false, 2.0f, 0, 3.0f);
+    //DrawDebugSphere(GetWorld(), SpawnLocation, 15.f, 12, FColor::Green, false, 2.0f);
+    //DrawDebugDirectionalArrow(GetWorld(), SpawnLocation, SpawnLocation + ShootDirection * 200.f,
+    //    120.f, FColor::Red, false, 2.0f, 0, 3.0f);
 
     FActorSpawnParameters Params;
     Params.Owner = Shooter;

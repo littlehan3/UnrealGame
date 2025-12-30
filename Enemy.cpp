@@ -10,7 +10,6 @@
 #include "ObjectPoolManager.h"
 #include "MainGameModeBase.h"
 
-
 AEnemy::AEnemy()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -44,7 +43,10 @@ void AEnemy::BeginPlay()
     //{
     //    AICon->SetActorTickEnabled(false);
     //}
-    
+
+    // 체력 초기화 확인
+    UE_LOG(LogTemp, Warning, TEXT("Enemy BeginPlay: Health=%f, MaxHealth=%f"), Health, MaxHealth);
+
     // AI 컨트롤러 강제 할당
     if (!GetController())
     {
@@ -67,13 +69,15 @@ void AEnemy::BeginPlay()
     EnemyAnimInstance = Cast<UEnemyAnimInstance>(GetMesh()->GetAnimInstance());
 
     // 앨리트 적 확률 판정
-    float EliteChance = 0.1f;
+    float EliteChance = 0.3f;
     if (FMath::FRand() < EliteChance)
     {
         bIsEliteEnemy = true;
         ApplyEliteSettings();
         ApplyBaseWalkSpeed();
     }
+
+    Health = MaxHealth;
 
     // KatanaClass가 설정되어 있다면 Katana 스폰 및 부착
     if (KatanaClass)
@@ -92,6 +96,34 @@ void AEnemy::BeginPlay()
     }
 
     PlaySpawnIntroAnimation(); // 등장 애니메이션 재생
+}
+
+float AEnemy::GetHealthPercent_Implementation() const
+{
+    // 사망 상태일 때는 무조건 0.0 반환
+    if (bIsDead || Health <= 0.0f)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Enemy is dead - returning 0.0 health percent"));
+        return 0.0f;
+    }
+
+    if (MaxHealth <= 0.0f)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("MaxHealth is 0 or negative: %f"), MaxHealth);
+        return 0.0f;
+    }
+
+    float HealthPercent = Health / MaxHealth;
+
+    UE_LOG(LogTemp, Error, TEXT("GetHealthPercent: Health=%f, MaxHealth=%f, Percent=%f"),
+        Health, MaxHealth, HealthPercent);
+
+    return FMath::Clamp(HealthPercent, 0.0f, 1.0f);
+}
+
+bool AEnemy::IsEnemyDead_Implementation() const
+{
+    return bIsDead;
 }
 
 void AEnemy::PlaySpawnIntroAnimation()
@@ -149,10 +181,10 @@ void AEnemy::OnIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 
 void AEnemy::ApplyEliteSettings()
 {
-    Health = 200.0f;
+    MaxHealth = 400.0f;
 }
 
-void AEnemy::ApplyBaseWalkSpeed() 
+void AEnemy::ApplyBaseWalkSpeed()
 {
     GetCharacterMovement()->MaxWalkSpeed = bIsEliteEnemy ? 500.0f : 300.0f; // 앨리트 일시 500 아닐시 300
     GetCharacterMovement()->MaxAcceleration = 5000.0f; // 즉시 최대속도 도달
@@ -161,20 +193,15 @@ void AEnemy::ApplyBaseWalkSpeed()
 
 float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-    if (bIsDead)  // 이미 죽은 상태면 데미지 무시
+    if (bIsDead || bIsPlayingIntro)  // 이미 죽은 상태면 데미지 무시
     {
-        //UE_LOG(LogTemp, Warning, TEXT("Enemy is already dead! Ignoring further damage."));
         return 0.0f;
     }
 
-    if (bIsPlayingIntro)
-    {
-        return 0.0f; // 등장 중에는 데미지 무효화
-    }
-
+    // 1. [핵심 수정] Super::TakeDamage를 호출하기 전에 
+    //    먼저 내부 체력 계산과 데미지 적용을 수행합니다.
     float DamageApplied = FMath::Min(Health, DamageAmount);
     Health -= DamageApplied;
-
     UE_LOG(LogTemp, Warning, TEXT("Enemy took %f damage, Health remaining: %f"), DamageAmount, Health);
 
     if (HitSound)
@@ -182,22 +209,39 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
         UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation());
     }
 
-    if (!bIsStrongAttack && EnemyAnimInstance && HitReactionMontage) // 히트 시 애니메이션 재생 (강공격중엔 히트몽타주 재생안함)
+    // 피격 애니메이션 재생
+    if (!bIsStrongAttack && EnemyAnimInstance && HitReactionMontage)
     {
         EnemyAnimInstance->Montage_Play(HitReactionMontage, 1.0f);
-
-        // 히트 애니메이션 종료 후 스턴 애니메이션 재생
         FOnMontageEnded EndDelegate;
         EndDelegate.BindUObject(this, &AEnemy::OnHitMontageEnded);
         EnemyAnimInstance->Montage_SetEndDelegate(EndDelegate, HitReactionMontage);
     }
-
-    if (Health <= 0.0f) // 체력이 0 이하일 경우 사망 (강공격중에도 호출)
+    // [수정/추가]: 피격 시 AI 이동 중지
+    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    if (AICon)
     {
-        Die();
+        AICon->StopMovement();
     }
 
-    return DamageApplied;
+    // 2. [핵심 수정] 체력 감소 직후에 바로 사망 여부를 검사하고 Die()를 호출합니다.
+    if (Health <= 0.0f)
+    {
+        Die(); // Die() 함수가 bIsDead = true, Health = 0.0f로 설정합니다.
+    }
+
+    // 3. [핵심 수정] 모든 내부 상태(Health, bIsDead)가 완벽히 업데이트된 *후에*
+    //    Super::TakeDamage를 호출하여 OnTakeAnyDamage 이벤트를 방송(Broadcast)시킵니다.
+    //    이제 UHealthBarComponent는 가장 최신 상태(bIsDead=true, Health=0)를 받아갑니다.
+    Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+    // 4. 실제 적용된 데미지를 반환합니다.
+    if (DamageApplied > 0.f)
+    {
+        return DamageApplied;
+    }
+
+    return 0.0f;
 }
 
 void AEnemy::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -215,6 +259,13 @@ void AEnemy::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
     }
     else
     {
+        AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+        if (AICon)
+        {
+            // AI가 멈춰있다가 다시 플레이어를 추적하게 함
+            AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+        }
+
         UE_LOG(LogTemp, Warning, TEXT("Hit animation ended on ground. No need to resume InAirStunMontage."));
     }
 }
@@ -224,11 +275,18 @@ void AEnemy::Die()
     if (bIsDead) return;
 
     bIsDead = true;
+    Health = 0.0f;  // 확실하게 0으로 설정
+
+    if (DieSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, DieSound, GetActorLocation());
+        UE_LOG(LogTemp, Warning, TEXT("DieSound played at location: %s"), *GetActorLocation().ToString());
+    }
 
     StopActions();
-    
+
     float HideTime = 0.0f;
-    
+
     if (bIsInAirStun && InAirStunDeathMontage) // 공중에서 사망 시
     {
         float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
@@ -264,6 +322,14 @@ void AEnemy::Die()
     GetCharacterMovement()->DisableMovement();
     GetCharacterMovement()->StopMovementImmediately();
     SetActorTickEnabled(false); // AI Tick 중지
+}
+
+void AEnemy::PlayWeaponHitSound()
+{
+    if (EnemyWeaponHitSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, EnemyWeaponHitSound, GetActorLocation());
+    }
 }
 
 void AEnemy::StopActions()
@@ -548,7 +614,7 @@ void AEnemy::PlayJumpAttackAnimation()
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 
     if (AnimInstance && AnimInstance->IsAnyMontagePlaying()) return;
-  
+
     int32 RandomIndex = FMath::RandRange(0, JumpAttackMontages.Num() - 1);
     UAnimMontage* SelectedMontage = JumpAttackMontages[RandomIndex];
 
@@ -597,7 +663,7 @@ void AEnemy::EnterInAirStunState(float Duration)
     if (bIsDead || bIsInAirStun) return;
     UE_LOG(LogTemp, Warning, TEXT("Entering InAirStunState..."));
 
-	bIsInAirStun = true;
+    bIsInAirStun = true;
 
     // AI 멈추기 (바로 이동 정지하지 않고, 스턴 종료 시점에서 다시 활성화)
     AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
@@ -642,7 +708,7 @@ void AEnemy::EnterInAirStunState(float Duration)
     }
 
     // 일정 시간이 지나면 원래 상태로 복귀
-    GetWorld()->GetTimerManager().SetTimer(StunTimerHandle, this, &AEnemy::ExitInAirStunState, Duration,false);
+    GetWorld()->GetTimerManager().SetTimer(StunTimerHandle, this, &AEnemy::ExitInAirStunState, Duration, false);
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s is now stunned for %f seconds!"), *GetName(), Duration);
 }
 
@@ -651,7 +717,7 @@ void AEnemy::ExitInAirStunState()
     if (bIsDead) return;
     UE_LOG(LogTemp, Warning, TEXT("Exiting InAirStunState..."));
 
-	bIsInAirStun = false;
+    bIsInAirStun = false;
 
     // 중력 복구 및 낙하 상태로 변경
     GetCharacterMovement()->SetMovementMode(MOVE_Falling);

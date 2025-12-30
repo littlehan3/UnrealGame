@@ -29,10 +29,14 @@ public:
 
 	// 방패 속성
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
-	float ShieldHealth = 200.0f; // 방패의 내구도
+	float ShieldHealth = 500.0f; // 방패의 내구도
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attack")
-	float ShieldDamage = 40.0f; // 방패 공격의 데미지
+	float ShieldDamage = 10.0f; // 방패 공격의 데미지
+
+	// [신규] 방패 밀치기 넉백 힘 (기본값 1000.0f)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attack")
+	float KnockbackStrength = 1000.0f;
 
 	// 판정 데이터
 	TSet<AActor*> RaycastHitActors; // 이번 공격에 감지된 액터 목록
@@ -44,4 +48,7 @@ protected:
 private:
 	bool bIsAttacking = false; // 현재 공격 판정이 활성화되었는지 여부
 	void ApplyDamage(AActor* OtherActor); // 감지된 액터에게 데미지를 적용하는 함수
+
+	bool bHasPlayedHitSound = false;
+	void PlayShieldHitSound();
 };

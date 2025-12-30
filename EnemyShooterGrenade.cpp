@@ -6,6 +6,7 @@
 #include "NiagaraFunctionLibrary.h" // 나이아가라 이펙트 스폰 함수 사용
 #include "MainCharacter.h" // 플레이어 캐릭터 참조
 #include "Engine/OverlapResult.h" // FOverlapResult 구조체 사용
+#include "Components/AudioComponent.h"
 
 AEnemyShooterGrenade::AEnemyShooterGrenade()
 {
@@ -37,11 +38,20 @@ AEnemyShooterGrenade::AEnemyShooterGrenade()
 	ProjectileMovement->ProjectileGravityScale = 1.0f; // 중력 적용 (포물선 운동)
 	ProjectileMovement->Bounciness = 0.3f; // 탄성 (0~1, 1에 가까울수록 많이 튐)
 	ProjectileMovement->Friction = 0.5f; // 마찰력 (바닥에 구를 때의 저항)
+
+	FuseAudioComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("FuseAudioComp"));
+	FuseAudioComponent->SetupAttachment(RootComponent);
+	FuseAudioComponent->bAutoActivate = false; // 기본적으로 비활성화
 }
 
 void AEnemyShooterGrenade::BeginPlay()
 {
 	Super::BeginPlay(); // 부모 클래스 BeginPlay 호출
+
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->OnProjectileBounce.AddDynamic(this, &AEnemyShooterGrenade::OnBounce);
+	}
 
 	// FuseTime(3초) 후에 Explode 함수를 호출하도록 타이머 설정
 	FTimerHandle FuseTimerHandle;
@@ -61,12 +71,34 @@ void AEnemyShooterGrenade::LaunchGrenade(FVector LaunchVelocity)
 	// 계산된 발사 속도를 투사체 이동 컴포넌트에 적용
 	ProjectileMovement->Velocity = LaunchVelocity;
 	ProjectileMovement->Activate(); // 이동 컴포넌트를 활성화하여 물리 시뮬레이션 시작
+
+	// [추가] 수류탄 발사 시 FuseSound 재생 시작 (루프)
+	if (FuseSound && FuseAudioComponent)
+	{
+		FuseAudioComponent->SetSound(FuseSound);
+		FuseAudioComponent->Play();
+	}
+}
+
+// [추가] 튕길 때 호출될 함수 구현
+void AEnemyShooterGrenade::OnBounce(const FHitResult& ImpactResult, const FVector& ImpactVelocity)
+{
+	// BounceSound가 설정되어 있으면 재생
+	if (BounceSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, BounceSound, ImpactResult.Location);
+	}
 }
 
 void AEnemyShooterGrenade::Explode()
 {
 	if (bHasExploded) return; // 중복 폭발 방지
 	bHasExploded = true; // 폭발 상태로 전환
+
+	if (FuseAudioComponent)
+	{
+		FuseAudioComponent->Stop();
+	}
 
 	// 폭발 반경 내 플레이어에게만 피해 적용
 	FVector ExplosionCenter = GetActorLocation(); // 폭발 중심점
@@ -95,7 +127,7 @@ void AEnemyShooterGrenade::Explode()
 		}
 	}
 
-	DrawDebugSphere(GetWorld(), ExplosionCenter, ExplosionRadius, 32, FColor::Red, false, 1.0f, 0, 2.0f); // 디버그용 폭발 범위 시각화
+	//DrawDebugSphere(GetWorld(), ExplosionCenter, ExplosionRadius, 32, FColor::Red, false, 1.0f, 0, 2.0f); // 디버그용 폭발 범위 시각화
 
 	// 폭발 이펙트 생성
 	if (ExplosionEffect)

@@ -7,13 +7,15 @@
 #include "Components/CapsuleComponent.h"
 #include "DrawDebugHelpers.h"
 #include "NiagaraSystem.h"
+#include "HealthInterface.h"
 #include "BossEnemy.generated.h"
 
 class ABossProjectile;
 class AEnemyBossKatana;
+class UNiagaraSystem;
 
 UCLASS(Blueprintable)
-class LOCOMOTION_API ABossEnemy : public ACharacter
+class LOCOMOTION_API ABossEnemy : public ACharacter, public IHealthInterface
 {
 	GENERATED_BODY()
 
@@ -72,7 +74,12 @@ public:
 	bool bIsFullBodyAttacking = false;// 전신공격중 여부
 	bool bHasExecutedKickRaycast = false; // 킥 레이캐스트 여부
 
-	float BossHealth = 2000.0f; // 체력
+	// MaxHealth 추가 및 기존 Health 변수 수정
+	UPROPERTY(EditDefaultsOnly, Category = "Health")
+	float MaxBossHealth = 2000.0f; // 최대 체력
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
+	float BossHealth = 2000.0f;
 
 	UFUNCTION() // 애님 노티파이에서 호출할 함수
 	void SpawnBossProjectile();
@@ -84,6 +91,17 @@ public:
 	void StartAttack();
 	void EndAttack();
 	void BossDie(); // 사망 함수
+
+	/** IHealthInterface 구현 함수 */
+	virtual float GetHealthPercent_Implementation() const override;
+	virtual bool IsEnemyDead_Implementation() const override;
+
+	void PlayWeaponHitSound();
+
+	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	TArray<UAnimMontage*> BossHitReactionMontages; // 피격 몽타주 배열
+
+	FORCEINLINE class UNiagaraSystem* GetWeaponHitNiagaraEffect() const { return WeaponHitNiagaraEffect; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -109,9 +127,6 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
 	TArray<UAnimMontage*> BossUpperBodyMontages; // 상체 전용 몽타주 배열
-
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossHitReactionMontages; // 피격 몽타주 배열
 
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
 	TArray<UAnimMontage*> BossDeadMontages; // 사망 몽타주 배열
@@ -239,4 +254,10 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Effects")
 	USoundBase* StealthFinishSound;
+
+	UPROPERTY(EditAnywhere, Category = "Effects")
+	USoundBase* BossWeaponHitSound;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FX")
+	class UNiagaraSystem* WeaponHitNiagaraEffect = nullptr;
 };

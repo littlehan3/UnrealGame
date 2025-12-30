@@ -90,18 +90,18 @@ void ASkill3Projectile::ApplyAreaDamage()
 {
     FVector ExplosionCenter = GetActorLocation();
 
-    // 디버그용 폭발 범위 시각화 (빨간색 원)
-    DrawDebugSphere(
-        GetWorld(),
-        ExplosionCenter,
-        DamageRadius,
-        32,
-        FColor::Red,
-        false,
-        1.5f,     // 지속 시간
-        0,
-        2.0f      // 선 두께
-    );
+    //// 디버그용 폭발 범위 시각화 (빨간색 원)
+    //DrawDebugSphere(
+    //    GetWorld(),
+    //    ExplosionCenter,
+    //    DamageRadius,
+    //    32,
+    //    FColor::Red,
+    //    false,
+    //    1.5f,     // 지속 시간
+    //    0,
+    //    2.0f      // 선 두께
+    //);
 
     TArray<FHitResult> HitResults;
     TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;

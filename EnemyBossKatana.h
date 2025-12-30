@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "BossEnemy.h"
+#include "NiagaraFunctionLibrary.h"
 #include "EnemyBossKatana.generated.h"
 
 class AEnemyBoss;
@@ -20,6 +22,10 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UStaticMeshComponent* KatanaChildMesh; // 실질적인 레이캐스트 위치 설정을 위한 메시
 
+    // 카타나 소유주인 보스
+    UPROPERTY()
+    ABossEnemy* BossOwner; // 보스 참조용 변수
+
     // 피격된 액터 관리
     TSet<AActor*> RaycastHitActors;
     TSet<AActor*> DamagedActors;
@@ -37,6 +43,8 @@ public:
     void StartAttack();
     void EndAttack();
 
+    void SetShooter(ABossEnemy* Shooter);
+
 protected:
     virtual void BeginPlay() override;
 
@@ -45,10 +53,14 @@ private:
 
     void ApplyDamage(AActor* OtherActor);
 
+    void PlayKatanaHitSound();
+
     TArray<AActor*> EnemyActorsCache;
 
     // 데미지
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attack", meta = (AllowPrivateAccess = "true"))
     float BossDamage = 50.0f;
+
+    bool bHasPlayedHitSound = false;
 
 };

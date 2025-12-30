@@ -98,7 +98,7 @@ void AEnemyDroneAIController::Tick(float DeltaTime)
                     TimeStuck = 0.f; // 끼인 시간 초기화
                 }
             }
-            DrawDebugLine(GetWorld(), DroneLocation, HitResult.ImpactPoint, FColor::Green, false, 0.1f, 0, 1.f);
+            /*DrawDebugLine(GetWorld(), DroneLocation, HitResult.ImpactPoint, FColor::Green, false, 0.1f, 0, 1.f);*/
         }
     }
     else // 장애물이 없다면

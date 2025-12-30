@@ -11,6 +11,8 @@
 #include "EnemyShooter.h"
 #include "EnemyDog.h"
 #include "BossEnemy.h"
+#include "NiagaraFunctionLibrary.h" // 나이아가라 재생용
+#include "NiagaraSystem.h"           // UNiagaraSystem 클래스용
 
 UMeleeCombatComponent::UMeleeCombatComponent()
 {
@@ -44,14 +46,6 @@ void UMeleeCombatComponent::TriggerComboAttack()
 {
     if (!OwnerCharacter || OwnerCharacter->GetCharacterMovement()->IsFalling())
         return; // 점프 중이면 콤보 공격 불가
-
-    if (!bCanGroundAction) return; // 지상 액션 불가시 콤보 차단
-
-    if (!CanStartComboAttack()) // 새로운 체크 함수 사용
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Combo Attack Blocked - Jump Attack Cooldown Active"));
-        return;
-    }
 
     // 입력이 블록되어 있으면 무시
     if (bInputBlocked)
@@ -87,7 +81,7 @@ void UMeleeCombatComponent::TriggerComboAttack()
 
     ResetComboTimer();
     bIsAttacking = true;
-    bCanAirAction = false; // 콤보 시작시 공준 액션 금지
+    bCanAirAction = false; // 콤보 시작시 공중 액션 금지
     bComboQueued = false; // 큐 초기화
 
     AdjustAttackDirection();
@@ -98,8 +92,8 @@ void UMeleeCombatComponent::TriggerComboAttack()
     }
     else
     {
-        if (LeftKnife) LeftKnife->EnableHitBox(ComboIndex);
-        if (RightKnife) RightKnife->EnableHitBox(ComboIndex);
+        if (LeftKnife) LeftKnife->EnableHitBox(ComboIndex, KnifeKnockbackStrength);
+        //if (RightKnife) RightKnife->EnableHitBox(ComboIndex, KnifeKnockbackStrength);
     }
 
     PlayComboMontage(ComboIndex);
@@ -139,7 +133,7 @@ void UMeleeCombatComponent::ResetCombo()
 {
     bIsAttacking = false;
     ComboIndex = 0;
-    bCanTeleport = true;
+    //bCanTeleport = true;
 
     if (OwnerCharacter)
     {
@@ -147,6 +141,7 @@ void UMeleeCombatComponent::ResetCombo()
         if (World)
         {
             World->GetTimerManager().ClearTimer(ComboResetTimerHandle);
+            //World->GetTimerManager().ClearTimer(TeleportCooldownHandle); // 텔레포트 쿨타임 타이머 정리
             UE_LOG(LogTemp, Warning, TEXT("Combo Reset"));
         }
 
@@ -180,7 +175,6 @@ void UMeleeCombatComponent::OnComboMontageEnded(UAnimMontage* Montage, bool bInt
 
     bIsAttacking = false;
     bCanAirAction = true; // 콤보 완료 시 공중 액션 허용
-    bCanTeleport = true;
 
     if (OwnerCharacter && OwnerCharacter->GetCharacterMovement())
     {
@@ -214,11 +208,10 @@ void UMeleeCombatComponent::OnComboMontageEnded(UAnimMontage* Montage, bool bInt
     else
     {
         ComboIndex = 0; // 콤보 시간이 끝났으면 리셋
-        bCanTeleport = true;
     }
 
     // 큐 처리 시 상태 체크 강화
-    if (OwnerCharacter && (bComboQueued || bJumpAttackQueued))
+    if (OwnerCharacter && (bComboQueued))
     {
         OwnerCharacter->GetWorldTimerManager().SetTimer(
             InputCooldownHandle,
@@ -231,13 +224,6 @@ void UMeleeCombatComponent::OnComboMontageEnded(UAnimMontage* Montage, bool bInt
                     UE_LOG(LogTemp, Warning, TEXT("Processing queued combo attack"));
                     TriggerComboAttack();
                 }
-                // 점프공격 큐 처리 - 공중에서만
-                else if (bJumpAttackQueued && OwnerCharacter && OwnerCharacter->GetCharacterMovement()->IsFalling())
-                {
-                    bJumpAttackQueued = false;
-                    UE_LOG(LogTemp, Warning, TEXT("Processing queued jump attack"));
-                    TriggerJumpAttack(false);
-                }
                 // 조건에 맞지 않으면 큐 클리어
                 else
                 {
@@ -246,16 +232,16 @@ void UMeleeCombatComponent::OnComboMontageEnded(UAnimMontage* Montage, bool bInt
                         bComboQueued = false;
                         UE_LOG(LogTemp, Warning, TEXT("Combo attack queue cleared - not on ground"));
                     }
-                    if (bJumpAttackQueued)
-                    {
-                        bJumpAttackQueued = false;
-                        UE_LOG(LogTemp, Warning, TEXT("Jump attack queue cleared - not in air"));
-                    }
                 }
             },
             0.1f, // 100ms 딜레이
             false
         );
+    }
+
+    if (!OwnerCharacter || !OwnerCharacter->GetWorld() || !OwnerCharacter->GetWorldTimerManager().IsTimerActive(TeleportCooldownHandle))
+    {
+        bCanTeleport = true;
     }
 }
 
@@ -326,10 +312,10 @@ void UMeleeCombatComponent::AdjustAttackDirection()
         }
         else if (ABossEnemy* Boss = Cast<ABossEnemy>(Enemy))
         {
-             if (Boss->bIsBossDead)
-             {
-                 bIsTargetValid = false;
-             }
+            if (Boss->bIsBossDead)
+            {
+                bIsTargetValid = false;
+            }
         }
 
         if (!bIsTargetValid) continue; // 유효하지 않은 타겟이면 건너뜀
@@ -416,6 +402,19 @@ void UMeleeCombatComponent::TeleportToTarget(AActor* TargetEnemy)
 {
     if (!TargetEnemy || !OwnerCharacter) return;
 
+    bCanTeleport = false; // 텔레포트 쿨타임 시작
+
+    // 쿨타임 값 (헤더에 추가 필요)
+    if (OwnerCharacter)
+    {
+        OwnerCharacter->GetWorldTimerManager().SetTimer(
+            TeleportCooldownHandle,
+            [this]() { bCanTeleport = true; }, // 쿨타임 종료 시 bCanTeleport를 true로 설정
+            TeleportCooldownTime,
+            false
+        );
+    }
+
     // 적의 위치와 방향 계산
     FVector EnemyLocation = TargetEnemy->GetActorLocation();
     FVector EnemyForward = TargetEnemy->GetActorForwardVector();
@@ -452,13 +451,62 @@ void UMeleeCombatComponent::TeleportToTarget(AActor* TargetEnemy)
     LastAttackDirection = DirectionToEnemy;
 
     // 시각적 효과들
-    DrawDebugSphere(GetWorld(), TeleportLocation, 50.0f, 12, FColor::Green, false, 2.0f, 0, 2.0f);
-    DrawDebugLine(GetWorld(), OwnerCharacter->GetActorLocation(), EnemyLocation, FColor::Yellow, false, 2.0f, 0, 5.0f);
+    //DrawDebugSphere(GetWorld(), TeleportLocation, 50.0f, 12, FColor::Green, false, 2.0f, 0, 2.0f);
+    //DrawDebugLine(GetWorld(), OwnerCharacter->GetActorLocation(), EnemyLocation, FColor::Yellow, false, 2.0f, 0, 5.0f);
+
+    // [로직 통합] AMainCharacter에서 에셋을 가져와 재생합니다.
+    AMainCharacter* MainChar = Cast<AMainCharacter>(OwnerCharacter);
+
+    // [디버그 로그 1: 캐스팅 성공 여부 확인]
+    UE_LOG(LogTemp, Warning, TEXT("Teleport FX Debug: MainChar Valid: %s"),
+        (MainChar ? TEXT("TRUE") : TEXT("FALSE - Cast Failed!")));
+
+    if (MainChar)
+    {
+        // [디버그 로그 2: 에셋 포인터 유효성 확인]
+        UE_LOG(LogTemp, Warning, TEXT("Teleport FX Debug: Sound Asset VALID. Playing now."));
+
+        // 사운드 재생
+        if (class USoundBase* Sound = MainChar->GetTeleportSound())
+        {
+            UGameplayStatics::PlaySoundAtLocation(
+                GetWorld(),
+                Sound,
+                OwnerCharacter->GetActorLocation(),
+                OwnerCharacter->GetActorRotation()
+            );
+        }
+        else
+        {
+            // [디버그 로그 3: 에셋 포인터 누락 확인]
+            UE_LOG(LogTemp, Error, TEXT("Teleport FX Debug: Sound Asset is NULL in BP!"));
+        }
+
+        // 나이아가라 이펙트 재생
+        if (class UNiagaraSystem* Niagara = MainChar->GetTeleportNiagaraEffect())
+        {
+            // [디버그 로그 2: 에셋 포인터 유효성 확인]
+            UE_LOG(LogTemp, Warning, TEXT("Teleport FX Debug: Niagara Asset VALID. Playing now."));
+
+            UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                GetWorld(),
+                Niagara,
+                OwnerCharacter->GetActorLocation(),
+                OwnerCharacter->GetActorRotation(),
+                FVector(1.0f),
+                true,
+                true
+            );
+        }
+        else
+        {
+            // [디버그 로그 3: 에셋 포인터 누락 확인]
+            UE_LOG(LogTemp, Error, TEXT("Teleport FX Debug: Niagara Asset is NULL in BP!"));
+        }
+    }
 
     UE_LOG(LogTemp, Warning, TEXT("Teleported to target enemy - Combo Index: %d"), ComboIndex);
 }
-
-
 
 void UMeleeCombatComponent::ApplyComboMovement(float MoveDistance, FVector MoveDirection)
 {
@@ -488,6 +536,7 @@ void UMeleeCombatComponent::DisableKickHitBox()
     }
 
     KickRaycastHitActor = nullptr;
+    KickRaycastHitResult.Reset();
 }
 
 void UMeleeCombatComponent::KickRaycastAttack()
@@ -504,8 +553,9 @@ void UMeleeCombatComponent::KickRaycastAttack()
     bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, ECC_Visibility, Params);
 
     KickRaycastHitActor = bHit ? HitResult.GetActor() : nullptr;
+    KickRaycastHitResult = HitResult;
 
-    DrawDebugLine(GetWorld(), StartLocation, EndLocation, bHit ? FColor::Red : FColor::Green, false, 1.0f, 0, 3.0f);
+    /*DrawDebugLine(GetWorld(), StartLocation, EndLocation, bHit ? FColor::Red : FColor::Green, false, 1.0f, 0, 3.0f)*/;
 }
 
 void UMeleeCombatComponent::HandleKickOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
@@ -515,216 +565,63 @@ void UMeleeCombatComponent::HandleKickOverlap(UPrimitiveComponent* OverlappedCom
 
     if (OtherActor != KickRaycastHitActor) return;
 
+    FVector ImpactPoint = KickRaycastHitResult.ImpactPoint;
+    const FRotator ImpactRotation = KickRaycastHitResult.Normal.Rotation(); // 레이캐스트 결과를 사용
+
     float KickDamage = 35.0f;
     UGameplayStatics::ApplyDamage(OtherActor, KickDamage, nullptr, OwnerCharacter, nullptr);
+
+    AMainCharacter* MainChar = Cast<AMainCharacter>(OwnerCharacter); // OwnerCharacter는 ACharacter 타입
+    if (MainChar)
+    {
+        // 킥 나이아가라 이펙트 재생
+        float Offset = MainChar->GetKickEffectOffset();
+        if (Offset > 0.0f)
+        {
+            // 캐릭터의 정면 방향을 가져와 ImpactPoint에 더합니다.
+            FVector ForwardVector = OwnerCharacter->GetActorForwardVector();
+            ImpactPoint += ForwardVector * Offset;
+        }
+
+        // 킥 나이아가라 이펙트 재생
+        if (class UNiagaraSystem* KickNiagaraEffect = MainChar->GetKickNiagaraEffect())
+        {
+            UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                GetWorld(),
+                KickNiagaraEffect,
+                ImpactPoint, // [적용] Offset이 적용된 ImpactPoint 사용
+                ImpactRotation,
+                FVector(1.0f),
+                true,
+                true
+            );
+        }
+
+        // 킥 히트 사운드 재생
+        if (class USoundBase* KickHitSound = MainChar->GetKickHitSound())
+        {
+            UGameplayStatics::PlaySoundAtLocation(
+                GetWorld(),
+                KickHitSound,
+                ImpactPoint // [적용] Offset이 적용된 ImpactPoint 사용
+            );
+        }
+    }
+
+    // --- [신규] 킥 넉백 적용 ---
+    ACharacter* HitCharacter = Cast<ACharacter>(OtherActor);
+    if (HitCharacter && HitCharacter->GetCharacterMovement() && OwnerCharacter)
+    {
+        // OwnerCharacter(플레이어)의 전방 벡터를 넉백 방향으로 사용합니다.
+        FVector LaunchDir = OwnerCharacter->GetActorForwardVector();
+        LaunchDir.Z = 0; // 수평으로만 밀어냅니다.
+        LaunchDir.Normalize();
+
+        // 헤더에 설정된 킥 넉백 강도를 사용합니다.
+        HitCharacter->LaunchCharacter(LaunchDir * KickKnockbackStrength, true, false);
+    }
+
     DisableKickHitBox();
-}
-
-void UMeleeCombatComponent::SetJumpAttackMontages(UAnimMontage* InJumpAttackMontage, UAnimMontage* InDoubleJumpAttackMontage)
-{
-    JumpAttackMontage = InJumpAttackMontage;
-    DoubleJumpAttackMontage = InDoubleJumpAttackMontage;
-}
-
-void UMeleeCombatComponent::TriggerJumpAttack(bool bIsDoubleJump)
-{
-    // MainCharacter 참조를 통해 에임모드 상태 확인
-    if (AMainCharacter* MainChar = Cast<AMainCharacter>(OwnerCharacter))
-    {
-        if (MainChar->IsAiming())
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Jump Attack Blocked in MeleeCombatComponent - Aim Mode Active"));
-            return;
-        }
-    }
-
-    if (!OwnerCharacter || !OwnerCharacter->GetCharacterMovement()->IsFalling())
-        return; // 지상에서는 점프 공격 불가
-
-    if (!bCanAirAction) return;
-
-    // 입력이 블록되어 있으면 무시
-    if (bInputBlocked)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Jump Attack Input Blocked - Cooldown Active"));
-        return;
-    }
-
-
-    if (bIsAttacking)
-    {
-        bJumpAttackQueued = true;
-        UE_LOG(LogTemp, Warning, TEXT("Jump Attack Queued - Already Attacking"));
-        return;
-    }
-
-    // 입력 쿨다운 시작
-    bInputBlocked = true;
-    if (OwnerCharacter)
-    {
-        OwnerCharacter->GetWorldTimerManager().SetTimer(
-            InputCooldownHandle,
-            this,
-            &UMeleeCombatComponent::ResetInputCooldown,
-            InputCooldownTime,
-            false
-        );
-    }
-
-    bIsAttacking = true;
-    bIsJumpAttacked = true; // 점프공격 실행 표시
-    bCanGroundAction = false; // 점프공격 시작 시 지상액션 금지
-
-    // 적 방향으로 회전
-    AdjustAttackDirection();
-
-    // 점프 상태에 따라 적절한 몽타주 재생
-    UAnimMontage* MontageToPlay = bIsDoubleJump ? DoubleJumpAttackMontage : JumpAttackMontage;
-
-    if (MontageToPlay)
-    {
-        UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
-        if (AnimInstance)
-        {
-            // 같은 몽타주가 재생 중이면 무시
-            if (AnimInstance->Montage_IsPlaying(MontageToPlay))
-            {
-                UE_LOG(LogTemp, Warning, TEXT("Same Montage Already Playing - Ignoring"));
-                bIsAttacking = false;
-                bCanGroundAction = true;
-                return;
-            }
-
-            if (AnimInstance->Montage_IsPlaying(MontageToPlay)) // 기존 몽타주가 재생 중이면
-            {
-                AnimInstance->Montage_Stop(0.1f, MontageToPlay); // 정지
-            }
-
-            float PlayResult = AnimInstance->Montage_Play(MontageToPlay, 1.0f); // 새로운 몽타주 재생
-
-            if (PlayResult > 0.f)
-            {
-                // 콜백 등록 전에 기존 콜백 제거
-                AnimInstance->OnMontageEnded.RemoveDynamic(this, &UMeleeCombatComponent::OnJumpAttackMontageEnded);
-
-                // 새로운 콜백 등록
-                FOnMontageEnded EndDelegate;
-                EndDelegate.BindUObject(this, &UMeleeCombatComponent::OnJumpAttackMontageEnded);
-                AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
-
-                UE_LOG(LogTemp, Warning, TEXT("Jump Attack Started: %s"), *MontageToPlay->GetName());
-            }
-            else
-            {
-                // 몽타주 재생 실패 시 상태 복원
-                bIsAttacking = false;
-                bCanGroundAction = true;
-                UE_LOG(LogTemp, Error, TEXT("Failed to play jump attack montage"));
-            }
-        }
-    }
-    // 킥 히트박스 활성화
-    EnableKickHitBox();
-}
-
-void UMeleeCombatComponent::OnJumpAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
-{
-    UE_LOG(LogTemp, Warning, TEXT("OnJumpAttackMontageEnded called - Montage: %s, Interrupted: %s"),
-        Montage ? *Montage->GetName() : TEXT("NULL"),
-        bInterrupted ? TEXT("True") : TEXT("False"));
-
-    // 점프 공격 몽타주인지 확인
-    if (Montage == JumpAttackMontage || Montage == DoubleJumpAttackMontage)
-    {
-        // 공격 상태 해제
-        bIsAttacking = false;
-        bCanGroundAction = true; // 점프 공격 완료 시 지상 액션 허용
-
-        // 히트박스 비활성화
-        if (LeftKnife) LeftKnife->DisableHitBox();
-        if (RightKnife) RightKnife->DisableHitBox();
-        DisableKickHitBox();
-
-        // 캐릭터 회전 복원
-        if (OwnerCharacter && OwnerCharacter->GetCharacterMovement())
-        {
-            OwnerCharacter->GetCharacterMovement()->bOrientRotationToMovement = true;
-        }
-
-        // 콜백 제거
-        if (OwnerCharacter)
-        {
-            UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
-            if (AnimInstance)
-            {
-                AnimInstance->OnMontageEnded.RemoveDynamic(this, &UMeleeCombatComponent::OnJumpAttackMontageEnded);
-            }
-        }
-
-        UE_LOG(LogTemp, Warning, TEXT("Jump Attack Completed"));
-
-        // 점프공격 쿨다운 시작
-        bJumpAttackCooldownActive = true;
-        if (OwnerCharacter)
-        {
-            OwnerCharacter->GetWorldTimerManager().SetTimer(
-                JumpAttackCooldownHandle,
-                [this]() { bJumpAttackCooldownActive = false; },
-                JumpAttackCooldownTime,
-                false
-            );
-        }
-
-        UE_LOG(LogTemp, Warning, TEXT("Jump Attack Cooldown"));
-
-        // 큐 처리 시 상태 체크 강화
-        if (OwnerCharacter && (bJumpAttackQueued || bComboQueued))
-        {
-            OwnerCharacter->GetWorldTimerManager().SetTimer(
-                InputCooldownHandle,
-                [this]()
-                {
-                    // 점프공격 큐 처리 - 공중에서만
-                    if (bJumpAttackQueued && OwnerCharacter && OwnerCharacter->GetCharacterMovement()->IsFalling() && !bJumpAttackCooldownActive)
-                    {
-                        bJumpAttackQueued = false;
-                        UE_LOG(LogTemp, Warning, TEXT("Processing queued jump attack"));
-                        TriggerJumpAttack(false);
-                    }
-                    // 콤보공격 큐 처리 - 지상에서만
-                    else if (bComboQueued && OwnerCharacter && !OwnerCharacter->GetCharacterMovement()->IsFalling())
-                    {
-                        bComboQueued = false;
-                        UE_LOG(LogTemp, Warning, TEXT("Processing queued combo attack"));
-                        TriggerComboAttack();
-                    }
-                    // 조건에 맞지 않으면 큐 클리어
-                    else
-                    {
-                        if (bJumpAttackQueued)
-                        {
-                            bJumpAttackQueued = false;
-                            UE_LOG(LogTemp, Warning, TEXT("Jump attack queue cleared - not in air"));
-                        }
-                        if (bComboQueued)
-                        {
-                            bComboQueued = false;
-                            UE_LOG(LogTemp, Warning, TEXT("Combo attack queue cleared - not on ground"));
-                        }
-                    }
-                },
-                FMath::Max(0.2f, JumpAttackCooldownTime),
-                false
-            );
-        }
-    }
-}
-
-void UMeleeCombatComponent::OnCharacterLanded()
-{
-    bIsJumpAttacked = false; // 착지 시 점프공격 실행 상태 초기화
-
-    UE_LOG(LogTemp, Warning, TEXT("Character Landed - Jump Attack State Reset"));
 }
 
 void UMeleeCombatComponent::ResetInputCooldown()
@@ -736,7 +633,6 @@ void UMeleeCombatComponent::ResetInputCooldown()
 void UMeleeCombatComponent::ClearAllQueues()
 {
     bComboQueued = false;
-    bJumpAttackQueued = false;
     UE_LOG(LogTemp, Warning, TEXT("All attack queues cleared"));
 }
 
@@ -746,8 +642,32 @@ void UMeleeCombatComponent::ClearComboAttackQueue()
     UE_LOG(LogTemp, Warning, TEXT("Combo attack queue cleared"));
 }
 
-void UMeleeCombatComponent::ClearJumpAttackQueue()
+float UMeleeCombatComponent::GetTeleportCooldownPercent() const
 {
-    bJumpAttackQueued = false;
-    UE_LOG(LogTemp, Warning, TEXT("Jump attack queue cleared"));
+    // 방어 로직 (생략)
+    if (!OwnerCharacter || !OwnerCharacter->GetWorld() || TeleportCooldownTime <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    FTimerManager& TimerManager = OwnerCharacter->GetWorldTimerManager();
+
+    // 쿨타임이 진행 중인지 확인
+    if (TimerManager.IsTimerActive(TeleportCooldownHandle))
+    {
+        float RemainingTime = TimerManager.GetTimerRemaining(TeleportCooldownHandle);
+
+        // 1. 쿨타임 시작 직후에는 즉시 0.0을 반환 (느리게 차는 현상 방지)
+        // 쿨타임 총 시간과 잔여 시간이 거의 같다면 (타이머가 막 시작되었다면) 0.0 반환
+        if (RemainingTime >= TeleportCooldownTime - KINDA_SMALL_NUMBER)
+        {
+            return 1.0f; // [수정] 남은 시간이 총 시간과 같으면 1.0을 반환 (BP에서 1.0 - 1.0 = 0.0이 되게 함)
+        }
+
+        // 2. 쿨타임이 진행 중인 경우, 남은 시간 비율 (1.0 -> 0.0으로 감소)
+        return FMath::Clamp(RemainingTime / TeleportCooldownTime, 0.0f, 1.0f);
+    }
+
+    // 3. 쿨타임이 완료되었거나 시작되지 않았다면 0.0을 반환합니다. 
+    return 0.0f; // -> BP에서 1.0 - 0.0 = 1.0 (꽉 참)
 }

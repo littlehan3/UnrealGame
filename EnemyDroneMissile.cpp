@@ -7,6 +7,7 @@
 #include "DrawDebugHelpers.h"
 #include "EnemyDrone.h"
 #include "Engine/OverlapResult.h"
+#include "Components/AudioComponent.h"
 
 AEnemyDroneMissile::AEnemyDroneMissile()
 {
@@ -30,6 +31,10 @@ AEnemyDroneMissile::AEnemyDroneMissile()
     ProjectileMovement->MaxSpeed = 600.f; // 최대 속도
     ProjectileMovement->bRotationFollowsVelocity = true; // 이동 방향에 따라 자동으로 회전
     ProjectileMovement->ProjectileGravityScale = 0.0f; // 중력 영향 없음
+
+    FlightLoopAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("FlightLoopAudio"));
+    FlightLoopAudio->SetupAttachment(RootComponent);
+    FlightLoopAudio->bAutoActivate = false; // ResetMissile에서 수동으로 시작
 
     SetActorTickInterval(0.05f); // Tick 주기 0.05초로 최적화
 }
@@ -87,6 +92,12 @@ void AEnemyDroneMissile::ResetMissile(FVector SpawnLocation, AActor* NewTarget)
     SetActorRotation(Dir.Rotation()); // 방향에 맞게 회전
     ProjectileMovement->Velocity = Dir * ProjectileMovement->InitialSpeed; // 해당 방향으로 속도 설정
     LastMoveDirection = Dir; // 마지막 이동 방향 저장
+
+    if (FlightLoopSound)
+    {
+        FlightLoopAudio->SetSound(FlightLoopSound);
+        FlightLoopAudio->Play();
+    }
 }
 
 void AEnemyDroneMissile::Tick(float DeltaTime)
@@ -135,6 +146,16 @@ void AEnemyDroneMissile::Explode()
     {
         UNiagaraFunctionLibrary::SpawnSystemAtLocation(
             GetWorld(), ExplosionEffect, GetActorLocation(), FRotator::ZeroRotator);
+    }
+
+    if (ExplosionSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, ExplosionSound, GetActorLocation());
+    }
+
+    if (FlightLoopAudio)
+    {
+        FlightLoopAudio->Stop();
     }
 
     // 폭발 범위 내에서 플레이어를 찾아 데미지 적용 (범위 공격)

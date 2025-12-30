@@ -82,11 +82,11 @@ private:
 	float PullStrength = 1000.0f; // 끌어당김 세기
 
 	bool bHasReachedApex = false; // 투사체가 고점에 도달했는지 여부
-	float ApexHeight = 1500.0f; // 고점 높이
+	float ApexHeight = 500.0f; // 고점 높이
 	float DelayBeforeTracking = 0.5f; // 고점 도달 후 타겟 추적 전 딜레이
 	float DetectionRadius = 1500.0f; // 감지 범위
 
-	float ExplosionDuration = 10.0f; // 폭발 지속 시간
+	float ExplosionDuration = 7.0f; // 폭발 지속 시간
 	float DamageInterval = 1.0f; // 주기적 데미지 적용 간격
 	bool bExplosionActive = false; // 폭발 이펙트가 활성화 되었는지 여부
 
@@ -98,4 +98,6 @@ private:
 	FTimerHandle DelayTimerHandle; // 지연 동작을 위한 타이머 핸들
 
 	TSet<AActor*> DamagedActorsThisTick; // 현재 틱에서 데미지를 입은 엑터들을 추적하는 집합
+
+	bool bHasExploded = false;
 };

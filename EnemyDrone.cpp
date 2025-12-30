@@ -12,11 +12,23 @@ AEnemyDrone::AEnemyDrone()
     GetCharacterMovement()->SetMovementMode(MOVE_Flying); // 이동 모드를 '비행'으로 설정
     GetCharacterMovement()->GravityScale = 0.0f; // 비행 캐릭터이므로 중력 비활성화
     AIControllerClass = AEnemyDroneAIController::StaticClass(); // 이 캐릭터가 사용할 AI 컨트롤러 클래스 지정
+    FlightLoopAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("FlightLoopAudio"));
+    FlightLoopAudio->SetupAttachment(RootComponent);
+    FlightLoopAudio->bAutoActivate = false; // BeginPlay에서 수동으로 시작
 }
 
 void AEnemyDrone::BeginPlay()
 {
     Super::BeginPlay(); // 부모 클래스 BeginPlay 호출
+    
+    if (FlightLoopSound)
+    {
+        FlightLoopAudio->SetSound(FlightLoopSound);
+        FlightLoopAudio->Play();
+    }
+
+    // 최대 체력으로 현재 체력 초기화
+    Health = MaxHealth;
 
     if (!GetController()) // AI 컨트롤러가 할당되지 않았다면
     {
@@ -85,18 +97,39 @@ AEnemyDroneMissile* AEnemyDrone::GetAvailableMissileFromPool()
 
 float AEnemyDrone::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-    if (bIsDead) return 0.f; // 이미 죽었다면 데미지 받지 않음
+    if (bIsDead) return 0.f;
 
-    float DamageApplied = FMath::Min(Health, DamageAmount); // 실제 적용될 데미지 계산 (체력 이상으로 깎이지 않도록)
-    Health -= DamageApplied; // 체력 감소
-
+    float DamageApplied = FMath::Min(Health, DamageAmount);
+    Health -= DamageApplied;
     UE_LOG(LogTemp, Warning, TEXT("Drone took damage: %f, Health: %f"), DamageApplied, Health);
 
     if (Health <= 0.0f) // 체력이 0 이하라면
     {
-        Die(); // 사망 처리 함수 호출
+        Die();
     }
-    return DamageApplied; // 실제 적용된 데미지 양 반환
+
+    // 모든 로직이 끝난 후 Super::TakeDamage 호출
+    Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+    return DamageApplied;
+}
+
+float AEnemyDrone::GetHealthPercent_Implementation() const
+{
+    if (bIsDead || Health <= 0.0f)
+    {
+        return 0.0f;
+    }
+    if (MaxHealth <= 0.0f)
+    {
+        return 0.0f;
+    }
+    return FMath::Clamp(Health / MaxHealth, 0.0f, 1.0f);
+}
+
+bool AEnemyDrone::IsEnemyDead_Implementation() const
+{
+    return bIsDead;
 }
 
 void AEnemyDrone::Die()
@@ -114,6 +147,11 @@ void AEnemyDrone::Die()
     if (DeathSound)
     {
         UGameplayStatics::PlaySoundAtLocation(this, DeathSound, GetActorLocation());
+    }
+
+    if (FlightLoopAudio)
+    {
+        FlightLoopAudio->Stop();
     }
 
     // 현재 활성화된 모든 미사일을 강제로 폭발시킴
@@ -154,6 +192,12 @@ void AEnemyDrone::HideEnemy()
         MoveComp->DisableMovement(); // 이동 비활성화
         MoveComp->StopMovementImmediately(); // 즉시 정지
         MoveComp->SetComponentTickEnabled(false); // 컴포넌트 틱 비활성화
+    }
+
+    if (FlightLoopAudio)
+    {
+        FlightLoopAudio->Stop();
+        FlightLoopAudio->SetComponentTickEnabled(false);
     }
 
     // 메쉬 정리

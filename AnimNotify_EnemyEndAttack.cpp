@@ -3,6 +3,7 @@
 #include "BossEnemy.h"
 #include "EnemyDog.h"
 #include "EnemyGuardian.h"
+#include "EnemyGuardianShield.h"
 
 void UAnimNotify_EnemyEndAttack::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {

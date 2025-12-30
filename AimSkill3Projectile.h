@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "NiagaraSystem.h"
+#include "Components/AudioComponent.h"
 #include "AimSkill3Projectile.generated.h"
 
 class UProjectileMovementComponent;
@@ -43,6 +44,18 @@ private:
 
     UPROPERTY(EditDefaultsOnly)
     UNiagaraSystem* ExplosionEffect;
+
+    // 낙하 중 루핑 사운드 컴포넌트
+    UPROPERTY(VisibleAnywhere, Category = "Audio")
+    class UAudioComponent* LoopingSoundComponent;
+
+    // 낙하 중 재생할 루핑 사운드 에셋
+    UPROPERTY(EditAnywhere, Category = "Audio")
+    class USoundBase* LoopingSound;
+
+    // 폭발 시 재생할 사운드 에셋
+    UPROPERTY(EditAnywhere, Category = "Audio")
+    class USoundBase* ExplosionSound;
 
     UPROPERTY(EditAnywhere)
     float Damage = 500.f;

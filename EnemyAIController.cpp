@@ -33,7 +33,6 @@ void AEnemyAIController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-
 	AEnemy* EnemyCharacter = Cast<AEnemy>(GetPawn());
 	if (!EnemyCharacter || EnemyCharacter->bIsDead)
 	{
@@ -58,6 +57,15 @@ void AEnemyAIController::Tick(float DeltaTime)
 	{
 		PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
 		if (!PlayerPawn) return;
+	}
+
+	// [추가/수정] 피격 몽타주 재생 중인지 확인하여 이동 중지
+	// EnemyAnimInstance를 가져와 현재 HitReactionMontage를 재생 중인지 확인합니다.
+	UEnemyAnimInstance* AnimInstance = Cast<UEnemyAnimInstance>(EnemyCharacter->GetMesh()->GetAnimInstance());
+	if (AnimInstance && EnemyCharacter->HitReactionMontage && AnimInstance->Montage_IsPlaying(EnemyCharacter->HitReactionMontage))
+	{
+		StopMovement();
+		return;
 	}
 
 	if (!GetPawn() || bIsDodging) return;

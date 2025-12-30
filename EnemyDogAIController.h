@@ -35,13 +35,13 @@ private:
 	APawn* PlayerPawn; // 플레이어 폰에 대한 참조
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float AttackRange = 150.0f; // 공격을 시작하는 범위
+	float AttackRange = 130.0f; // 공격을 시작하는 범위
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	float AttackCooldown = 1.0f; // 공격 후 다음 공격까지의 대기 시간
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float ChaseStartDistance = 2000.0f; // 플레이어 추적을 시작하는 거리
+	float ChaseStartDistance = 3000.0f; // 플레이어 추적을 시작하는 거리
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	float SurroundRadius = 100.0f; // 플레이어를 포위할 때 유지하는 거리

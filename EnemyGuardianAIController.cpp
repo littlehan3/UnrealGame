@@ -98,6 +98,14 @@ void AEnemyGuardianAIController::Tick(float DeltaTime)
     {
         PerformSurroundMovement(); // 방패가 없으면 플레이어 포위
     }
+
+    // EnemyAnimInstance를 가져와 현재 HitReactionMontage를 재생 중인지 확인합니다.
+    UEnemyGuardianAnimInstance* AnimInstance = Cast<UEnemyGuardianAnimInstance>(Guardian->GetMesh()->GetAnimInstance());
+    if (AnimInstance && Guardian->HitMontage && AnimInstance->Montage_IsPlaying(Guardian->HitMontage))
+    {
+        StopMovement();
+        return;
+    }
 }
 
 // 주기적으로 호출되어 아군 목록을 갱신하고 캐시에 저장하는 함수

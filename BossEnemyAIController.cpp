@@ -37,7 +37,7 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         {
             SetBossAIState(EBossEnemyAIState::NormalAttack);
         }
-        DrawDebugInfo();
+        /*DrawDebugInfo();*/
         return;
     }
 
@@ -48,7 +48,7 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         {
             SetBossAIState(EBossEnemyAIState::NormalAttack);
         }
-        DrawDebugInfo();
+        /*DrawDebugInfo();*/
         return; // 다른 행동은 수행하지 않음
     }
 
@@ -89,14 +89,27 @@ void ABossEnemyAIController::Tick(float DeltaTime)
         {
             SetBossAIState(EBossEnemyAIState::NormalAttack);
         }
-        DrawDebugInfo();
+        /*DrawDebugInfo();*/
         return; // 다른 행동은 수행하지 않음
+    }
+
+    UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(Boss->GetMesh()->GetAnimInstance());
+    if (AnimInstance && Boss->BossHitReactionMontages.Num() > 0)
+    {
+        for (UAnimMontage* Montage : Boss->BossHitReactionMontages)
+        {
+            if (Montage && AnimInstance->Montage_IsPlaying(Montage))
+            {
+                StopMovement();
+                return; // 피격 몽타주 재생 중이면 즉시 Tick 종료
+            }
+        }
     }
 
     float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
     UpdateBossAIState(DistToPlayer);
 
-    DrawDebugInfo(); // 디버그 시각화
+    //DrawDebugInfo(); // 디버그 시각화
 
     // 상태별 행동
     switch (CurrentState)
@@ -389,26 +402,26 @@ void ABossEnemyAIController::HandleStealthPhaseTransition(int32 NewPhase)
     }
 }
 
-void ABossEnemyAIController::DrawDebugInfo()
-{
-    if (!PlayerPawn || !GetPawn()) return;
-
-    FVector PlayerLoc = PlayerPawn->GetActorLocation();
-    FVector BossLoc = GetPawn()->GetActorLocation();
-
-    // 플레이어 기준 원 반지름 표시
-    DrawDebugCircle(GetWorld(), PlayerLoc, BossMoveRadius, 64, FColor::Cyan, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-
-    // 보스 공격 범위 표시
- 
-    DrawDebugCircle(GetWorld(), BossLoc, BossMovingAttackRange, 64, FColor::Orange, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-
-    DrawDebugCircle(GetWorld(), BossLoc, BossStandingAttackRange, 64, FColor::Yellow, false, -1, 0, 1, FVector(1, 0, 0), FVector(0, 1, 0), false);
-
-    DrawDebugCircle(GetWorld(), BossLoc, StealthAttackMinRange, 64, FColor::Green, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-
-    DrawDebugCircle(GetWorld(), BossLoc, StealthAttackOptimalRange, 64, FColor::Blue, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-}
+//void ABossEnemyAIController::DrawDebugInfo()
+//{
+//    if (!PlayerPawn || !GetPawn()) return;
+//
+//    FVector PlayerLoc = PlayerPawn->GetActorLocation();
+//    FVector BossLoc = GetPawn()->GetActorLocation();
+//
+//    // 플레이어 기준 원 반지름 표시
+//    DrawDebugCircle(GetWorld(), PlayerLoc, BossMoveRadius, 64, FColor::Cyan, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
+//
+//    // 보스 공격 범위 표시
+// 
+//    DrawDebugCircle(GetWorld(), BossLoc, BossMovingAttackRange, 64, FColor::Orange, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
+//
+//    DrawDebugCircle(GetWorld(), BossLoc, BossStandingAttackRange, 64, FColor::Yellow, false, -1, 0, 1, FVector(1, 0, 0), FVector(0, 1, 0), false);
+//
+//    DrawDebugCircle(GetWorld(), BossLoc, StealthAttackMinRange, 64, FColor::Green, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
+//
+//    DrawDebugCircle(GetWorld(), BossLoc, StealthAttackOptimalRange, 64, FColor::Blue, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
+//}
 
 void ABossEnemyAIController::StopBossAI()
 {

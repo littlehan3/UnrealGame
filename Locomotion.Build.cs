@@ -21,9 +21,12 @@ public class Locomotion : ModuleRules
             "Niagara", // 나이아가라 모듈 추가
             "UMG",           // UMG 모듈 추가
             "Slate",         // Slate 모듈 추가  
-            "SlateCore"      // SlateCore 모듈 추가
+            "SlateCore"
         });
 
-        PrivateDependencyModuleNames.AddRange(new string[] { });
+        PrivateDependencyModuleNames.AddRange(new string[]
+        {
+
+        });
     }
 }

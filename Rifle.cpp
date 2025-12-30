@@ -36,6 +36,15 @@ ARifle::ARifle()
 	CurrentImpactEffectComponent = nullptr; // 히트 이펙트 컴포넌트 초기화
 }
 
+void ARifle::AddTotalAmmo(int32 AmmoToAdd)
+{
+	// 음수 값이 들어와도 처리 가능하도록 FMath::Max로 0 이하로 내려가지 않도록 합니다.
+	TotalAmmo = FMath::Max(0, TotalAmmo + AmmoToAdd);
+
+	// 로그 출력 (디버깅용)
+	UE_LOG(LogTemp, Warning, TEXT("ARifle received %d ammo. New Total Ammo: %d"), AmmoToAdd, TotalAmmo);
+}
+
 void ARifle::BeginPlay()
 {
 	Super::BeginPlay();
@@ -217,9 +226,14 @@ void ARifle::Reload()
 
 	bIsReloading = true; // 재장전 시작
 
+	// ReloadSound와 ReloadAnnouncementSound를 동시에 재생합니다.
 	if (ReloadSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, ReloadSound, GetActorLocation());
+	}
+	if (ReloadAnnouncementSound) // 두 번째 사운드 재생
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, ReloadAnnouncementSound, GetActorLocation());
 	}
 
 	GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &ARifle::FinishReload, ReloadTime, false); // 재장전 시간만큼 기다린 후 FinishReload 함수를 호출핟록 타이머 설정
@@ -257,8 +271,8 @@ void ARifle::ProcessHit(const FHitResult& HitResult, FVector ShotDirection)
 			float sAppliedDamage = Damage;
 		}*/
 
-		float AppliedDamage = (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head") ? Damage * 100.0f : Damage;
-		// 맞은 부위의 본 이름이 Head 또는 CC_Base_Head라면 100배의 데미지를 아니면 기본 데미지를 적용 (인간형 적 ai 머리 본네임들)
+		float AppliedDamage = (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head") ? Damage * 10.0f : Damage;
+		// 맞은 부위의 본 이름이 Head 또는 CC_Base_Head라면 10배의 데미지를 아니면 기본 데미지를 적용 (인간형 적 ai 머리 본네임들)
 		UGameplayStatics::ApplyPointDamage(HitActor, AppliedDamage, ShotDirection, HitResult, GetOwner()->GetInstigatorController(), this, UDamageType::StaticClass());
 
 		// Impact Effect - 머즐 플래시처럼 조기 종료 기능 추가
@@ -296,5 +310,28 @@ void ARifle::ProcessHit(const FHitResult& HitResult, FVector ShotDirection)
 					*ImpactLocation.ToString(), ImpactEffectDuration);
 			}
 		}
+	}
+
+	// 사운드 재생 로직 수정
+	USoundBase* SoundToPlay = HitSound; // 기본값은 일반 히트 사운드
+	
+	// 헤드샷 여부를 다시 판단
+	if (HitResult.GetActor() && (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head"))
+	{
+		// 헤드샷이라면 HeadshotSound로 변경
+		if (HeadShotSound)
+		{
+			SoundToPlay = HeadShotSound;
+		}
+	}
+
+	// 최종적으로 결정된 사운드를 피격 위치에서 재생
+	if (SoundToPlay)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, SoundToPlay, HitResult.ImpactPoint); // 피격 위치에서 재생
+	}
+	else // 디버깅을 위해 추가
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No sound set for hit or headshot!"));
 	}
 }

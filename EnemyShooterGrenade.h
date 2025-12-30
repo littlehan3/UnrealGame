@@ -9,6 +9,7 @@
 class USphereComponent;
 class UStaticMeshComponent;
 class UProjectileMovementComponent;
+class UAudioComponent;
 
 UCLASS()
 class LOCOMOTION_API AEnemyShooterGrenade : public AActor
@@ -24,6 +25,9 @@ protected:
 	virtual void Tick(float DeltaTime) override; // 매 프레임 호출
 
 	void Explode(); // 폭발을 처리하는 함수
+
+	UFUNCTION()
+	void OnBounce(const FHitResult& ImpactResult, const FVector& ImpactVelocity);
 
 	// 컴포넌트
 	UPROPERTY(EditDefaultsOnly, Category = "Components")
@@ -41,6 +45,15 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
 	USoundBase* ExplosionSound; // 폭발 시 재생될 사운드
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Audio")
+	UAudioComponent* FuseAudioComponent;
+
+	UPROPERTY(EditAnywhere, Category = "SoundEffects")
+	USoundBase* BounceSound;
+
+	UPROPERTY(EditAnywhere, Category = "SoundEffects")
+	USoundBase* FuseSound;
 
 	// 전투 관련 속성
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")

@@ -39,6 +39,7 @@ void AEnemyBossKatana::StartAttack()
     bIsAttacking = true;
     RaycastHitActors.Empty();
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
 }
 
 void AEnemyBossKatana::EndAttack()
@@ -46,6 +47,12 @@ void AEnemyBossKatana::EndAttack()
     bIsAttacking = false;
     RaycastHitActors.Empty();
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
+}
+
+void AEnemyBossKatana::SetShooter(ABossEnemy* Shooter)
+{
+    BossOwner = Shooter;
 }
 
 void AEnemyBossKatana::EnableAttackHitDetection()
@@ -53,6 +60,7 @@ void AEnemyBossKatana::EnableAttackHitDetection()
     bIsAttacking = true;
     RaycastHitActors.Empty();
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
 }
 
 void AEnemyBossKatana::DisableAttackHitDetection()
@@ -85,8 +93,8 @@ void AEnemyBossKatana::PerformRaycastAttack()
         }
     }
 
-    FVector SweepLineEnd = Start + Forward * TotalDistance;
-    DrawDebugLine(GetWorld(), Start, SweepLineEnd, FColor::Green, false, 5.0f, SDPG_Foreground, 3.0f);
+    /*FVector SweepLineEnd = Start + Forward * TotalDistance;*/
+ /*   DrawDebugLine(GetWorld(), Start, SweepLineEnd, FColor::Green, false, 5.0f, SDPG_Foreground, 3.0f);*/
 
     for (int i = 0; i < NumSteps; ++i)
     {
@@ -117,8 +125,33 @@ void AEnemyBossKatana::PerformRaycastAttack()
                     RaycastHitActors.Add(HitActor);
                     ApplyDamage(HitActor);
 
-                    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12,
-                        FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);
+                    ABossEnemy* CurrentOwner = BossOwner;
+
+                    // 만약 BossOwner 변수가 NULL이라면 GetOwner()를 통해 다시 시도
+                    if (!CurrentOwner)
+                    {
+                        CurrentOwner = Cast<ABossEnemy>(GetOwner());
+                    }
+
+                    if (CurrentOwner)
+                    {
+                        if (class UNiagaraSystem* HitNiagara = CurrentOwner->GetWeaponHitNiagaraEffect())
+                        {
+                            UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                                GetWorld(),
+                                HitNiagara,
+                                Hit.ImpactPoint, // 히트 지점 사용
+                                Hit.Normal.Rotation(), // 피격 면의 노멀 방향 사용
+                                FVector(1.0f),
+                                true,
+                                true
+                            );
+                        }
+                    }
+
+                    PlayKatanaHitSound();
+                   /* DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12,
+                        FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);*/
 
                     return; // 첫 맞은 메인 캐릭터에서 종료
                 }
@@ -136,6 +169,20 @@ void AEnemyBossKatana::ApplyDamage(AActor* OtherActor)
         // 보스 카타나는 무조건 동일 데미지
         UGameplayStatics::ApplyDamage(OtherActor, BossDamage, nullptr, this, nullptr);
         DamagedActors.Add(OtherActor);
+
+        PlayKatanaHitSound();
+    }
+}
+
+void AEnemyBossKatana::PlayKatanaHitSound()
+{
+    if (bHasPlayedHitSound) return;
+
+    ABossEnemy* Boss = Cast<ABossEnemy>(GetOwner());
+    if (Boss)
+    {
+        Boss->PlayWeaponHitSound();
+        bHasPlayedHitSound = true;
     }
 }
 

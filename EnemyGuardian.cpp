@@ -24,6 +24,9 @@ void AEnemyGuardian::BeginPlay()
 {
 	Super::BeginPlay(); // 부모 클래스 BeginPlay 호출
 
+	// 최대 체력으로 현재 체력 초기화
+	Health = MaxHealth;
+
 	if (!GetController()) // AI 컨트롤러가 할당되지 않았다면
 	{
 		// 새 컨트롤러를 스폰하여 이 캐릭터에 빙의시킴
@@ -137,8 +140,8 @@ void AEnemyGuardian::PlayShieldAttackAnimation()
 				AICon->StopMovement(); // 공격 애니메이션 동안 이동 중지
 			}
 
-			AnimInstance->Montage_Play(SelectedMontage, 0.7f); // 선택된 몽타주를 0.7배속으로 재생
-			EquippedShield->StartShieldAttack(); // 방패의 공격 판정 활성화
+			AnimInstance->Montage_Play(SelectedMontage, 0.6f); // 선택된 몽타주를 0.7배속으로 재생
+			//EquippedShield->StartShieldAttack(); // 방패의 공격 판정 활성화
 
 			// 몽타주 종료 시 OnShieldAttackMontageEnded 호출하도록 델리게이트 바인딩
 			FOnMontageEnded EndDelegate;
@@ -240,23 +243,46 @@ void AEnemyGuardian::OnStunMontageEnded(UAnimMontage* Montage, bool bInterrupted
 	}
 }
 
+void AEnemyGuardian::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	// 피격 몽타주가 끝났을 때만 처리합니다.
+	if (Montage != HitMontage || bIsDead) return;
+
+	// AI 컨트롤러를 가져와 이동을 재개합니다.
+	AEnemyGuardianAIController* AICon = Cast<AEnemyGuardianAIController>(GetController());
+	if (AICon)
+	{
+		// 플레이어를 추적하는 AI 로직을 재개하도록 명령합니다.
+		APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+		if (PlayerPawn)
+		{
+			AICon->MoveToActor(PlayerPawn, 5.0f); // 일반적인 추적 거리로 이동 재개
+		}
+	}
+}
+
 float AEnemyGuardian::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	if (bIsDead || bIsPlayingIntro) return 0.0f;
 
-	// 방패가 파괴되지 않았고 장착되어 있다면, 데미지는 방패에 적용
+	AEnemyGuardianAIController* AICon = Cast<AEnemyGuardianAIController>(GetController());
+
+	// 방패가 파괴되지 않았고 장착되어 있다면,
 	if (!bIsShieldDestroyed && EquippedShield)
 	{
-		PlayBlockAnimation(); // 방어 애니메이션 재생
-		EquippedShield->ShieldHealth -= DamageAmount; // 방패 체력 감소
+		PlayBlockAnimation();
+		EquippedShield->ShieldHealth -= DamageAmount;
 
-		if (EquippedShield->ShieldHealth <= 0) // 방패 체력이 0 이하가 되면
+		if (EquippedShield->ShieldHealth <= 0)
 		{
-			EquippedShield->SetActorHiddenInGame(true); // 방패를 숨김
-			bIsShieldDestroyed = true; // 방패 파괴 상태로 전환
-			Stun(); // 스턴 상태에 빠짐
+			EquippedShield->SetActorHiddenInGame(true);
+			bIsShieldDestroyed = true;
+			Stun();
 		}
-		return 0.0f; // 가디언 본체는 피해를 받지 않음
+
+		// Super::TakeDamage를 호출하지 *않습니다*.
+		// 따라서 헬스바 컴포넌트가 이벤트를 받지 못해 갱신되지 않습니다.
+		return 0.0f;
 	}
 
 	// 진압봉 공격 중일 때는 피격 애니메이션 없이 체력만 감소
@@ -278,8 +304,11 @@ float AEnemyGuardian::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 			}
 			Die(); // 사망 처리
 		}
+		// 본체가 맞았으므로 Super::TakeDamage 호출
+		Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 		return DamageAmount;
 	}
+
 
 	// 스턴 중일 때도 피격 애니메이션 없이 체력만 감소
 	if (bIsStunned)
@@ -289,8 +318,12 @@ float AEnemyGuardian::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 		{
 			Die();
 		}
+		// 본체가 맞았으므로 Super::TakeDamage 호출
+		Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 		return DamageAmount;
 	}
+
+	if (AICon) AICon->StopMovement();
 
 	// 방패가 파괴된 후에는 가디언 본체가 직접 피해를 받음
 	Health -= DamageAmount;
@@ -299,6 +332,11 @@ float AEnemyGuardian::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 		if (AnimInstance && !AnimInstance->Montage_IsPlaying(HitMontage))
 		{
+			// 피격 몽타주 종료 후 AI 이동 재개를 위해 델리게이트 바인딩이 필요합니다.
+			FOnMontageEnded EndDelegate; // <-- [추가] 델리게이트 생성
+			EndDelegate.BindUObject(this, &AEnemyGuardian::OnHitMontageEnded); // <-- [추가] 바인딩
+			AnimInstance->Montage_SetEndDelegate(EndDelegate, HitMontage); // <-- [추가] 델리게이트 설정
+
 			AnimInstance->Montage_Play(HitMontage);
 		}
 	}
@@ -307,8 +345,51 @@ float AEnemyGuardian::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 	{
 		Die();
 	}
-
+	// 본체가 맞았으므로 Super::TakeDamage 호출
+	Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 	return DamageAmount; // 실제 적용된 데미지 양 반환
+}
+
+float AEnemyGuardian::GetHealthPercent_Implementation() const
+{
+	// 방패가 파괴되기 전에는 헬스바가 떠도 100%로 보이도록 함 (갱신이 안되겠지만)
+	if (!bIsShieldDestroyed)
+	{
+		return 1.0f;
+	}
+
+	// 방패 파괴 후
+	if (bIsDead || Health <= 0.0f)
+	{
+		return 0.0f;
+	}
+	if (MaxHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(Health / MaxHealth, 0.0f, 1.0f);
+}
+
+bool AEnemyGuardian::IsEnemyDead_Implementation() const
+{
+	return bIsDead;
+}
+void AEnemyGuardian::PlayWeaponHitSound()
+{
+	if (WeaponHitSound)
+	{
+		// 가디언의 위치에서 사운드 재생
+		UGameplayStatics::PlaySoundAtLocation(this, WeaponHitSound, GetActorLocation());
+	}
+}
+
+void AEnemyGuardian::PlayShieldHitSound()
+{
+	if (ShieldHitSound)
+	{
+		// 가디언의 위치에서 사운드 재생
+		UGameplayStatics::PlaySoundAtLocation(this, ShieldHitSound, GetActorLocation());
+	}
 }
 
 void AEnemyGuardian::Die()
@@ -445,16 +526,28 @@ void AEnemyGuardian::HideEnemy()
 
 void AEnemyGuardian::StartAttack()
 {
-	if (EquippedBaton)
+	// [수정] 방패 공격 중인 경우, 방패의 StartShieldAttack을 호출합니다.
+	if (bIsShieldAttacking && EquippedShield)
 	{
-		EquippedBaton->EnableAttackHitDetection(); // 진압봉 공격 판정 활성화
+		EquippedShield->StartShieldAttack();
+	}
+	// 진압봉 공격 중인 경우
+	else if (bIsBatonAttacking && EquippedBaton)
+	{
+		EquippedBaton->EnableAttackHitDetection(); // 진압봉 공격 판정 활성화 [cite: 103]
 	}
 }
 
 void AEnemyGuardian::EndAttack()
 {
-	if (EquippedBaton)
+	// [수정] 방패 공격 중인 경우, 방패의 StartShieldAttack을 호출합니다.
+	if (bIsShieldAttacking && EquippedShield)
 	{
-		EquippedBaton->DisableAttackHitDetection(); // 진압봉 공격 판정 비활성화
+		EquippedShield->EndShieldAttack();
+	}
+	// 진압봉 공격 중인 경우
+	else if (bIsBatonAttacking && EquippedBaton)
+	{
+		EquippedBaton->DisableAttackHitDetection(); // 진압봉 공격 판정 활성화 [cite: 103]
 	}
 }

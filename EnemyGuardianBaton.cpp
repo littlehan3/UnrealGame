@@ -39,6 +39,7 @@ void AEnemyGuardianBaton::StartAttack()
     bIsAttacking = true; // 공격 판정 활성화
     RaycastHitActors.Empty(); // 이전 공격 기록 초기화
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
 }
 
 void AEnemyGuardianBaton::EndAttack()
@@ -46,6 +47,7 @@ void AEnemyGuardianBaton::EndAttack()
     bIsAttacking = false; // 공격 판정 비활성화
     RaycastHitActors.Empty(); // 공격 기록 초기화
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
 }
 
 void AEnemyGuardianBaton::EnableAttackHitDetection()
@@ -53,6 +55,7 @@ void AEnemyGuardianBaton::EnableAttackHitDetection()
     bIsAttacking = true; // 공격 판정 활성화
     RaycastHitActors.Empty(); // 이전 공격 기록 초기화
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
 }
 
 void AEnemyGuardianBaton::DisableAttackHitDetection()
@@ -60,6 +63,7 @@ void AEnemyGuardianBaton::DisableAttackHitDetection()
     bIsAttacking = false; // 공격 판정 비활성화
     RaycastHitActors.Empty(); // 공격 기록 초기화
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
 }
 
 void AEnemyGuardianBaton::PerformRaycastAttack()
@@ -109,6 +113,25 @@ void AEnemyGuardianBaton::PerformRaycastAttack()
                 {
                     RaycastHitActors.Add(HitActor); // 감지 목록에 추가
                     ApplyDamage(HitActor); // 데미지 적용
+
+                    AEnemyGuardian* GuardianOwner = Cast<AEnemyGuardian>(GetOwner());
+                    if (GuardianOwner)
+                    {
+                        // AEnemyGuardian 클래스의 GetWeaponHitNiagaraEffect() Getter 사용 가정
+                        if (class UNiagaraSystem* HitNiagara = GuardianOwner->GetWeaponHitNiagaraEffect())
+                        {
+                            UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                                GetWorld(),
+                                HitNiagara,
+                                Hit.ImpactPoint, // 히트 지점 사용
+                                Hit.Normal.Rotation(), // 피격 면의 노멀 방향 사용
+                                FVector(1.0f),
+                                true,
+                                true
+                            );
+                        }
+                    }
+
                     return; // 플레이어를 한 번 때렸으면 이번 틱의 판정은 종료
                 }
             }
@@ -125,6 +148,22 @@ void AEnemyGuardianBaton::ApplyDamage(AActor* OtherActor)
     {
         UGameplayStatics::ApplyDamage(OtherActor, BatonDamage, nullptr, this, nullptr); // 데미지 적용
         DamagedActors.Add(OtherActor); // 데미지 입힌 목록에 추가 (중복 데미지 방지)
+
+        PlayWeaponHitSound();
+    }
+}
+
+void AEnemyGuardianBaton::PlayWeaponHitSound()
+{
+    // 이미 재생했다면 중복 실행 방지
+    if (bHasPlayedHitSound) return;
+
+    // 소유자(가디언)에게 캐스팅하여 사운드 재생 함수 호출
+    AEnemyGuardian* Guardian = Cast<AEnemyGuardian>(GetOwner());
+    if (Guardian)
+    {
+        Guardian->PlayWeaponHitSound();
+        bHasPlayedHitSound = true; // 플래그 설정
     }
 }
 

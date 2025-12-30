@@ -7,6 +7,7 @@
 #include "GameFramework/Pawn.h"
 #include "Engine/Engine.h"
 #include "Async/Async.h"
+#include "WaveRecordSaveGame.h"
 
 AMainGameModeBase::AMainGameModeBase()
 {
@@ -59,8 +60,14 @@ void AMainGameModeBase::BeginPlay()
 
             if (bWaveSystemEnabled)
             {
-                UE_LOG(LogTemp, Error, TEXT("Starting wave system..."));
-                StartWaveSystem();
+                UE_LOG(LogTemp, Warning, TEXT("Wave system starting in 3.0 seconds..."));
+                GetWorldTimerManager().SetTimer(
+                    WaveSystemStartDelayTimer, // 새로 사용할 TimerHandle
+                    this,
+                    &AMainGameModeBase::StartWaveSystem,
+                    3.0f, // 3초 지연
+                    false
+                );
             }
             else
             {
@@ -135,9 +142,18 @@ void AMainGameModeBase::StartWave(int32 WaveIndex)
     UE_LOG(LogTemp, Error, TEXT("Total enemies to spawn in wave: %d"), TotalEnemiesInWave);
     UE_LOG(LogTemp, Error, TEXT("Prepare time: %f seconds"), WaveConfig.PrepareTime);
 
+    // 메인 캐릭터를 가져와서 사운드 재생 준비
+    ACharacter * PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
+    AMainCharacter* MainCharacter = Cast<AMainCharacter>(PlayerCharacter);
+
     // 준비 시간 후 스폰 시작
     if (WaveConfig.PrepareTime > 0.0f)
     {
+        if (MainCharacter)
+        {
+            MainCharacter->PlayWavePrepareSound();
+        }
+
         UE_LOG(LogTemp, Error, TEXT("Starting spawn timer with %f seconds delay"), WaveConfig.PrepareTime);
         GetWorldTimerManager().SetTimer(
             WaveStartTimer,
@@ -318,6 +334,16 @@ void AMainGameModeBase::OnWaveCompleted()
 
     UE_LOG(LogTemp, Warning, TEXT("Wave %d completed! Enemies killed: %d/%d"),
         CurrentWaveIndex + 1, EnemiesKilledInWave, TotalEnemiesInWave);
+
+    ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
+    AMainCharacter* MainCharacter = Cast<AMainCharacter>(PlayerCharacter);
+
+    if (MainCharacter)
+    {
+        MainCharacter->GiveReward(HealthRewardOnClear, AmmoRewardOnClear);
+        UE_LOG(LogTemp, Warning, TEXT("Giving wave clear reward: Health=%f, Ammo=%d"),
+            HealthRewardOnClear, AmmoRewardOnClear);
+    }
 
     // 비동기 메모리 정리 시작
     if (bEnableAsyncCleanup)
@@ -545,6 +571,50 @@ int32 AMainGameModeBase::GetActiveEnemyCount() const
     return Count;
 }
 
+void AMainGameModeBase::CheckAndSaveBestWaveRecord(int32 LastClearedWaveIndex)
+{
+    // 1. 저장 객체 로드 또는 생성
+    UWaveRecordSaveGame* SaveGameInstance = nullptr;
+
+    if (UGameplayStatics::DoesSaveGameExist(UWaveRecordSaveGame::SaveSlotName, UWaveRecordSaveGame::UserIndex))
+    {
+        SaveGameInstance = Cast<UWaveRecordSaveGame>(UGameplayStatics::LoadGameFromSlot(UWaveRecordSaveGame::SaveSlotName, UWaveRecordSaveGame::UserIndex));
+    }
+
+    if (!SaveGameInstance)
+    {
+        // 기록이 없다면 새로 생성
+        SaveGameInstance = Cast<UWaveRecordSaveGame>(UGameplayStatics::CreateSaveGameObject(UWaveRecordSaveGame::StaticClass()));
+        if (!SaveGameInstance) return;
+    }
+
+    // 2. 최고 기록 비교
+    if (LastClearedWaveIndex > SaveGameInstance->BestClearedWaveIndex)
+    {
+        // 새로운 최고 기록 업데이트
+        SaveGameInstance->BestClearedWaveIndex = LastClearedWaveIndex;
+
+        // 웨이브 이름 가져오기 (인덱스가 유효할 경우)
+        if (LastClearedWaveIndex >= 0 && LastClearedWaveIndex < WaveConfigurations.Num())
+        {
+            SaveGameInstance->BestClearedWaveName = WaveConfigurations[LastClearedWaveIndex].WaveName;
+            UE_LOG(LogTemp, Warning, TEXT("New Best Record: Wave %d (%s) cleared!"), LastClearedWaveIndex + 1, *SaveGameInstance->BestClearedWaveName);
+        }
+        else
+        {
+            SaveGameInstance->BestClearedWaveName = FString::Printf(TEXT("Wave %d"), LastClearedWaveIndex + 1);
+            UE_LOG(LogTemp, Warning, TEXT("New Best Record: Wave %d cleared! (Name not found)"), LastClearedWaveIndex + 1);
+        }
+
+        // 3. 디스크에 저장
+        UGameplayStatics::SaveGameToSlot(SaveGameInstance, UWaveRecordSaveGame::SaveSlotName, UWaveRecordSaveGame::UserIndex);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("Current score (Wave %d) is not a new best record (Best is Wave %d)."),
+            LastClearedWaveIndex + 1, SaveGameInstance->BestClearedWaveIndex + 1);
+    }
+}
 
 void AMainGameModeBase::RestartWaveSystem()
 {
@@ -769,7 +839,7 @@ FVector AMainGameModeBase::GetPlayerLocation()
 
 void AMainGameModeBase::CheckWaveCompletion()
 {
-    if (!bWaveInProgress) return; 
+    if (!bWaveInProgress) return;
 
     int32 ActiveEnemyCount = GetActiveEnemyCount();
     UE_LOG(LogTemp, Warning, TEXT("Check Wave Completion - Active enemies: %d"), ActiveEnemyCount);

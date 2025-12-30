@@ -23,9 +23,11 @@ void AEnemyShooterAIController::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime); // 부모 클래스 Tick 호출
     AEnemyShooter* Shooter = Cast<AEnemyShooter>(GetPawn()); // 제어 중인 폰 가져오기
-    // 폰이 없거나, 죽었거나, 등장 중일 때는 아무런 로직도 실행하지 않음
-    if (!Shooter || Shooter->bIsDead || Shooter->bIsPlayingIntro)
+
+    if (!Shooter || Shooter->bIsDead || Shooter->bIsPlayingIntro || Shooter->bIsInAirStun || Shooter->bIsTrappedInGravityField)
+    {
         return;
+    }
 
     if (!PlayerPawn) // 플레이어 폰 참조가 없다면 (플레이어가 죽었다 부활하는 등)
     {
@@ -242,6 +244,46 @@ void AEnemyShooterAIController::HandleMovingState()
     }
     if (bIsBlockedByGuardian) // 가디언에 막혔다면 불필요한 이동 중지 (수류탄 각 재기)
     {
+        AEnemyShooter* Shooter = Cast<AEnemyShooter>(GetPawn()); // Shooter 참조 필요
+        if (!Shooter) return; // Shooter 없으면 중단
+
+        if (GetWorld()->GetTimeSeconds() - LastGrenadeThrowTime < GrenadeCooldown) // 쿨타임 확인
+        {
+            StopMovementInput(); // 쿨타임 중에는 대기
+            return;
+        }
+
+        TSubclassOf<AEnemyShooterGrenade> GrenadeToSpawn = Shooter->GrenadeClass;
+        if (!GrenadeToSpawn) return;
+        FVector StartLocation = Shooter->GetActorLocation() + FVector(0, 0, 100.0f);
+
+        FVector PlayerLocation = PlayerPawn->GetActorLocation();
+        FVector DirectionToPlayer = PlayerLocation - StartLocation;
+        DirectionToPlayer.Z = 0;
+        FVector EndLocation = PlayerLocation - (DirectionToPlayer.GetSafeNormal() * GrenadeTargetOffset);
+        EndLocation.Z += 60.0f;
+
+        FVector LaunchVelocity;
+        bool bHaveAimSolution = UGameplayStatics::SuggestProjectileVelocity(
+            this, LaunchVelocity, StartLocation, EndLocation, GrenadeLaunchSpeed, false, 0.0f, GetWorld()->GetGravityZ()
+        );
+
+        if (bHaveAimSolution)
+        {
+            FActorSpawnParameters SpawnParams;
+            SpawnParams.Owner = GetPawn();
+            SpawnParams.Instigator = GetPawn();
+
+            AEnemyShooterGrenade* Grenade = GetWorld()->SpawnActor<AEnemyShooterGrenade>(
+                GrenadeToSpawn, StartLocation, FRotator::ZeroRotator, SpawnParams
+            );
+            if (Grenade)
+            {
+                Grenade->LaunchGrenade(LaunchVelocity);
+                LastGrenadeThrowTime = GetWorld()->GetTimeSeconds();
+                Shooter->PlayThrowingGrenadeAnimation();
+            }
+        }
         StopMovementInput();
         return;
     }

@@ -6,12 +6,13 @@
 #include "EnemyShooterAIController.h" // 사용할 AI 컨트롤러 클래스를 알아야 하므로 포함
 #include "EnemyShooterAnimInstance.h" // 사용할 애님 인스턴스 클래스를 알아야 하므로 포함
 #include "Animation/AnimInstance.h" // UAnimInstance 클래스 사용
+#include "HealthInterface.h"
 #include "EnemyShooter.generated.h"
 
 class AEnemyShooterGrenade; // 수류탄 클래스 전방 선언
 
 UCLASS(Blueprintable)
-class LOCOMOTION_API AEnemyShooter : public ACharacter
+class LOCOMOTION_API AEnemyShooter : public ACharacter, public IHealthInterface
 {
 	GENERATED_BODY()
 
@@ -36,18 +37,22 @@ public:
 	void Die(); // 사망 처리 함수
 	void ApplyBaseWalkSpeed(); // 기본 이동 속도를 적용하는 함수
 	void HideEnemy(); // 사망 후 액터 정리 및 숨김 처리 함수
-	void EnerInAirStunState(float Duration); // 공중 스턴 상태 진입 함수 (미구현)
-	void ExitInAirStunState(); // 공중 스턴 상태 해제 함수 (미구현)
-	void ApplyGravityPull(FVector ExlplosionCenter, float PullStrengh); // 외부 힘에 의해 끌려가는 효과 함수 (미구현)
+	void EnterInAirStunState(float Duration); // 공중 스턴 상태 진입 함수 
+	void ExitInAirStunState(); // 공중 스턴 상태 해제 함수 
+	void EnableGravityPull(FVector ExplosionCenter, float PullStrength); // (기존 ApplyGravityPull 이름 변경)
+	void DisableGravityPull(); // (신규 추가)
 	void Shoot(); // 장착된 총을 발사하는 함수
 
 	// 판정 데이터 (현재 사용되지 않음)
 	TSet<AActor*> RaycastHitActors;
 	TSet<AActor*> DamagedActors;
 
-	// 캐릭터 상태 변수
-	UPROPERTY(EditAnyWhere, BlueprintReadWrite, Category = "Health")
-	float Health = 200.0f; // 현재 체력
+	// MaxHealth 추가 및 기존 Health 변수 수정
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+	float MaxHealth = 200.0f; // 최대 체력
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+	float Health = 200.0f;
 
 	bool bIsPlayingIntro = false; // 등장 애니메이션 재생 여부
 	bool bIsDead = false; // 사망 상태 여부
@@ -65,6 +70,14 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
 	TSubclassOf<AEnemyShooterGrenade> GrenadeClass; // 투척할 수류탄의 원본 클래스
+
+	/** IHealthInterface 구현 함수 */
+	virtual float GetHealthPercent_Implementation() const override;
+	virtual bool IsEnemyDead_Implementation() const override;
+
+	// [신규 추가] 중력장(블랙홀) 상태 변수 (AEnemy와 동일)
+	bool bIsTrappedInGravityField = false;
+	FVector GravityFieldCenter = FVector::ZeroVector;
 
 protected:
 	virtual void BeginPlay() override; // 게임 시작 시 호출

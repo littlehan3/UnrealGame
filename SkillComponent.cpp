@@ -12,10 +12,52 @@
 #include "Animation/AnimInstance.h"
 #include "BossEnemy.h"
 #include "EnemyDog.h"
+#include "EnemyShooter.h"
 
 USkillComponent::USkillComponent()
 {
     PrimaryComponentTick.bCanEverTick = false;
+}
+
+void USkillComponent::CancelAimSkill1ByDash()
+{
+    // 이 함수는 AMainCharacter::Dash()에 의해 호출되어 스킬을 중단시킵니다.
+    // 쿨타임을 즉시 시작해야 합니다.
+
+    bIsUsingAimSkill1 = false;
+        if (OwnerCharacter)
+        {
+            OwnerCharacter->AttachRifleToBack();
+            OwnerCharacter->AttachKnifeToHand();
+            OwnerCharacter->HideCrosshairWidget();
+        }
+
+    if (MachineGun)
+    {
+        MachineGun->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("AimSkill1Socket"));
+            MachineGun->SetActorRelativeLocation(FVector(-5.f, -20.f, 0.f));
+            MachineGun->SetActorRelativeRotation(FRotator(90.f, 180.f, 0.f));
+            MachineGun->SetActorRelativeScale3D(FVector(0.3f));
+            MachineGun->SetActorHiddenInGame(true);
+            MachineGun->StopFire(); // 발사 중지 
+    }
+
+    if (OwnerCharacter)
+    {
+        if (UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance())
+        {
+            if (AimSkill1Montage)
+            {
+                Anim->Montage_Stop(0.3f, AimSkill1Montage);
+            }
+        }
+    }
+
+    // 모든 타이머(반복)를 중지합니다.
+    GetWorld()->GetTimerManager().ClearTimer(AimSkill1RepeatHandle);
+
+    // 쿨타임을 즉시 시작
+    GetWorld()->GetTimerManager().SetTimer(AimSkill1CooldownHandle, this, &USkillComponent::ResetAimSkill1Cooldown, AimSkill1Cooldown, false);
 }
 
 void USkillComponent::BeginPlay()
@@ -66,10 +108,10 @@ void USkillComponent::UseSkill1()
 
     RotateCharacterToInputDirection();
     PlaySkill1Montage();
-    DrawSkill1Range();
+    /*DrawSkill1Range();*/
 
     GetWorld()->GetTimerManager().SetTimer(Skill1EffectHandle, this, &USkillComponent::ApplySkill1Effect, 0.5f, false);
-    GetWorld()->GetTimerManager().SetTimer(Skill1CooldownHandle, this, &USkillComponent::ResetSkill1Cooldown, Skill1Cooldown, false);
+    //GetWorld()->GetTimerManager().SetTimer(Skill1CooldownHandle, this, &USkillComponent::ResetSkill1Cooldown, Skill1Cooldown, false);
 }
 
 void USkillComponent::PlaySkill1Montage()
@@ -87,11 +129,11 @@ void USkillComponent::PlaySkill1Montage()
     }
 }
 
-void USkillComponent::DrawSkill1Range()
-{
-    FVector Center = OwnerCharacter->GetActorLocation();
-    DrawDebugSphere(GetWorld(), Center, Skill1Range, 32, FColor::Red, false, 1.0f, 0, 2.0f);
-}
+//void USkillComponent::DrawSkill1Range()
+//{
+//    FVector Center = OwnerCharacter->GetActorLocation();
+//    DrawDebugSphere(GetWorld(), Center, Skill1Range, 32, FColor::Red, false, 1.0f, 0, 2.0f);
+//}
 
 void USkillComponent::ApplySkill1Effect()
 {
@@ -126,6 +168,22 @@ void USkillComponent::ApplySkill1Effect()
             }
         }
     }
+
+    TArray<AActor*> Shooters;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyShooter::StaticClass(), Shooters);
+
+    for (AActor* Actor : Shooters)
+    {
+        AEnemyShooter* Shooter = Cast<AEnemyShooter>(Actor);
+        if (Shooter && Shooter->GetCharacterMovement())
+        {
+            float Dist = FVector::Dist(Center, Shooter->GetActorLocation());
+            if (Dist <= Skill1Range)
+            {
+                Shooter->EnterInAirStunState(4.0f);
+            }
+        }
+    }
 }
 
 void USkillComponent::ResetSkill1(UAnimMontage* Montage, bool bInterrupted)
@@ -137,6 +195,10 @@ void USkillComponent::ResetSkill1(UAnimMontage* Montage, bool bInterrupted)
 void USkillComponent::ResetSkill1Cooldown()
 {
     bCanUseSkill1 = true;
+    if (OwnerCharacter && OwnerCharacter->GetSkill1ReadySound())
+    {
+        UGameplayStatics::PlaySoundAtLocation(GetWorld(), OwnerCharacter->GetSkill1ReadySound(), OwnerCharacter->GetActorLocation());
+    }
 }
 
 // 스킬2
@@ -152,7 +214,7 @@ void USkillComponent::UseSkill2()
     PlaySkill2Montage();
 
     GetWorld()->GetTimerManager().SetTimer(Skill2EffectHandle, this, &USkillComponent::ApplySkill2Effect, Skill2EffectDelay, false);
-    GetWorld()->GetTimerManager().SetTimer(Skill2CooldownHandle, this, &USkillComponent::ResetSkill2Cooldown, Skill2Cooldown, false);
+    //GetWorld()->GetTimerManager().SetTimer(Skill2CooldownHandle, this, &USkillComponent::ResetSkill2Cooldown, Skill2Cooldown, false);
 }
 
 void USkillComponent::PlaySkill2Montage()
@@ -170,20 +232,20 @@ void USkillComponent::PlaySkill2Montage()
     }
 }
 
-void USkillComponent::DrawSkill2Range()
-{
-    if (!bIsUsingSkill2) return;
-
-    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());
-
-    FVector SkillCenter = OwnerCharacter->GetActorLocation();
-    float DebugDuration = 0.1f;
-    float DebugRadius = 200.0f;
-
-    DrawDebugSphere(GetWorld(), SkillCenter, DebugRadius, 32, FColor::Blue, false, DebugDuration, 0, 3.0f); // 스킬범위 표시
-
-    UE_LOG(LogTemp, Warning, TEXT("Skill2 Range Circle Drawn at %s with Radius %f"), *SkillCenter.ToString(), DebugRadius);
-}
+//void USkillComponent::DrawSkill2Range()
+//{
+//    if (!bIsUsingSkill2) return;
+//
+//   /* UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());*/
+//
+//    FVector SkillCenter = OwnerCharacter->GetActorLocation();
+//    float DebugDuration = 0.1f;
+//    float DebugRadius = 200.0f;
+//
+//    //DrawDebugSphere(GetWorld(), SkillCenter, DebugRadius, 32, FColor::Blue, false, DebugDuration, 0, 3.0f); // 스킬범위 표시
+//
+//    UE_LOG(LogTemp, Warning, TEXT("Skill2 Range Circle Drawn at %s with Radius %f"), *SkillCenter.ToString(), DebugRadius);
+//}
 
 void USkillComponent::ApplySkill2Effect()
 {
@@ -210,14 +272,14 @@ void USkillComponent::ApplySkill2Effect()
         }
     }
 
-    DrawDebugSphere(GetWorld(), Center, Skill2Range, 32, FColor::Red, false, 0.4f, 0, 3.0f);
-    GetWorld()->GetTimerManager().SetTimer(Skill2RangeClearHandle, this, &USkillComponent::ClearSkill2Range, 0.4f, false);
+ /*   DrawDebugSphere(GetWorld(), Center, Skill2Range, 32, FColor::Red, false, 0.4f, 0, 3.0f);*/
+    //GetWorld()->GetTimerManager().SetTimer(Skill2RangeClearHandle, this, &USkillComponent::ClearSkill2Range, 0.4f, false);
 }
 
-void USkillComponent::ClearSkill2Range()
-{
-    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());
-}
+//void USkillComponent::ClearSkill2Range()
+//{
+//    UKismetSystemLibrary::FlushPersistentDebugLines(GetWorld());
+//}
 
 void USkillComponent::ResetSkill2(UAnimMontage* Montage, bool bInterrupted)
 {
@@ -229,6 +291,10 @@ void USkillComponent::ResetSkill2(UAnimMontage* Montage, bool bInterrupted)
 void USkillComponent::ResetSkill2Cooldown()
 {
     bCanUseSkill2 = true;
+    if (OwnerCharacter && OwnerCharacter->GetSkill2ReadySound())
+    {
+        UGameplayStatics::PlaySoundAtLocation(GetWorld(), OwnerCharacter->GetSkill2ReadySound(), OwnerCharacter->GetActorLocation());
+    }
 }
 
 // 스킬3
@@ -257,7 +323,7 @@ void USkillComponent::UseSkill3()
     }
 
     PlaySkill3Montage();
-    GetWorld()->GetTimerManager().SetTimer(Skill3CooldownHandle, this, &USkillComponent::ResetSkill3Cooldown, Skill3Cooldown, false);
+    //GetWorld()->GetTimerManager().SetTimer(Skill3CooldownHandle, this, &USkillComponent::ResetSkill3Cooldown, Skill3Cooldown, false);
 }
 
 void USkillComponent::PlaySkill3Montage()
@@ -284,6 +350,10 @@ void USkillComponent::ResetSkill3(UAnimMontage* Montage, bool bInterrupted)
 void USkillComponent::ResetSkill3Cooldown()
 {
     bCanUseSkill3 = true;
+    if (OwnerCharacter && OwnerCharacter->GetSkill3ReadySound())
+    {
+        UGameplayStatics::PlaySoundAtLocation(GetWorld(), OwnerCharacter->GetSkill3ReadySound(), OwnerCharacter->GetActorLocation());
+    }
 }
 
 // 에임스킬1
@@ -299,6 +369,12 @@ void USkillComponent::UseAimSkill1()
 
     bIsUsingAimSkill1 = true;
     bCanUseAimSkill1 = false;
+
+    // ExitAimMode가 숨긴 크로스헤어 위젯을 다시 표시
+    if (OwnerCharacter)
+    {
+        OwnerCharacter->ShowCrosshairWidget();
+    }
 
     OwnerCharacter->AttachRifleToBack();
     OwnerCharacter->AttachKnifeToBack();
@@ -317,7 +393,7 @@ void USkillComponent::UseAimSkill1()
     PlayAimSkill1Montage();
 
     GetWorld()->GetTimerManager().SetTimer(AimSkill1RepeatHandle, this, &USkillComponent::RepeatAimSkill1Montage, AimSkill1PlayInterval, true);
-    GetWorld()->GetTimerManager().SetTimer(AimSkill1CooldownHandle, this, &USkillComponent::ResetAimSkill1Cooldown, AimSkill1Cooldown, false);
+    //GetWorld()->GetTimerManager().SetTimer(AimSkill1CooldownHandle, this, &USkillComponent::ResetAimSkill1Cooldown, AimSkill1Cooldown, false);
 }
 
 void USkillComponent::PlayAimSkill1Montage()
@@ -363,6 +439,7 @@ void USkillComponent::ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted)
     {
         OwnerCharacter->AttachRifleToBack();
         OwnerCharacter->AttachKnifeToHand();
+        OwnerCharacter->HideCrosshairWidget();
     }
 
     if (MachineGun)
@@ -390,6 +467,10 @@ void USkillComponent::ResetAimSkill1(UAnimMontage* Montage, bool bInterrupted)
 void USkillComponent::ResetAimSkill1Cooldown()
 {
     bCanUseAimSkill1 = true;
+    if (OwnerCharacter && OwnerCharacter->GetAimSkill1ReadySound())
+    {
+        UGameplayStatics::PlaySoundAtLocation(GetWorld(), OwnerCharacter->GetAimSkill1ReadySound(), OwnerCharacter->GetActorLocation());
+    }
 }
 
 // 에임스킬2
@@ -406,6 +487,12 @@ void USkillComponent::UseAimSkill2()
     bIsUsingAimSkill2 = true;
     bCanUseAimSkill2 = false;
 
+    // ExitAimMode가 숨긴 크로스헤어 위젯을 다시 표시
+    if (OwnerCharacter)
+    {
+        OwnerCharacter->ShowCrosshairWidget();
+    }
+
     OwnerCharacter->AttachRifleToBack();
     OwnerCharacter->AttachKnifeToBack();
     RotateCharacterToInputDirection();
@@ -417,10 +504,10 @@ void USkillComponent::UseAimSkill2()
         Cannon->SetShooter(OwnerCharacter);
         //Cannon->FireProjectile();
     }
-
+    
     PlayAimSkill2StartMontage();
 
-    GetWorld()->GetTimerManager().SetTimer(AimSkill2CooldownHandle, this, &USkillComponent::ResetAimSkill2Cooldown, AimSkill2Cooldown, false);
+    //GetWorld()->GetTimerManager().SetTimer(AimSkill2CooldownHandle, this, &USkillComponent::ResetAimSkill2Cooldown, AimSkill2Cooldown, false);
 }
 
 void USkillComponent::PlayAimSkill2Montage()
@@ -451,6 +538,9 @@ void USkillComponent::PlayAimSkill2StartMontage()
     }
     UAnimInstance* Anim = OwnerCharacter->GetMesh()->GetAnimInstance();
     if (!Anim) return;
+
+    FOnMontageEnded EmptyDelegate;  // 애님인스턴스에 남아있을 수 있는 오래된 델리게이트를 비움
+    Anim->Montage_SetEndDelegate(EmptyDelegate, AimSkill2StartMontage);  // 타이머 방식으로만 몽타주를 전환
 
     float Duration = Anim->Montage_Play(AimSkill2StartMontage, 0.5f);
     if (Duration > 0.0f)
@@ -490,6 +580,7 @@ void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
     {
         OwnerCharacter->AttachRifleToBack();
         OwnerCharacter->AttachKnifeToHand();
+        OwnerCharacter->HideCrosshairWidget();
     }
 
     if (Cannon)
@@ -505,6 +596,10 @@ void USkillComponent::ResetAimSkill2(UAnimMontage* Montage, bool bInterrupted)
 void USkillComponent::ResetAimSkill2Cooldown()
 {
     bCanUseAimSkill2 = true;
+    if (OwnerCharacter && OwnerCharacter->GetAimSkill2ReadySound())
+    {
+        UGameplayStatics::PlaySoundAtLocation(GetWorld(), OwnerCharacter->GetAimSkill2ReadySound(), OwnerCharacter->GetActorLocation());
+    }
 }
 
 void USkillComponent::UseAimSkill3()
@@ -657,12 +752,16 @@ void USkillComponent::ResetAimSkill3(UAnimMontage* Montage, bool bInterrupted)
         //SpawnAimSkill3Projectiles(CachedAimSkill3Target);
     //}
     bIsUsingAimSkill3 = false;
-    GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
+    //GetWorld()->GetTimerManager().SetTimer(AimSkill3CooldownHandle, this, &USkillComponent::ResetAimSkill3Cooldown, AimSkill3Cooldown, false);
 }
 
 void USkillComponent::ResetAimSkill3Cooldown()
 {
     bCanUseAimSkill3 = true;
+    if (OwnerCharacter && OwnerCharacter->GetAimSkill3ReadySound())
+    {
+        UGameplayStatics::PlaySoundAtLocation(GetWorld(), OwnerCharacter->GetAimSkill3ReadySound(), OwnerCharacter->GetActorLocation());
+    }
 }
 
 void USkillComponent::CancelAllSkills()

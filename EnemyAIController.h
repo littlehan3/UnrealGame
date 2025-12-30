@@ -35,7 +35,7 @@ private:
 	APawn* PlayerPawn; // 플레이어 참조
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StopChasingRadius = 3000.0f; // 플레이어를 쫓다가 멈추는 범위
+	float StopChasingRadius = 6000.0f; // 플레이어를 쫓다가 멈추는 범위
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	float AttackRange = 200.0f; // 공격 범위
@@ -56,7 +56,7 @@ private:
 	float CircleArriveThreshold = 60.0f; // 원 위치 도달 거리
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float ChaseStartDistance = 320.0f; // 추적 시작 거리
+	float ChaseStartDistance = 3000.0f; // 추적 시작 거리
 
 	EEnemyAIState CurrentState = EEnemyAIState::Idle;
 

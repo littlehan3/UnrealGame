@@ -13,6 +13,8 @@
 #include "Components/SlateWrapperTypes.h" // ESlateVisibility를 위한 헤더 추가
 #include "Kismet/GameplayStatics.h" // CreateWidget 함수
 #include "CrossHairComponent.h"
+#include "Blueprint/UserWidget.h"
+#include "Components/PostProcessComponent.h"
 #include "MainCharacter.generated.h"
 
 class ARifle;
@@ -53,6 +55,12 @@ public:
     // SkillComponent 접근할 수 있도록 Getter
     FORCEINLINE USkillComponent* GetSkillComponent() const { return SkillComponent; }
 
+    // 킥 이펙트/사운드 Getter (새로 추가)
+    FORCEINLINE class UNiagaraSystem* GetKickNiagaraEffect() const { return KickNiagaraEffect; }
+    FORCEINLINE class USoundBase* GetKickHitSound() const { return KickHitSound; }
+    FORCEINLINE float GetKickEffectOffset() const { return KickEffectOffset; }
+    FORCEINLINE float GetKnifeEffectOffset() const { return KnifeEffectOffset; }
+
     void ExitAimMode();
 
     UFUNCTION()
@@ -70,13 +78,17 @@ public:
     void AttachKnifeToHand();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
-    float MaxHealth = 10000.0f;
+    float MaxHealth = 1000.0f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
     float CurrentHealth;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
     bool bIsDead = false;
+
+    // [신규] 빅 히트 상태 플래그
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
+    bool bIsBigHitReacting = false;
 
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
@@ -85,6 +97,123 @@ public:
     // 크로스헤어 컴포넌트 접근자 (반환 타입 수정)
     UFUNCTION(BlueprintPure, Category = "Crosshair")
     UCrossHairComponent* GetCrosshairComponent() const { return CrosshairComponent; }
+
+    // 현재 체력 비율 (0.0 ~ 1.0)을 반환
+    UFUNCTION(BlueprintPure, Category = "HUD")
+    float GetHealthPercent() const
+    {
+        return (MaxHealth > 0.0f) ? (CurrentHealth / MaxHealth) : 0.0f;
+    }
+
+    /** 현재 장착된 라이플의 현재 탄약 수를 반환합니다. */
+    UFUNCTION(BlueprintPure, Category = "HUD")
+    int32 GetRifleCurrentAmmo() const
+    {
+        return (Rifle) ? Rifle->GetCurrentAmmo() : 0;
+    }
+
+    /** 현재 장착된 라이플의 최대 탄약 수를 반환합니다. */
+    UFUNCTION(BlueprintPure, Category = "HUD")
+    int32 GetRifleMaxAmmo() const
+    {
+        return (Rifle) ? Rifle->GetMaxAmmo() : 0;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "HUD")
+    int32 GetRifleTotalAmmo() const
+    {
+        return (Rifle) ? Rifle->GetTotalAmmo() : 0;
+    }
+
+    // 스킬 쿨타임 중계 함수들
+
+    UFUNCTION(BlueprintPure, Category = "HUD|Skill")
+    float GetSkill1CooldownPercent() const
+    {
+        return (SkillComponent) ? SkillComponent->GetSkill1CooldownPercent() : 0.0f;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "HUD|Skill")
+    float GetSkill2CooldownPercent() const
+    {
+        return (SkillComponent) ? SkillComponent->GetSkill2CooldownPercent() : 0.0f;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "HUD|Skill")
+    float GetSkill3CooldownPercent() const
+    {
+        return (SkillComponent) ? SkillComponent->GetSkill3CooldownPercent() : 0.0f;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "HUD|Skill")
+    float GetAimSkill1CooldownPercent() const
+    {
+        return (SkillComponent) ? SkillComponent->GetAimSkill1CooldownPercent() : 0.0f;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "HUD|Skill")
+    float GetAimSkill2CooldownPercent() const
+    {
+        return (SkillComponent) ? SkillComponent->GetAimSkill2CooldownPercent() : 0.0f;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "HUD|Skill")
+    float GetAimSkill3CooldownPercent() const
+    {
+        return (SkillComponent) ? SkillComponent->GetAimSkill3CooldownPercent() : 0.0f;
+    }
+
+    // 텔레포트 쿨타임 중계 함수
+    UFUNCTION(BlueprintPure, Category = "HUD|Skill")
+    float GetTeleportCooldownPercent() const
+    {
+        return (MeleeCombatComponent) ?
+            MeleeCombatComponent->GetTeleportCooldownPercent() : 0.0f;
+    }
+
+    /** (BlueprintCallable) UI 버튼에서 호출할 게임 재개 함수 */
+    UFUNCTION(BlueprintCallable, Category = "Pause")
+    void ResumeGame();
+
+    /** (BlueprintCallable) UI 버튼에서 호출할 게임 재시작 함수 */
+    UFUNCTION(BlueprintCallable, Category = "Pause")
+    void HandleRestartGame();
+
+    /** (BlueprintCallable) UI 버튼에서 호출할 메인 메뉴 이동 함수 */
+    UFUNCTION(BlueprintCallable, Category = "Pause")
+    void HandleBackToMainMenu();
+
+    void UpdateMouseSensitivity(float NewSensitivity);
+
+    void ApplyCameraShake();  // 화면 흔들림 함수 추가
+
+    /** 크로스헤어 위젯을 강제로 표시합니다. (SkillComponent용) */
+    void ShowCrosshairWidget();
+
+    /** 크로스헤어 위젯을 강제로 숨깁니다. (SkillComponent용) */
+    void HideCrosshairWidget();
+
+    void PlayBigHitReaction();
+
+    // 텔레포트 이펙트/사운드 Getter (정의가 포함된 최종 버전)
+    FORCEINLINE class UNiagaraSystem* GetTeleportNiagaraEffect() const { return TeleportNiagaraEffect; }
+    FORCEINLINE class USoundBase* GetTeleportSound() const { return TeleportSound; }
+
+    FORCEINLINE class USoundBase* GetSkill1ReadySound() const { return Skill1ReadySound; }
+    FORCEINLINE class USoundBase* GetSkill2ReadySound() const { return Skill2ReadySound; }
+    FORCEINLINE class USoundBase* GetSkill3ReadySound() const { return Skill3ReadySound; }
+    FORCEINLINE class USoundBase* GetAimSkill1ReadySound() const { return AimSkill1ReadySound; }
+    FORCEINLINE class USoundBase* GetAimSkill2ReadySound() const { return AimSkill2ReadySound; }
+    FORCEINLINE class USoundBase* GetAimSkill3ReadySound() const { return AimSkill3ReadySound; }
+    FORCEINLINE class USoundBase* GetSkillCooldownSound() const { return SkillCooldownSound; }
+
+    void PlayCooldownSound();
+
+    UFUNCTION(BlueprintCallable, Category = "Sound")
+    void PlayWavePrepareSound();
+
+    UFUNCTION(BlueprintCallable, Category = "Combat|Reward")
+    void GiveReward(float HealthAmount, int32 AmmoAmount);
 
 protected:
     virtual void BeginPlay() override;
@@ -106,9 +235,48 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "UI")
     TSubclassOf<UCrossHairWidget> CrossHairWidgetClass;
 
+    // [신규 추가] 일시정지 메뉴 위젯 클래스
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UUserWidget> PauseMenuWidgetClass;
+
+    // [신규 추가] 일시정지 메뉴에서도 로딩 스크린을 띄울 수 있도록 클래스 변수 추가
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UUserWidget> LoadingScreenWidgetClass;
+
+    // [신규 추가] 퍼즈 메뉴에서 옵션 메뉴를 띄울 수 있도록 클래스 변수 추가
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UUserWidget> OptionsWidgetClass;
+
     // 위젯 인스턴스
     UPROPERTY()
     UCrossHairWidget* CrossHairWidget;
+
+    // [추가] 플레이어 HUD 위젯 클래스
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UUserWidget> PlayerHUDWidgetClass;
+
+    // [추가] 생성된 플레이어 HUD 위젯 인스턴스
+    UPROPERTY(BlueprintReadOnly, Category = "UI")
+    UUserWidget* PlayerHUDWidget;
+
+    // [신규 추가] 생성된 일시정지 메뉴 위젯 인스턴스
+    UPROPERTY(BlueprintReadOnly, Category = "UI")
+    UUserWidget* PauseMenuWidget;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Combat|Teleport Effects")
+    class UNiagaraSystem* TeleportNiagaraEffect = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Combat|Teleport Effects")
+    class USoundBase* TeleportSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Kick Effects")
+    float KickEffectOffset = 80.0f; // 이펙트를 전방으로 이동시킬 거리
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Knife Effects")
+    float KnifeEffectOffset = 120.0f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "SoundEffects")
+    class USoundBase* RewardSound = nullptr;
 
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
@@ -300,15 +468,6 @@ private:
     UPROPERTY()
     ACannon* Cannon;
 
-    // 점프 공격 몽타주
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat", meta = (AllowPrivateAccess = "true"))
-    UAnimMontage* JumpAttackMontage;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat", meta = (AllowPrivateAccess = "true"))
-    UAnimMontage* DoubleJumpAttackMontage;
-
-    bool bIsJumpAttacked = false; // 점프공격 실행 여부
-    bool bCanGroundAction = true; // 지상액션(콤보) 가능 여부
     bool bCanAirAction = true; // 공중 액션 (점프, 점프공격) 가능 여부
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "React", meta = (AllowPrivateAccess = "true"))
@@ -316,6 +475,10 @@ private:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "React", meta = (AllowPrivateAccess = "true"))
     UAnimMontage* BigHitMontage; // 빅 히트 몽타주
+
+    // [신규] 빅 히트 리커버 몽타주
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "React", meta = (AllowPrivateAccess = "true"))
+    UAnimMontage* BigHitRecoverMontage; // 빅 히트 후 일어나는 몽타주
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "React", meta = (AllowPrivateAccess = "true"))
     TArray<UAnimMontage*> DieMontages; // 사망 몽타주 저장하는 배열
@@ -328,6 +491,12 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "SoundEffects")
     USoundBase* DieSound;
+
+    UPROPERTY(EditDefaultsOnly, Category = "SoundEffects")
+    class USoundBase* GameStartSound = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects", meta = (AllowPrivateAccess = "true"))
+    USoundBase* AimModeEnterSound;
 
     // 반동 변수
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Recoil", meta = (AllowPrivateAccess = "true"))
@@ -365,7 +534,6 @@ private:
     void ApplyCameraRecoil();
     void ResetRecoil();
     void UpdateRecoil(float DeltaTime);
-    void ApplyCameraShake();  // 화면 흔들림 함수 추가
 
     // 이동속도 설정
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (AllowPrivateAccess = "true"))
@@ -379,4 +547,74 @@ private:
     bool bIsPlayingLandingAnimation = false;  // 착지 애니메이션 재생 중인지 확인
     FTimerHandle LandingAnimationTimerHandle; // 착지 애니메이션 타이머
     void OnLandingAnimationFinished();        // 착지 애니메이션 완료 콜백
+
+    // [신규 추가] 일시정지 입력 액션
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    class UInputAction* PauseAction;
+
+    // [신규 추가] 일시정지 토글 함수
+    void TogglePauseMenu();
+
+    // [신규 추가] 레벨 로드를 공통으로 처리할 헬퍼 함수
+    void ShowLoadingScreenAndLoad(FName LevelName);
+
+    // [신규 추가] 타이머가 호출할 실제 레벨 로드 함수
+    void LoadPendingLevel();
+
+    // [신규 추가] 타이머가 레벨을 로드할 수 있도록 레벨 이름을 저장할 변수
+    FName PendingLevelToLoad;
+
+    float MouseSensitivityMultiplier = 1.0f;
+
+    FTimerHandle BigHitRecoverTimerHandle; // [신규] 빅 히트 리커버 타이머 핸들
+
+    void StartBigHitRecover(); // [신규] 빅 히트 리커버 몽타주 '시작' 함수
+
+    // [삭제] UFUNCTION()
+    // void OnBigHitMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
+    // [유지] 빅 히트 리커버 몽타주 종료 델리게이트
+    UFUNCTION()
+    void OnBigHitRecoverMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
+    // MainCharacter.h (protected: 또는 private: 섹션)
+
+    // 킥 공격용 이펙트/사운드
+    UPROPERTY(EditDefaultsOnly, Category = "Combat|Kick Effects")
+    class UNiagaraSystem* KickNiagaraEffect = nullptr; // [추가] 킥 나이아가라 이펙트
+
+    UPROPERTY(EditDefaultsOnly, Category = "Combat|Kick Effects")
+    class USoundBase* KickHitSound = nullptr;       // [추가] 킥 히트 사운드
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects|SkillReady", meta = (AllowPrivateAccess = "true"))
+    class USoundBase* Skill1ReadySound = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects|SkillReady", meta = (AllowPrivateAccess = "true"))
+    class USoundBase* Skill2ReadySound = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects|SkillReady", meta = (AllowPrivateAccess = "true"))
+    class USoundBase* Skill3ReadySound = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects|SkillReady", meta = (AllowPrivateAccess = "true"))
+    class USoundBase* AimSkill1ReadySound = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects|SkillReady", meta = (AllowPrivateAccess = "true"))
+    class USoundBase* AimSkill2ReadySound = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects|SkillReady", meta = (AllowPrivateAccess = "true"))
+    class USoundBase* AimSkill3ReadySound = nullptr;
+
+    // 쿨타임 사운드 (통합)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects|Cooldown", meta = (AllowPrivateAccess = "true"))
+    class USoundBase* SkillCooldownSound = nullptr;
+
+    // 사운드 중복 재생 방지를 위한 컴포넌트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SoundEffects|Cooldown", meta = (AllowPrivateAccess = "true"))
+    class UAudioComponent* CooldownAudioComponent;
+
+    UPROPERTY(EditDefaultsOnly, Category = "SoundEffects")
+    class USoundBase* WavePrepareSound = nullptr;
+
+    UPROPERTY(VisibleAnywhere, Category = "PostProcess")
+    class UPostProcessComponent* DeathPostProcessComponent;
 };

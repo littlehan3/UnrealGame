@@ -6,6 +6,8 @@
 
 // 전방 선언
 class AMainCharacter;
+class UNiagaraSystem;
+class USoundBase;
 
 UENUM(BlueprintType)
 enum class EKnifeType : uint8
@@ -41,18 +43,26 @@ public:
     TArray<float> ComboDamages; // 콤보별 데미지 설정
 
     void InitializeKnife(EKnifeType NewType); // 콤보 인덱스를 전달받아 해당 공격의 데미지를 설정
-    void EnableHitBox(int32 ComboIndex);
+    void EnableHitBox(int32 ComboIndex, float KnockbackStrength);
     void DisableHitBox();
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knife FX")
+    class UNiagaraSystem* HitNiagaraEffect;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knife FX")
+    class USoundBase* HitSound; // 이 줄을 추가합니다
 
 private:
     float CurrentDamage;
-
+    float CurrentKnockbackStrength; // 넉백 강도를 저장할 변수
     // 레이캐스트 공격
     void RaycastAttack();
 
     // 레이캐스트로 감지된 적을 저장
     TArray<AActor*> RaycastHitActors; // 레이캐스트로 감지된 적들
     TSet<AActor*> DamagedActors; // 중복 히트를 방지하는 집합
+    // [추가] 레이캐스트로 감지된 첫 번째 피격 정보를 저장할 변수
+    FHitResult FirstHitResult; // <-- [추가]
 
     // 히트 판정 함수 (충돌 감지)
     UFUNCTION()
@@ -65,4 +75,5 @@ private:
         const FHitResult& SweepResult
     );
 
+    float KnifeHitEffectOffset;
 };

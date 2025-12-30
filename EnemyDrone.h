@@ -4,10 +4,11 @@
 #include "GameFramework/Character.h" // ACharacter 클래스 상속
 #include "EnemyDroneMissile.h" // 드론이 발사할 미사일 클래스를 알아야 하므로 포함
 #include "NiagaraSystem.h" // 나이아가라 이펙트 시스템 사용
+#include "HealthInterface.h"
 #include "EnemyDrone.generated.h"
 
 UCLASS(Blueprintable)
-class LOCOMOTION_API AEnemyDrone : public ACharacter
+class LOCOMOTION_API AEnemyDrone : public ACharacter, public IHealthInterface
 {
     GENERATED_BODY()
 
@@ -31,8 +32,18 @@ public:
 
     void Die(); // 사망 처리 함수
     void HideEnemy(); // 사망 후 액터 정리 및 숨김 처리 함수
-    float Health = 40.0f; // 현재 체력
+
+    // MaxHealth 추가
+    UPROPERTY(EditDefaultsOnly, Category = "Health")
+    float MaxHealth = 40.0f; // 최대 체력
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+    float Health = 40.0f;
     bool bIsDead = false; // 사망 상태 여부
+
+    /** IHealthInterface 구현 함수 */
+    virtual float GetHealthPercent_Implementation() const override;
+    virtual bool IsEnemyDead_Implementation() const override;
 
 protected:
     virtual void BeginPlay() override; // 게임 시작 시 호출되는 함수
@@ -54,4 +65,11 @@ protected:
 
     AActor* PlayerActor; // 플레이어 액터에 대한 참조
     void ShootMissile(); // 미사일을 발사하는 함수
+
+    UPROPERTY(EditAnywhere, Category = "Effects")
+    class UAudioComponent* FlightLoopAudio;
+
+    UPROPERTY(EditAnyWhere, Category = "Audio")
+    USoundBase* FlightLoopSound;
+
 };

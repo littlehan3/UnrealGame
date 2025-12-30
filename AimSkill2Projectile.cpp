@@ -7,6 +7,8 @@
 #include "NiagaraFunctionLibrary.h"
 #include "DrawDebugHelpers.h"
 #include "Enemy.h"
+#include "EnemyDog.h"
+#include "EnemyShooter.h"
 #include "NiagaraComponent.h"
 
 AAimSkill2Projectile::AAimSkill2Projectile()
@@ -65,6 +67,49 @@ void AAimSkill2Projectile::EndPlay(const EEndPlayReason::Type EndPlayReason) // 
 	{
 		PersistentAreaAudioComponent->Stop();
 	}
+
+	// 나이아가라 컴포넌트 정리
+	if (PersistentAreaNiagaraComponent)
+	{
+		PersistentAreaNiagaraComponent->Deactivate();
+		PersistentAreaNiagaraComponent->DestroyComponent(); // 확실하게 파괴
+		PersistentAreaNiagaraComponent = nullptr;
+	}
+
+	// 모든 적 중력장 해제 로직
+	TArray<AActor*> OverlappedActors;
+	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+
+	TArray<AActor*> IgnoredActors;
+	if (Shooter) // Shooter가 유효한지 확인
+	{
+		IgnoredActors.Add(Shooter); 
+	}
+	// AEnemy::StaticClass() -> nullptr로 변경하여 모든 Pawn을 찾도록 수정
+	UKismetSystemLibrary::SphereOverlapActors(
+		GetWorld(), ExplosionLocation, DamageRadius,
+		ObjectTypes, nullptr, IgnoredActors, OverlappedActors);
+
+	for (AActor* Actor : OverlappedActors)
+	{
+		if (AEnemy* Enemy = Cast<AEnemy>(Actor))
+		{
+			Enemy->DisableGravityPull();
+		}
+		//  EnemyDog도 해제하도록 수정
+		else if (AEnemyDog* DogEnemy = Cast<AEnemyDog>(Actor))
+		{
+			DogEnemy->DisableGravityPull();
+		}
+		else if (AEnemyShooter* ShooterEnemy = Cast<AEnemyShooter>(Actor))
+		{
+			ShooterEnemy->DisableGravityPull();
+		}
+	}
+
+	// 상태 플래그 비활성화
+	bExplosionActive = false;
 }
 
 void AAimSkill2Projectile::Tick(float DeltaTime)
@@ -121,6 +166,13 @@ void AAimSkill2Projectile::OnHit(UPrimitiveComponent* HitComponent, AActor* Othe
 	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if (OtherActor && (OtherActor == this || OtherActor == Shooter)) return; // 자기 자신이나 발사자와 총돌 시 무시
+
+	if (bHasExploded)
+	{
+		return;
+	}
+
+	bHasExploded = true;
 
 	if (FlightAudioComponent) FlightAudioComponent->Stop(); // 비행 사운드 중지
 
@@ -186,62 +238,14 @@ void AAimSkill2Projectile::SpawnPersistentExplosionArea(const FVector& Location)
 		DamageInterval,
 		true);
 
-	// 폭발 지속 시간 타이머 설정
-	GetWorldTimerManager().SetTimer(
-		ExplosionDurationTimerHandle,
-		[this]()
-		{
-			bExplosionActive = false;
-			GetWorldTimerManager().ClearTimer(PersistentEffectsTimerHandle);
-			GetWorldTimerManager().ClearTimer(PeriodicDamageTimerHandle);
-
-			if (PersistentAreaAudioComponent)
-			{
-				PersistentAreaAudioComponent->FadeOut(0.5f, 0.0f);
-			}
-
-			if (PersistentAreaNiagaraComponent)
-			{
-				PersistentAreaNiagaraComponent->Deactivate();
-				GetWorldTimerManager().SetTimerForNextTick([this]()
-					{
-						if (PersistentAreaNiagaraComponent)
-						{
-							PersistentAreaNiagaraComponent->DestroyComponent();
-							PersistentAreaNiagaraComponent = nullptr;
-						}
-					});
-			}
-			// 모든 적 중력장 해제
-			TArray<AActor*> OverlappedActors;
-			TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-			ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-
-			TArray<AActor*> IgnoredActors;
-			IgnoredActors.Add(Shooter);
-
-			UKismetSystemLibrary::SphereOverlapActors(
-				GetWorld(), ExplosionLocation, DamageRadius,
-				ObjectTypes, AEnemy::StaticClass(), IgnoredActors, OverlappedActors);
-
-			for (AActor* Actor : OverlappedActors)
-			{
-				if (AEnemy* Enemy = Cast<AEnemy>(Actor))
-				{
-					Enemy->DisableGravityPull();
-				}
-			}
-		},
-		ExplosionDuration,
-		false);
 }
 
 void AAimSkill2Projectile::ApplyPersistentEffects()
 {
 	if (!bExplosionActive) return;
 
-	// 디버그 시각화
-	DrawDebugSphere(GetWorld(), ExplosionLocation, DamageRadius, 16, FColor::Yellow, false, 0.12f, 0, 1.0f);
+	//// 디버그 시각화
+	//DrawDebugSphere(GetWorld(), ExplosionLocation, DamageRadius, 16, FColor::Yellow, false, 0.12f, 0, 1.0f);
 
 	// 범위 내 액터 찾기
 	TArray<AActor*> OverlappedActors;
@@ -270,6 +274,17 @@ void AAimSkill2Projectile::ApplyPersistentEffects()
 			{
 				Enemy->bIsTrappedInGravityField = true; // 한 번 들어왔으면 상태 True 
 				Enemy->EnableGravityPull(ExplosionLocation, PullStrength);
+			}
+			// EnemyDog도 끌어당기도록
+			else if (AEnemyDog* DogEnemy = Cast<AEnemyDog>(Actor))
+			{
+				DogEnemy->bIsTrappedInGravityField = true;
+				DogEnemy->EnableGravityPull(ExplosionLocation, PullStrength);
+			}
+			else if (AEnemyShooter* ShooterEnemy = Cast<AEnemyShooter>(Actor))
+			{
+				ShooterEnemy->bIsTrappedInGravityField = true;
+				ShooterEnemy->EnableGravityPull(ExplosionLocation, PullStrength);
 			}
 			else
 			{
@@ -312,16 +327,16 @@ void AAimSkill2Projectile::ApplyPeriodicDamage()
 		{
 			UGameplayStatics::ApplyDamage(Actor, Damage, nullptr, Shooter, nullptr);
 
-			// 데미지 적용 시각화
-			DrawDebugLine(
-				GetWorld(),
-				ExplosionLocation,
-				Actor->GetActorLocation(),
-				FColor::Red,
-				false,
-				0.5f,
-				0,
-				2.0f);
+			//// 데미지 적용 시각화
+			//DrawDebugLine(
+			//	GetWorld(),
+			//	ExplosionLocation,
+			//	Actor->GetActorLocation(),
+			//	FColor::Red,
+			//	false,
+			//	0.5f,
+			//	0,
+			//	2.0f);
 		}
 	}
 }
@@ -330,7 +345,7 @@ void AAimSkill2Projectile::ApplyAreaDamage()
 {
 	FVector ExplosionCenter = GetActorLocation();
 
-	DrawDebugSphere(GetWorld(), ExplosionCenter, DamageRadius, 32, FColor::Red, false, 1.5f, 0, 2.0f);
+	/*DrawDebugSphere(GetWorld(), ExplosionCenter, DamageRadius, 32, FColor::Red, false, 1.5f, 0, 2.0f);*/
 
 	TArray<FHitResult> HitResults;
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
@@ -373,7 +388,7 @@ void AAimSkill2Projectile::ApplyAreaDamage()
 
 AActor* AAimSkill2Projectile::FindClosestEnemy()
 {
-	DrawDebugSphere(GetWorld(), GetActorLocation(), DetectionRadius, 32, FColor::Green, false, 1.0f, 0, 2.0f);
+	/*DrawDebugSphere(GetWorld(), GetActorLocation(), DetectionRadius, 32, FColor::Green, false, 1.0f, 0, 2.0f);*/
 
 	TArray<AActor*> OverlappedActors;
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
@@ -387,7 +402,7 @@ AActor* AAimSkill2Projectile::FindClosestEnemy()
 		GetActorLocation(),
 		DetectionRadius,
 		ObjectTypes,
-		AEnemy::StaticClass(),
+		nullptr,
 		Ignored,
 		OverlappedActors);
 

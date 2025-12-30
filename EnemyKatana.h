@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "MainCharacter.h"
+#include "NiagaraFunctionLibrary.h"
 #include "EnemyKatana.generated.h"
 
 UENUM(BlueprintType)
@@ -13,6 +15,7 @@ enum class EAttackType : uint8
 };
 
 class AEnemy;
+class UNiagaraSystem;
 
 UCLASS()
 class LOCOMOTION_API AEnemyKatana : public AActor
@@ -45,6 +48,8 @@ public:
     void StartAttack();
     void EndAttack();
 
+    void SetShooter(AEnemy* Shooter);
+
 protected:
     virtual void BeginPlay() override;
 
@@ -58,4 +63,7 @@ private:
 
     EAttackType CurrentAttackType;
 
+    void PlayKatanaHitSound();
+
+    bool bHasPlayedHitSound = false;
 };

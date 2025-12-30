@@ -25,24 +25,35 @@ AAimSkill3Projectile::AAimSkill3Projectile()
     ProjectileMovement->MaxSpeed = 1500.f;
     ProjectileMovement->ProjectileGravityScale = 3.0f;
     ProjectileMovement->bRotationFollowsVelocity = false;
+
+    LoopingSoundComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("LoopingSoundComponent"));
+    LoopingSoundComponent->SetupAttachment(RootComponent);
+    LoopingSoundComponent->bAutoActivate = false; // BeginPlay에서 수동 활성화
 }
 
 void AAimSkill3Projectile::BeginPlay()
 {
     Super::BeginPlay();
     SetLifeSpan(10.f);
+
+    // [추가] 루핑 사운드 시작
+    if (LoopingSoundComponent && LoopingSound)
+    {
+        LoopingSoundComponent->SetSound(LoopingSound);
+        LoopingSoundComponent->Play();
+    }
 }
 
 void AAimSkill3Projectile::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (!bExploded)
+   /* if (!bExploded)
     {
         DrawDebugDirectionalArrow(GetWorld(), GetActorLocation(),
             GetActorLocation() + GetVelocity().GetSafeNormal() * 100.f,
             50.f, FColor::Red, false, -1.f, 0, 5.f);
-    }
+    }*/
 }
 
 void AAimSkill3Projectile::FireInDirection(const FVector& ShootDirection)
@@ -70,6 +81,23 @@ void AAimSkill3Projectile::Explode()
 {
     if (bExploded) return;
     bExploded = true;
+
+    // 루핑 사운드 중지
+    if (LoopingSoundComponent)
+    {
+        LoopingSoundComponent->Stop();
+        LoopingSoundComponent->DestroyComponent();
+    }
+
+    // 폭발 사운드 재생 (Actor 위치에서)
+    if (ExplosionSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(
+            GetWorld(),
+            ExplosionSound,
+            GetActorLocation()
+        );
+    }
 
     // ExplosionEffect 널 체크
     if (ExplosionEffect)

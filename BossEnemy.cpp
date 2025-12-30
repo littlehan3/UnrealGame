@@ -10,6 +10,7 @@
 #include "EnemyBossKatana.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "NiagaraFunctionLibrary.h"
+#include "MainCharacter.h"
 
 ABossEnemy::ABossEnemy()
 {
@@ -30,6 +31,7 @@ void ABossEnemy::BeginPlay()
 {
 	Super::BeginPlay();
 	SetCanBeDamaged(true); // 피해를 입을 수 있는지 여부 true
+	BossHealth = MaxBossHealth; // 최대 체력으로 현재 체력 초기화
 
 	// AI 컨트롤러 강제 할당
 	if (!GetController())
@@ -1016,22 +1018,22 @@ void ABossEnemy::StartStealthInvisiblePhase()
 	// 완전 투명 처리
 	SetActorHiddenInGame(true);
 
-	// 지속적인 위치 추적 시작 (0.2초마다 업데이트)
+	// 지속적인 위치 추적 시작
 	GetWorld()->GetTimerManager().SetTimer(
 		StealthWaitTimer,
 		this,
 		&ABossEnemy::UpdateStealthTeleportLocation, // 새로운 함수
-		0.2f, // 0.2초마다 실행
+		0.01f, // 초마다 실행
 		true  // 반복 실행
 	);
 
-	// 5초 후 킥 실행 타이머 (별도)
+	// 초 후 킥 실행 타이머 (별도)
 	FTimerHandle StealthKickExecutionTimer;
 	GetWorld()->GetTimerManager().SetTimer(
 		StealthKickExecutionTimer,
 		this,
 		&ABossEnemy::ExecuteStealthKick,
-		5.0f, // 5초 후 실행
+		2.0f, // 5초 후 실행
 		false // 한 번만 실행
 	);
 
@@ -1175,45 +1177,49 @@ void ABossEnemy::ExecuteStealthKickRaycast()
 	FVector StartLocation = GetActorLocation();
 	FVector PlayerLocation = PlayerPawn->GetActorLocation();
 	FVector Direction = (PlayerLocation - StartLocation).GetSafeNormal();
-	FVector EndLocation = StartLocation + (Direction * 100.0f); // 킥 사거리
+	//FVector EndLocation = StartLocation + (Direction * 100.0f); // 킥 사거리
+
+	// 킥 사거리와 반경 설정 (이 값을 조절해 적중률 변경)
+	float KickRange = 120.0f; // 킥 사거리 (기존 100에서 120으로 증가)
+	float KickRadius = 50.0f; // 킥 판정 반경 (50.0f로 설정)
+	FVector EndLocation = StartLocation + (Direction * KickRange);
 
 	FHitResult HitResult;
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(this);
 
-	bool bHit = GetWorld()->LineTraceSingleByChannel(
+	FCollisionShape SphereShape = FCollisionShape::MakeSphere(KickRadius); // 판정 모양을 구체로 정의
+	bool bHit = GetWorld()->SweepSingleByChannel
+	(
 		HitResult,
 		StartLocation,
 		EndLocation,
+		FQuat::Identity, // 구체는 회전이 필요 없으므로 FQuat::Identity
 		ECollisionChannel::ECC_Pawn,
+		SphereShape, // 위에서 정의한 구체 모양
 		CollisionParams
 	);
 
 	// 시각화 추가 - 히트 여부에 따라 색상 변경
 	if (bHit && HitResult.GetActor() == PlayerPawn)
 	{
-		// 히트 시 빨간색 라인
-		DrawDebugLine(
-			GetWorld(),
-			StartLocation,
-			HitResult.Location,
-			FColor::Red,
-			false,
-			3.0f, // 3초간 표시
-			0,
-			5.0f // 굵기
-		);
+		//// [수정] 히트 시 빨간색 캡슐 (스피어 트레이스 경로 시각화)
+		//DrawDebugCapsule(
+		//	GetWorld(),
+		//	(StartLocation + EndLocation) / 2.0f, // 캡슐 중앙
+		//	(KickRange / 2.0f) + KickRadius,    // 캡슐 절반 높이
+		//	KickRadius,                         // 캡슐 반경
+		//	FQuat::Identity,
+		//	FColor::Red,
+		//	false, 3.0f, 0, 5.0f
+		//	);
 
-		// 히트 지점에 구체 표시
-		DrawDebugSphere(
-			GetWorld(),
-			HitResult.Location,
-			20.0f,
-			12,
-			FColor::Red,
-			false,
-			3.0f
-		);
+		// [신규] 메인 캐릭터 캐스팅 및 빅 히트 호출
+		AMainCharacter * MainCharacter = Cast<AMainCharacter>(PlayerPawn);
+		if (MainCharacter)
+		{
+			MainCharacter->PlayBigHitReaction();
+		}
 
 		// 킥 데미지 적용 (20 데미지)
 		UGameplayStatics::ApplyPointDamage(
@@ -1236,17 +1242,15 @@ void ABossEnemy::ExecuteStealthKickRaycast()
 	}
 	else
 	{
-		// 미스 시 초록색 라인
-		DrawDebugLine(
-			GetWorld(),
-			StartLocation,
-			EndLocation,
-			FColor::Green,
-			false,
-			3.0f, // 3초간 표시
-			0,
-			5.0f // 굵기
-		);
+		//DrawDebugCapsule(
+		//	GetWorld(),
+		//	(StartLocation + EndLocation) / 2.0f,
+		//	(KickRange / 2.0f) + KickRadius,
+		//	KickRadius,
+		//	FQuat::Identity,
+		//	FColor::Green,
+		//	false, 3.0f, 0, 5.0f
+		//	);
 
 		// 빗나감 - 스텔스 공격 종료
 		EndStealthAttack();
@@ -1356,41 +1360,41 @@ void ABossEnemy::ExecuteStealthFinishRaycast()
 	// 히트 여부에 따라 색상 변경
 	if (bHit && HitResult.GetActor() == PlayerPawn)
 	{
-		// 히트 시 빨간색 라인 (더 굵게)
-		DrawDebugLine(
-			GetWorld(),
-			StartLocation,
-			HitResult.Location,
-			FColor::Red,
-			false,
-			5.0f, // 5초간 표시
-			0,
-			8.0f // 더 굵게
-		);
+		//// 히트 시 빨간색 라인 (더 굵게)
+		//DrawDebugLine(
+		//	GetWorld(),
+		//	StartLocation,
+		//	HitResult.Location,
+		//	FColor::Red,
+		//	false,
+		//	5.0f, // 5초간 표시
+		//	0,
+		//	8.0f // 더 굵게
+		//);
 
-		// 히트 지점에 큰 구체 표시
-		DrawDebugSphere(
-			GetWorld(),
-			HitResult.Location,
-			30.0f,
-			16,
-			FColor::Red,
-			false,
-			5.0f
-		);
+		//// 히트 지점에 큰 구체 표시
+		//DrawDebugSphere(
+		//	GetWorld(),
+		//	HitResult.Location,
+		//	30.0f,
+		//	16,
+		//	FColor::Red,
+		//	false,
+		//	5.0f
+		//);
 
-		// 폭발 효과 시각화
-		DrawDebugSphere(
-			GetWorld(),
-			HitResult.Location,
-			100.0f,
-			20,
-			FColor::Orange,
-			false,
-			2.0f,
-			0,
-			3.0f
-		);
+		//// 폭발 효과 시각화
+		//DrawDebugSphere(
+		//	GetWorld(),
+		//	HitResult.Location,
+		//	100.0f,
+		//	20,
+		//	FColor::Orange,
+		//	false,
+		//	2.0f,
+		//	0,
+		//	3.0f
+		//);
 
 		// 나이아가라 파티클 + 사운드 재생
 		if (StealthFinishEffect)
@@ -1426,17 +1430,17 @@ void ABossEnemy::ExecuteStealthFinishRaycast()
 	}
 	else
 	{
-		// 미스 시 초록색 라인 (더 굵게)
-		DrawDebugLine(
-			GetWorld(),
-			StartLocation,
-			EndLocation,
-			FColor::Green,
-			false,
-			5.0f, // 5초간 표시
-			0,
-			8.0f // 더 굵게
-		);
+		//// 미스 시 초록색 라인 (더 굵게)
+		//DrawDebugLine(
+		//	GetWorld(),
+		//	StartLocation,
+		//	EndLocation,
+		//	FColor::Green,
+		//	false,
+		//	5.0f, // 5초간 표시
+		//	0,
+		//	8.0f // 더 굵게
+		//);
 
 		// 빗나간 경우에도 중력 복구 안전장치
 		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
@@ -1569,14 +1573,7 @@ float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent
 	if (bIsBossDead) return 0.0f; // 이미 사망했다면 데미지 무시
 
 	// 무적 상태일 때 데미지 무시
-	if (bIsInvincible)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Boss is invulnerable - damage ignored"));
-		return 0.0f;
-	}
-
-	// 등장 중일 때 데미지 무시
-	if (bIsPlayingBossIntro)
+	if (bIsInvincible || bIsPlayingBossIntro)
 	{
 		return 0.0f;
 	}
@@ -1643,13 +1640,41 @@ float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent
 		}
 	}
 
-	// 5. 사망 체크 (항상 실행됨)
 	if (BossHealth <= 0.0f)
 	{
 		BossDie();
 	}
 
+	// 모든 로직이 끝난 후 Super::TakeDamage 호출
+	Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
 	return DamageApplied;
+}
+
+float ABossEnemy::GetHealthPercent_Implementation() const
+{
+	if (bIsBossDead || BossHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	if (MaxBossHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(BossHealth / MaxBossHealth, 0.0f, 1.0f);
+}
+
+bool ABossEnemy::IsEnemyDead_Implementation() const
+{
+	return bIsBossDead;
+}
+
+void ABossEnemy::PlayWeaponHitSound()
+{
+	if (BossWeaponHitSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, BossWeaponHitSound, GetActorLocation());
+	}
 }
 
 void ABossEnemy::OnHitReactionMontageEnded(UAnimMontage* Montage, bool bInterrupted)

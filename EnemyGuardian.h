@@ -5,14 +5,17 @@
 #include "EnemyGuardianAnimInstance.h" // 사용할 애님 인스턴스 클래스 포함
 #include "Animation/AnimInstance.h" // UAnimInstance 클래스 사용
 #include "EnemyGuardianShield.h" // 장착할 방패 클래스 포함
+#include "HealthInterface.h"
+#include "NiagaraFunctionLibrary.h"
 #include "EnemyGuardian.generated.h"
 
 // 전방 선언
 class AEnemyGuardianBaton;
 class AEnemyGuardianShield;
+class UNiagaraSystem;
 
 UCLASS(Blueprintable)
-class LOCOMOTION_API AEnemyGuardian : public ACharacter
+class LOCOMOTION_API AEnemyGuardian : public ACharacter, public IHealthInterface
 {
 	GENERATED_BODY()
 
@@ -42,9 +45,12 @@ public:
 	void StartAttack(); // 공격 판정 시작 함수 (애니메이션 노티파이용)
 	void EndAttack(); // 공격 판정 종료 함수 (애니메이션 노티파이용)
 
-	// 캐릭터 상태 변수
+	// MaxHealth 추가
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
-	float Health = 300.0f; // 현재 체력
+	float MaxHealth = 600.0f; // 최대 체력
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+	float Health = 600.0f;
 
 	bool bIsPlayingIntro = false; // 등장 애니메이션 재생 여부
 	bool bIsShieldDestroyed = false; // 방패 파괴 여부
@@ -78,6 +84,25 @@ public:
 	TSet<AActor*> RaycastHitActors;
 	TSet<AActor*> DamagedActors;
 
+	/** IHealthInterface 구현 함수 */
+	virtual float GetHealthPercent_Implementation() const override;
+	virtual bool IsEnemyDead_Implementation() const override;
+
+	void PlayWeaponHitSound();
+	void PlayShieldHitSound();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects")
+	class USoundBase* WeaponHitSound; // 무기 피격 사운드
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SoundEffects")
+	class USoundBase* ShieldHitSound; // 무기 피격 사운드
+
+
+	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UAnimMontage* HitMontage; // 피격 애니메이션
+
+	FORCEINLINE class UNiagaraSystem* GetWeaponHitNiagaraEffect() const { return WeaponHitNiagaraEffect; }
+
 protected:
 	virtual void BeginPlay() override; // 게임 시작 시 호출
 
@@ -87,6 +112,7 @@ private:
 	void OnShieldAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 	void OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 	void OnStunMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	void OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 	// 블루프린트에서 설정할 원본 클래스
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
@@ -109,9 +135,6 @@ private:
 	UAnimMontage* BlockMontage; // 방어 애니메이션
 
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	UAnimMontage* HitMontage; // 피격 애니메이션
-
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
 	TArray<UAnimMontage*> DeadMontages; // 사망 애니메이션 배열 (랜덤 재생용)
 
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
@@ -120,4 +143,7 @@ private:
 	// 타이머 핸들
 	FTimerHandle StunTransitionTimer; // 스턴 상태 전환용 타이머 (현재 사용되지 않음)
 	FTimerHandle DeathTimerHandle; // 사망 후 정리까지의 지연용 타이머
+
+	UPROPERTY(EditDefaultsOnly, Category = "FX")
+	class UNiagaraSystem* WeaponHitNiagaraEffect = nullptr;
 };

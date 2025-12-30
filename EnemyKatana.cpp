@@ -6,6 +6,7 @@
 #include "Engine/World.h"
 #include "DrawDebugHelpers.h"
 #include "Enemy.h"
+#include "MainCharacter.h"
 
 AEnemyKatana::AEnemyKatana()
 {
@@ -42,6 +43,7 @@ void AEnemyKatana::StartAttack()
     bIsAttacking = true;
     RaycastHitActors.Empty();
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
 }
 
 void AEnemyKatana::EndAttack()
@@ -50,6 +52,12 @@ void AEnemyKatana::EndAttack()
     bIsStrongAttack = false;
     RaycastHitActors.Empty();
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
+}
+
+void AEnemyKatana::SetShooter(AEnemy* Shooter)
+{
+    SetOwner(Shooter);
 }
 
 void AEnemyKatana::EnableAttackHitDetection(EAttackType AttackType)
@@ -58,6 +66,7 @@ void AEnemyKatana::EnableAttackHitDetection(EAttackType AttackType)
     CurrentAttackType = AttackType;
     RaycastHitActors.Empty();
     DamagedActors.Empty();
+    bHasPlayedHitSound = false;
 
     UE_LOG(LogTemp, Warning, TEXT("StrongAttack Active: %d"), bIsStrongAttack); // 로그 추가
 }
@@ -93,8 +102,8 @@ void AEnemyKatana::PerformRaycastAttack()
     }
 
     // Sweep 전체 경로에 초록색 선만 한 번만 그림
-    FVector SweepLineEnd = Start + Forward * TotalDistance;
-    DrawDebugLine(GetWorld(), Start, SweepLineEnd, FColor::Green, false, 5.0f, SDPG_Foreground, 3.0f);
+ /*   FVector SweepLineEnd = Start + Forward * TotalDistance;
+    DrawDebugLine(GetWorld(), Start, SweepLineEnd, FColor::Green, false, 5.0f, SDPG_Foreground, 3.0f);*/
 
     for (int i = 0; i < NumSteps; ++i)
     {
@@ -125,8 +134,27 @@ void AEnemyKatana::PerformRaycastAttack()
                     RaycastHitActors.Add(HitActor);
                     ApplyDamage(HitActor);
 
+                    AEnemy* EnemyOwner = Cast<AEnemy>(GetOwner());
+                    if (EnemyOwner)
+                    {
+                        // AEnemy 클래스에 GetWeaponHitNiagaraEffect()가 있다고 가정합니다.
+                        if (class UNiagaraSystem* HitNiagara = EnemyOwner->GetWeaponHitNiagaraEffect())
+                        {
+                            UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                                GetWorld(),
+                                HitNiagara,
+                                Hit.ImpactPoint, // 히트 지점 사용
+                                Hit.Normal.Rotation(), // 피격 면의 노멀 방향 사용
+                                FVector(1.0f),
+                                true,
+                                true
+                            );
+                        }
+                    }
+                    
+                    PlayKatanaHitSound();
                     // 맞은 위치에 빨간 구 표시
-                    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12, FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);
+                    /*DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 30.0f, 12, FColor::Red, false, 0.3f, SDPG_Foreground, 4.0f);*/
 
                     return;  // 첫 번째 맞은 메인 캐릭터에서 함수 종료
                 }
@@ -155,6 +183,7 @@ void AEnemyKatana::ApplyDamage(AActor* OtherActor)
 
         AEnemy* EnemyOwner = Cast<AEnemy>(KatanaOwner); // Enemy 클래스에만 bIsEliteEnemy가 있으니까 카타나 오너를 Enemy로 캐스팅
         bool bIsElite = (EnemyOwner && EnemyOwner->bIsEliteEnemy); // 앨리트 적 여부
+        AMainCharacter* MainCharacter = Cast<AMainCharacter>(OtherActor);
 
         switch (CurrentAttackType)
         {
@@ -165,6 +194,15 @@ void AEnemyKatana::ApplyDamage(AActor* OtherActor)
         case EAttackType::Strong:
             DamageAmount = bIsElite ? 60.0f : 50.0f; 
             AttackTypeStr = TEXT("StrongAttack");
+
+            if (MainCharacter)
+            {
+                // 넉백 관련 코드 (LaunchCharacter 호출) 제거
+
+                // 빅 히트 리액션 호출만 유지
+                MainCharacter->PlayBigHitReaction();
+            }
+
             break;
         case EAttackType::Jump: 
             DamageAmount = bIsElite ? 40.0f : 30.0f;
@@ -176,6 +214,20 @@ void AEnemyKatana::ApplyDamage(AActor* OtherActor)
         UE_LOG(LogTemp, Warning, TEXT("AttackType: %s, Damage: %f IsElite: %d"), *AttackTypeStr, DamageAmount, bIsElite);
 
         DamagedActors.Add(OtherActor);
+
+        //PlayKatanaHitSound();
+    }
+}
+
+void AEnemyKatana::PlayKatanaHitSound()
+{
+    if (bHasPlayedHitSound) return;
+
+    AEnemy* Enemy = Cast<AEnemy>(GetOwner());
+    if (Enemy)
+    {
+        Enemy->PlayWeaponHitSound();
+        bHasPlayedHitSound = true;
     }
 }
 
