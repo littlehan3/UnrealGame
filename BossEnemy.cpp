@@ -1287,10 +1287,7 @@ float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent
 {
 	if (IsDead()) return 0.0f;
 
-	if (bIsInvincible || CurrentState == EBossState::Intro)
-	{
-		return 0.0f;
-	}
+	if (bIsInvincible || CurrentState == EBossState::Intro) return 0.0f;
 
 	float DamageApplied = FMath::Min(BossHealth, DamageAmount);
 	BossHealth -= DamageApplied;
@@ -1298,6 +1295,13 @@ float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent
 	if (BossHitSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, BossHitSound, GetActorLocation());
+	}
+
+	if (BossHealth <= 0.0f)
+	{
+		BossDie();
+		Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+		return DamageApplied;
 	}
 
 	// 슈퍼아머 체크: 특정 액션 중에는 피격 모션 생략
@@ -1340,14 +1344,8 @@ float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent
 			}
 		}
 	}
-
-	if (BossHealth <= 0.0f)
-	{
-		BossDie();
-	}
-
+	
 	Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
 	return DamageApplied;
 }
 

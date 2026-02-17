@@ -7,11 +7,11 @@ const int32 USettingsSaveGame::UserIndex = 0; // 단일 사용자 인덱스 0으로 초기화
 USettingsSaveGame::USettingsSaveGame()
 {
     // 게임 최초 실행 시 기본값
-    GraphicsQuality = 3; // 3 = Epic
+    GraphicsQuality = 1; // 3 = Epic
     MasterVolume = 0.5f; // 소리 50%
     bEnableVSync = true;       // VSync 켜기
-    AntiAliasingQuality = 3; // 3 = Epic
-    WindowMode = 0; // 0 = 전체 화면 (Fullscreen)
+    AntiAliasingQuality = 1; // 3 = Epic
+    WindowMode = 1; // 0 = 전체 화면 (Fullscreen)
     ScreenResolution.X = 1920;
     ScreenResolution.Y = 1080;
     MouseSensitivity = 1.0f;
