@@ -14,11 +14,6 @@ ACannon::ACannon()
 	CannonMesh->SetGenerateOverlapEvents(false);
 }
 
-void ACannon::BeginPlay()
-{
-	Super::BeginPlay();
-}
-
 void ACannon::SetShooter(AActor* InShooter)
 {
 	Shooter = InShooter;
@@ -33,11 +28,14 @@ void ACannon::FireProjectile()
 {
     UE_LOG(LogTemp, Warning, TEXT("FireProjectile CALLED"));
 
-    if (!ProjectileClass || !Shooter)
+    if (!ProjectileClass || !IsValid(Shooter))
     {
         UE_LOG(LogTemp, Error, TEXT("Missing projectile class or shooter."));
         return;
     }
+
+    UWorld* World = GetWorld();
+    if (!World) return;
 
     APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
     if (!PC) return;
@@ -47,7 +45,8 @@ void ACannon::FireProjectile()
     PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
 
     FVector ShootDirection = CameraRotation.Vector(); // 화면 중앙 방향
-    FVector SpawnLocation = GetActorLocation() + ShootDirection * 200.f + FVector(0.f, 0.f, -150.f); // 캐논 위치 그대로
+
+    FVector SpawnLocation = GetActorLocation() + ShootDirection * SpawnForwardOffset + FVector(0.f, 0.f, SpawnVerticalOffset); // 캐논 위치 그대로
     FRotator SpawnRotation = ShootDirection.Rotation();
 
     //DrawDebugSphere(GetWorld(), SpawnLocation, 15.f, 12, FColor::Green, false, 2.0f);
@@ -58,7 +57,7 @@ void ACannon::FireProjectile()
     Params.Owner = Shooter;
     Params.Instigator = Cast<APawn>(Shooter);
 
-    AAimSkill2Projectile* Projectile = GetWorld()->SpawnActor<AAimSkill2Projectile>(
+    AAimSkill2Projectile* Projectile = World->SpawnActor<AAimSkill2Projectile>(
         ProjectileClass, SpawnLocation, SpawnRotation, Params);
 
     if (Projectile)

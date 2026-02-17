@@ -2,27 +2,18 @@
 
 #include "CoreMinimal.h"
 #include "AIController.h"
-#include "NavigationSystem.h"
-#include "DrawDebugHelpers.h"
 #include "BossEnemyAIController.generated.h"
 
-class ABossEnemy; // º¸½º Æ÷ÀÎÅÍ »ç¿ëÀ¸·Î Àü¹æ¼±¾ğ
-class ABossEnemyAnimInstance; // ¾Ö´Ô ÀÎ½ºÅÏ½º »ç¿ëÀ¸·Î Àü¹æ¼±¾ğ 
+class ABossEnemy;
+class ABossEnemyAnimInstance;
 
+// ë³´ìŠ¤ AI ìƒíƒœ Enum
 UENUM(BlueprintType)
-enum class EBossEnemyAIState : uint8 // º¸½º »óÅÂ ¿­°ÅÇü ¼±¾ğ
+enum class EBossEnemyAIState : uint8
 {
-	Idle,
-	//MoveAroundPlayer,
-	//ChasePlayer,
-	MoveToPlayer,
-	NormalAttack,
-	//BackDash,
-	//ProjectileAttack,
-	//SpecialAttack,
-
-	//JumpAttack,
-	//Dash
+	Idle, // ê¸°ë³¸ìƒíƒœ
+	MoveToPlayer, // í”Œë ˆì´ì–´ì—ê²Œ ì ‘ê·¼
+	NormalAttack, // ê·¼ê±°ë¦¬ ê³µê²©
 };
 
 UCLASS()
@@ -32,72 +23,84 @@ class LOCOMOTION_API ABossEnemyAIController : public AAIController
 
 public:
 	ABossEnemyAIController();
-	void StopBossAI(); // AI µ¿ÀÛ ÁßÁö ÇÔ¼ö
-	void OnBossNormalAttackMontageEnded();
-	void SetBossAIState(EBossEnemyAIState NewState); // »óÅÂ ÀüÈ¯ ÇÔ¼ö
-	void OnBossAttackTeleportEnded(); // °ø°İ¿ë ÅÚ·¹Æ÷Æ® Á¾·á ¾Ë¸²
-	void OnBossRangedAttackEnded(); // ¿ø°Å¸® °ø°İ Á¾·á ¾Ë¸²
 
-	// ½ºÅÚ½º °ø°İ °ü·Ã ÇÔ¼öµé
+	void StopBossAI(); // AI ì¤‘ì§€
 	UFUNCTION()
-	bool CanExecuteStealthAttack() const;
+	void OnBossNormalAttackMontageEnded(); // ê·¼ê±°ë¦¬ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¢…ë£Œ ì²˜ë¦¬
+	UFUNCTION()
+	void OnBossAttackTeleportEnded(); // í…”ë ˆí¬íŠ¸ ê³µê²© ì¢…ë£Œ ì²˜ë¦¬
+	UFUNCTION()
+	void OnBossRangedAttackEnded(); // ì›ê±°ë¦¬ ê³µê²© ì¢…ë£Œ ì²˜ë¦¬
+
+	void SetBossAIState(EBossEnemyAIState NewState); // AI ìƒíƒœ ì„¤ì •
+	bool HandlePostTeleportPause(); // í…”ë ˆí¬íŠ¸ í›„ ì¼ì‹œì •ì§€ ì²˜ë¦¬
+	void HandlePostStealthRecovery(); // ìŠ¤í…”ìŠ¤ í›„ íšŒë³µ ì²˜ë¦¬
 
 	UFUNCTION()
-	bool IsInOptimalStealthRange() const;
-
+	bool CanExecuteStealthAttack() const; // ìŠ¤í…”ìŠ¤ ê³µê²© ê°€ëŠ¥ ì—¬ë¶€ í™•ì¸
 	UFUNCTION()
-	bool IsExecutingStealthAttack() const;
-
-	// ½ºÅÚ½º ´Ü°èº° AI Á¦¾î ÇÔ¼öµé
+	bool IsInOptimalStealthRange() const; // ìŠ¤í…”ìŠ¤ ìµœì  ê±°ë¦¬ ë‚´ì— ìˆëŠ”ì§€ í™•ì¸
 	UFUNCTION()
-	void HandleStealthPhaseTransition(int32 NewPhase);
+	bool IsExecutingStealthAttack() const; // ìŠ¤í…”ìŠ¤ ê³µê²© ì‹¤í–‰ ì¤‘ì¸ì§€ í™•ì¸
+	UFUNCTION()
+	void HandleStealthPhaseTransition(int32 NewPhase); // ìŠ¤í…”ìŠ¤ ë‹¨ê³„ ì „í™˜ ì²˜ë¦¬
 
 protected:
-	virtual void BeginPlay() override; // Beginplay ¿À¹ö¶óÀÌµå·Î ÃÊ±âÈ­
-	virtual void Tick(float DeltaTime) override; // Tick ¿À¹ö¶óÀÌµå·Î ÇÁ·¹ÀÓº° °»½Å
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
+	virtual void OnPossess(APawn* InPawn) override;
 
 private:
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float BossMoveRadius = 600.0f; // ¿ø ¹İÁö¸§
+	//// ìºì‹±ëœ ì°¸ì¡°
+	UPROPERTY()
+	APawn* PlayerPawn = nullptr; // í”Œë ˆì´ì–´ í° ìºì‹±ì„ ìœ„í•œ ì°¸ì¡°
 
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float BossStandingAttackRange = 200.0f; // Àü½Å °ø°İ ¹üÀ§
+	UPROPERTY()
+	ABossEnemy* CachedBoss; // ë³´ìŠ¤ ìºì‹±ì„ ìœ„í•œ ì°¸ì¡° ì°¸ì¡°
 
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float BossMovingAttackRange = 250.0f; // »óÃ¼ºĞ¸® °ø°İ ¹üÀ§
+	EBossEnemyAIState CurrentState = EBossEnemyAIState::Idle; // ê¸°ë³¸ì ìœ¼ë¡œ Idle ìƒíƒœë¡œ ì‹œì‘
 
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float BossDetectRadius = 3000.0f; // º¸½º°¡ ÇÃ·¹ÀÌ¾î¸¦ ÀÎ½ÄÇÏ´Â °Å¸®
+	UPROPERTY(EditDefaultsOnly, Category = "Stat", meta = (AllowPrivateAccess = "true"))
+	float BossMoveRadius = 600.0f; // ë³´ìŠ¤ê°€ í”Œë ˆì´ì–´ì—ê²Œ ì ‘ê·¼í•˜ëŠ” ë°˜ê²½
+	UPROPERTY(EditDefaultsOnly, Category = "Stat", meta = (AllowPrivateAccess = "true"))
+	float BossStandingAttackRange = 200.0f; // ë³´ìŠ¤ê°€ ì„œ ìˆì„ ë•Œì˜ ê³µê²© ë²”ìœ„
+	UPROPERTY(EditDefaultsOnly, Category = "Stat", meta = (AllowPrivateAccess = "true"))
+	float BossMovingAttackRange = 250.0f; // ë³´ìŠ¤ê°€ ì´ë™ ì¤‘ì¼ ë•Œì˜ ê³µê²© ë²”ìœ„
+	UPROPERTY(EditDefaultsOnly, Category = "Stat", meta = (AllowPrivateAccess = "true"))
+	float BossDetectRadius = 3000.0f; // ë³´ìŠ¤ê°€ í”Œë ˆì´ì–´ë¥¼ ê°ì§€í•˜ëŠ” ë°˜ê²½
+	UPROPERTY(EditDefaultsOnly, Category = "Stat", meta = (AllowPrivateAccess = "true"))
+	float BossAttackCooldown = 1.0f; // ë³´ìŠ¤ ê³µê²© ì¿¨ë‹¤ìš´ ì‹œê°„
+	UPROPERTY(EditDefaultsOnly, Category = "Stat", meta = (AllowPrivateAccess = "true"))
+	float StealthAttackOptimalRange = 250.0f; // ìŠ¤í…”ìŠ¤ ê³µê²© ìµœì  ê±°ë¦¬
+	UPROPERTY(EditDefaultsOnly, Category = "Stat", meta = (AllowPrivateAccess = "true"))
+	float StealthAttackMinRange = 200.0f; // ìŠ¤í…”ìŠ¤ ê³µê²© ìµœì†Œ ê±°ë¦¬
+	UPROPERTY(EditDefaultsOnly, Category = "Stat", meta = (AllowPrivateAccess = "true"))
+	float RangedAttackCooldown = 10.0f; // ì›ê±°ë¦¬ ê³µê²© ì¿¨ë‹¤ìš´ ì‹œê°„
 
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float BossAttackCooldown = 1.0f; // °ø°İ ÄğÅ¸ÀÓ 1ÃÊ
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", meta = (AllowPrivateAccess = "true"))
+	float LastRangedAttackTime = -FLT_MAX; // ë§ˆì§€ë§‰ ì›ê±°ë¦¬ ê³µê²© ì‹œê°„ ê¸°ë¡
+	UPROPERTY(VisibleAnywhere, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bIgnoreRangedCooldownOnce = false; // ì›ê±°ë¦¬ ê³µê²© ì¿¨ë‹¤ìš´ ë¬´ì‹œ í”Œë˜ê·¸
+	UPROPERTY(VisibleAnywhere, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bCanBossAttack = true; // ë³´ìŠ¤ ê³µê²© ê°€ëŠ¥ í”Œë˜ê·¸
+	UPROPERTY(VisibleAnywhere, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bIsBossAttacking = false; // ë³´ìŠ¤ê°€ ê³µê²© ì¤‘ì¸ì§€ ì—¬ë¶€
+	UPROPERTY(VisibleAnywhere, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bIsAIDisabledForStealth = false; // ìŠ¤í…”ìŠ¤ ì¤‘ AI ë¹„í™œì„±í™” í”Œë˜ê·¸
 
-	EBossEnemyAIState CurrentState = EBossEnemyAIState::Idle;
+	FTimerHandle BossNormalAttackTimerHandle; // ê·¼ê±°ë¦¬ ê³µê²© íƒ€ì´ë¨¸ í•¸ë“¤
 
+	void BossMoveToPlayer(); // í”Œë ˆì´ì–´ì—ê²Œ ì´ë™
+	void BossNormalAttack(); // ê·¼ê±°ë¦¬ ê³µê²©
+	void UpdateBossAIState(float DistanceToPlayer); // AI ìƒíƒœ ì—…ë°ì´íŠ¸
 
-	APawn* PlayerPawn = nullptr; // ÇÃ·¹ÀÌ¾î ÂüÁ¶
-	bool bCanBossAttack = true; // °ø°İ °¡´É¿©ºÎ
-	bool bIsBossAttacking = false; // °ø°İÁß ¿©ºÎ
-	FTimerHandle BossNormalAttackTimerHandle; // ÀÏ¹İ°ø°İ ÄğÅ¸ÀÓ Å¸ÀÌ¸Ó
-
-	void BossMoveToPlayer(); // ÇÃ·¹ÀÌ¾î¿¡°Ô ÀÌµ¿ÇÏ´Â ÇÔ¼ö
-	void BossNormalAttack(); // ÀÏ¹İ°ø°İ ÇÔ¼ö
-
-	void UpdateBossAIState(float DistanceToPlayer); // »óÅÂ ¾÷µ¥ÀÌÆ® ÇÔ¼ö
-	//void DrawDebugInfo(); // µğ¹ö±× ½Ã°¢È­ ÇÔ¼ö
-
-	// ½ºÅÚ½º °ø°İ ¼³Á¤°ªµé
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StealthAttackOptimalRange = 300.0f; // ½ºÅÚ½º °ø°İ ÃÖÀû °Å¸®
-
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StealthAttackMinRange = 200.0f; // ½ºÅÚ½º °ø°İ ÃÖ¼Ò °Å¸®
-
-	// AI »óÅÂ °ü¸®
-	bool bIsAIDisabledForStealth = false; // ½ºÅÚ½º Áß AI ºñÈ°¼ºÈ­ ¿©ºÎ
-
-	float RangedAttackCooldown = 10.0f; // Åõ»çÃ¼ °ø°İ ÄğÅ¸ÀÓ
-	float LastRangedAttackTime = -FLT_MAX; // ¸¶Áö¸· ¿ø°Å¸® °ø°İ ½Ã°£
-	bool bIgnoreRangedCooldownOnce = false; // µŞÅÚ·¹Æ÷Æ® Á÷ÈÄ 1È¸ ¹«Á¶°Ç Çã¿ëÇÏ´Â ÇÃ·¡±× 
-
+	bool IsBossBusy() const; // ë³´ìŠ¤ê°€ ë°”ìœì§€ í™•ì¸
+	bool ShouldHoldForIntroOrStealth(); // ì¸íŠ¸ë¡œ ë˜ëŠ” ìŠ¤í…”ìŠ¤ ì¤‘ì§€ ì—¬ë¶€
+	bool ShouldHoldForBossAction(); // ë³´ìŠ¤ ì•¡ì…˜ ì¤‘ì§€ ì—¬ë¶€
+	void HandleIdleRecovery(float DistanceToPlayer); // ìœ íœ´ ìƒíƒœ ë³µê·€ ì²˜ë¦¬
+	bool IsBossInHitReaction() const; // í”¼ê²© ë¦¬ì•¡ì…˜ ìƒíƒœ í™•ì¸
+	bool TryStartStealthAttack(); // ìŠ¤í…”ìŠ¤ ê³µê²© ì‹œë„
+	bool TryStartCloseRangeAttack(float DistanceToPlayer); // ê·¼ê±°ë¦¬ ê³µê²© ì‹œë„
+	bool TryStartMidRangeAttack(float DistanceToPlayer, float CurrentTime); // ì¤‘ê±°ë¦¬ ê³µê²© ì‹œë„
+	bool CanDoRangedAttack(float CurrentTime) const; // ì›ê±°ë¦¬ ê³µê²© ê°€ëŠ¥ ì—¬ë¶€ í™•ì¸
 };

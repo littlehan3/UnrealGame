@@ -4,13 +4,16 @@
 #include "NiagaraFunctionLibrary.h" // 나이아가라 이펙트 스폰 함수 사용
 #include "GameFramework/ProjectileMovementComponent.h" // 미사일의 투사체 무브먼트 제어
 #include "EnemyDroneAIController.h" // 이 드론이 사용할 AI 컨트롤러
+#include "Components/AudioComponent.h"
 #include "MainGameModeBase.h" // 게임모드에 적 사망을 알리기 위해 포함
+#include "EnemyDroneMissile.h"
 
 AEnemyDrone::AEnemyDrone()
 {
     PrimaryActorTick.bCanEverTick = true; // 매 프레임 Tick 함수 호출 활성화
-    GetCharacterMovement()->SetMovementMode(MOVE_Flying); // 이동 모드를 '비행'으로 설정
-    GetCharacterMovement()->GravityScale = 0.0f; // 비행 캐릭터이므로 중력 비활성화
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement(); // 캐릭터 무브먼트 컴포넌트 참조
+    MoveComp->SetMovementMode(MOVE_Flying); // 이동 모드를 '비행'으로 설정
+    MoveComp->GravityScale = DroneGravityScale; // 비행 캐릭터이므로 중력 비활성화
     AIControllerClass = AEnemyDroneAIController::StaticClass(); // 이 캐릭터가 사용할 AI 컨트롤러 클래스 지정
     FlightLoopAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("FlightLoopAudio"));
     FlightLoopAudio->SetupAttachment(RootComponent);
@@ -19,6 +22,9 @@ AEnemyDrone::AEnemyDrone()
 
 void AEnemyDrone::BeginPlay()
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
+
     Super::BeginPlay(); // 부모 클래스 BeginPlay 호출
     
     if (FlightLoopSound)
@@ -30,25 +36,22 @@ void AEnemyDrone::BeginPlay()
     // 최대 체력으로 현재 체력 초기화
     Health = MaxHealth;
 
-    if (!GetController()) // AI 컨트롤러가 할당되지 않았다면
+    AICon = Cast<AEnemyDroneAIController>(GetController()); // AI 컨트롤러 가져옴
+    if (!AICon) // AI 컨트롤러가 없다면
     {
-        UE_LOG(LogTemp, Warning, TEXT("No AI Controller found, spawning one"));
-        AEnemyDroneAIController* NewController = GetWorld()->SpawnActor<AEnemyDroneAIController>(); // 새 컨트롤러 스폰
-        if (NewController)
-        {
-            NewController->Possess(this); // 스폰된 컨트롤러가 이 드론에 빙의하도록 설정
-        }
+        SpawnDefaultController(); // AI 컨트롤러 스폰
+        AICon = Cast<AEnemyDroneAIController>(GetController());  // AI 컨트롤러 다시 가져옴
     }
 
-    PlayerActor = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0); // 플레이어 캐릭터 찾아 저장
+    PlayerActor = UGameplayStatics::GetPlayerCharacter(World, 0); // 플레이어 캐릭터 찾아 저장
 
-    // 오브젝트 풀링: 게임 시작 시 미사일 10개를 미리 생성하여 풀에 넣어둠
-    for (int32 i = 0; i < 10; ++i)
+    // 오브젝트 풀링: 게임 시작 시 미사일을 미리 생성하여 풀에 넣어둠
+	if (MissileClass) // 미사일 클래스가 유효하다면
     {
-        if (MissileClass) // 미사일 클래스가 유효하다면
+		for (int32 i = 0; i < InitialMissilePoolSize; i++) // 초기 생성 수 만큼 미사일 생성
         {
             // 미사일을 월드에 스폰하지만, 바로 사용하지는 않음
-            AEnemyDroneMissile* Missile = GetWorld()->SpawnActor<AEnemyDroneMissile>(MissileClass, FVector::ZeroVector, FRotator::ZeroRotator);
+            AEnemyDroneMissile* Missile = World->SpawnActor<AEnemyDroneMissile>(MissileClass, FVector::ZeroVector, FRotator::ZeroRotator);
             if (Missile)
             {
                 Missile->SetActorHiddenInGame(true); // 보이지 않게 숨김
@@ -62,36 +65,61 @@ void AEnemyDrone::BeginPlay()
 void AEnemyDrone::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime); // 부모 클래스 Tick 호출
-    MissileTimer += DeltaTime; // 매 틱마다 쿨타임 타이머를 증가시킴
+    if (bIsDead) return; // 사망했거나 인트로 중이면 로직 중단
 
-    if (MissileTimer >= MissileCooldown) // 타이머가 쿨타임을 초과하면
+    MissileFireInterval += DeltaTime; // 매 틱마다 발사간격 타이머를 증가시킴
+
+    if (MissileFireInterval >= MissileCooldown) // 타이머가 쿨타임을 초과하면
     {
         ShootMissile(); // 미사일 발사
-        MissileTimer = 0.0f; // 타이머 초기화
+		MissileFireInterval = 0.0f; // 타이머 초기화
     }
 }
 
 void AEnemyDrone::ShootMissile()
 {
-    AEnemyDroneMissile* Missile = GetAvailableMissileFromPool(); // 풀에서 사용 가능한 미사일을 가져옴
-    if (Missile && PlayerActor) // 미사일과 플레이어가 모두 유효하다면
-    {
-        FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 100.f; // 드론의 약간 앞에서 미사일 스폰
-        FRotator SpawnRot = (PlayerActor->GetActorLocation() - SpawnLoc).Rotation(); // 스폰 시 플레이어를 바라보는 방향 설정
-        Missile->ResetMissile(SpawnLoc, PlayerActor); // 가져온 미사일을 초기화하고 발사 준비
-        Missile->SetActorRotation(SpawnRot); // 미사일 방향 설정
-    }
+	AEnemyDroneMissile* AvailableMissile = GetAvailableMissileFromPool(); // 풀에서 사용 가능한 미사일 가져오기
+
+	if (!IsValid(AvailableMissile) || !IsValid(PlayerActor)) return; // 미사일이나 플레이어가 유효하지 않으면 중단
+
+    // 한 번 계산한 값은 const 변수에 고정해서 재사용
+	const FVector DroneLocation = GetActorLocation(); // 드론의 현재 위치
+	const FVector DroneForward = GetActorForwardVector(); // 드론의 정면 방향 벡터
+	const FVector TargetLocation = PlayerActor->GetActorLocation(); // 플레이어의 현재 위치
+
+    // 발사 위치 및 방향 계산
+	const FVector SpawnLocation = DroneLocation + (DroneForward * MissileSpawnForwardOffset); // 드론 앞쪽으로 오프셋만큼 이동한 위치
+	const FRotator SpawnRotation = (TargetLocation - SpawnLocation).Rotation(); // 플레이어를 향하는 방향으로 회전값 계산
+
+    // 미사일 세팅 및 발사
+	AvailableMissile->SetActorRotation(SpawnRotation); // 미사일의 회전값 설정
+	AvailableMissile->ResetMissile(SpawnLocation, PlayerActor); // 미사일 초기화 및 타겟 설정
 }
 
 AEnemyDroneMissile* AEnemyDrone::GetAvailableMissileFromPool()
 {
+	UWorld* World = GetWorld();
+	if (!World) return nullptr;
+
     for (AEnemyDroneMissile* Missile : MissilePool) // 풀에 있는 모든 미사일을 순회
     {
-        if (Missile && Missile->IsHidden()) // 미사일이 유효하고, 현재 숨겨져 있다면(사용 중이 아니라면)
+        if (IsValid(Missile) && Missile->IsHidden()) // 미사일이 유효하고, 현재 숨겨져 있다면(사용 중이 아니라면)
         {
             return Missile; // 해당 미사일 반환
         }
     }
+
+    // 풀링한 갯수보다 더 필요하다면 새로 하나 구워서 풀에 넣고 반환!
+	if (MissileClass) // 미사일 클래스가 유효하다면
+    {
+		AEnemyDroneMissile* NewMissile = World->SpawnActor<AEnemyDroneMissile>(MissileClass); // 새 미사일 스폰
+		if (NewMissile) // 스폰에 성공했다면
+        {
+			MissilePool.Add(NewMissile); // 풀에 추가
+			return NewMissile; // 새로 생성한 미사일 반환
+        }
+    }
+
     return nullptr; // 사용 가능한 미사일이 없으면 null 반환
 }
 
@@ -99,7 +127,7 @@ float AEnemyDrone::TakeDamage(float DamageAmount, FDamageEvent const& DamageEven
 {
     if (bIsDead) return 0.f;
 
-    float DamageApplied = FMath::Min(Health, DamageAmount);
+    const float DamageApplied = FMath::Min(Health, DamageAmount);
     Health -= DamageApplied;
     UE_LOG(LogTemp, Warning, TEXT("Drone took damage: %f, Health: %f"), DamageApplied, Health);
 
@@ -134,13 +162,16 @@ bool AEnemyDrone::IsEnemyDead_Implementation() const
 
 void AEnemyDrone::Die()
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
+
     if (bIsDead) return; // 중복 사망 처리 방지
     bIsDead = true; // 사망 상태로 전환
 
     // 사망 이펙트 재생
     if (DeathEffect)
     {
-        UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), DeathEffect, GetActorLocation(), GetActorRotation());
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(World, DeathEffect, GetActorLocation(), GetActorRotation());
     }
 
     // 사망 사운드 재생
@@ -157,7 +188,7 @@ void AEnemyDrone::Die()
     // 현재 활성화된 모든 미사일을 강제로 폭발시킴
     for (AEnemyDroneMissile* Missile : MissilePool)
     {
-        if (Missile && !Missile->IsHidden()) // 풀에서 활성화된 미사일을 찾아
+        if (IsValid(Missile) && !Missile->IsHidden()) // 풀에서 활성화된 미사일을 찾아
         {
             Missile->Explode(); // 즉시 폭발시킴
         }
@@ -168,21 +199,23 @@ void AEnemyDrone::Die()
 
 void AEnemyDrone::HideEnemy()
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
     UE_LOG(LogTemp, Warning, TEXT("Hiding EnemyDrone - Cleanup"));
     // 게임모드에 적이 파괴되었음을 알림
-    if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
+    if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(World->GetAuthGameMode()))
     {
         GameMode->OnEnemyDestroyed(this);
     }
 
-    GetWorld()->GetTimerManager().ClearAllTimersForObject(this); // 모든 타이머 정리
+    World->GetTimerManager().ClearAllTimersForObject(this); // 모든 타이머 정리
 
     // AI 컨트롤러 정리
-    AController* AICon = GetController();
-    if (AICon && IsValid(AICon))
+    AController* EnemyDroneAICon = GetController();
+    if (EnemyDroneAICon && IsValid(EnemyDroneAICon))
     {
-        AICon->UnPossess(); // 빙의 해제
-        AICon->Destroy(); // 컨트롤러 파괴
+        EnemyDroneAICon->UnPossess(); // 빙의 해제
+        EnemyDroneAICon->Destroy(); // 컨트롤러 파괴
     }
 
     // 무브먼트 컴포넌트 정리
@@ -229,11 +262,20 @@ void AEnemyDrone::HideEnemy()
     SetCanBeDamaged(false);
 
     // 다음 프레임에 안전하게 액터 제거
-    GetWorld()->GetTimerManager().SetTimerForNextTick(
-        [WeakThis = TWeakObjectPtr<AEnemyDrone>(this)]()
+	TWeakObjectPtr<AEnemyDrone> WeakThis(this);
+    World->GetTimerManager().SetTimerForNextTick(
+        [WeakThis]()
         {
             if (WeakThis.IsValid() && !WeakThis->IsActorBeingDestroyed())
             {
+                // 풀링된 미사일들도 함께 제거 (드론이 월드에서 완전히 사라질 때)
+                for (AEnemyDroneMissile* Missile : WeakThis->MissilePool)
+                {
+                    if (IsValid(Missile))
+                    {
+                        Missile->Destroy();
+                    }
+                }
                 WeakThis->Destroy();
                 UE_LOG(LogTemp, Warning, TEXT("EnemyDrone Successfully Destroyed"));
             }

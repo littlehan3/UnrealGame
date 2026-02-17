@@ -1,23 +1,20 @@
-// 이 파일이 항상 .cpp 파일의 *첫 번째* include여야 합니다.
 #include "MainMenuWidget.h" 
+#include "Components/Button.h"        // UButton의 OnClicked 이벤트를 사용하기 위해 
+#include "Kismet/GameplayStatics.h"   // OpenLevel 함수를 사용하기 위해
+#include "Kismet/KismetSystemLibrary.h" // QuitGame 함수를 사용하기 위해
+#include "GameFramework/PlayerController.h" // GetOwningPlayerController()가 반환하는 APlayerController를 알기 위해
+#include "Blueprint/UserWidget.h" // CreateWidget 함수를 사용하기 위해
+#include "SettingsGameInstance.h" 
+#include "TimerManager.h"
 
-// --- 기능에 필요한 헤더 파일들 ---
-#include "Components/Button.h"        // UButton의 OnClicked 이벤트를 사용하기 위해 필요
-#include "Kismet/GameplayStatics.h"   // OpenLevel 함수를 사용하기 위해 필요
-#include "Kismet/KismetSystemLibrary.h" // QuitGame 함수를 사용하기 위해 필요
-#include "GameFramework/PlayerController.h" // GetOwningPlayerController()가 반환하는 APlayerController를 알기 위해 필요
-#include "Blueprint/UserWidget.h" // <-- CreateWidget 함수를 사용하기 위해 추가
-#include "SettingsGameInstance.h"
 
-/**
- * NativeConstruct: 위젯이 생성될 때 호출됩니다.
- */
+// NativeConstruct: 위젯이 생성될 때 호출
 void UMainMenuWidget::NativeConstruct()
 {
-    // 부모 클래스의 NativeConstruct를 먼저 호출합니다.
+    // 부모 클래스의 NativeConstruct를 먼저 호출
     Super::NativeConstruct();
 
-    // BindWidget으로 연결된 버튼들이 유효한지 확인하고 클릭 이벤트를 C++ 함수에 연결합니다.
+    // BindWidget으로 연결된 버튼들이 유효한지 확인하고 클릭 이벤트를 C++ 함수에 연결
     if (PlayButton)
     {
         PlayButton->OnClicked.AddDynamic(this, &UMainMenuWidget::OnPlayClicked);
@@ -34,126 +31,104 @@ void UMainMenuWidget::NativeConstruct()
     }
 }
 
-/**
- * "Play" 버튼 기능
- */
 void UMainMenuWidget::OnPlayClicked()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Play Button Clicked! Setting up Loading Screen..."));
+    UWorld* World = GetWorld();
+    if (!World) return;
 
     // 1. 로딩 위젯 생성 및 표시
-    if (LoadingScreenWidgetClass)
+    if (IsValid(LoadingScreenWidgetClass))
     {
-        UUserWidget* LoadingWidget = CreateWidget<UUserWidget>(GetWorld(), LoadingScreenWidgetClass);
-        if (LoadingWidget)
+        UUserWidget* LoadingWidget = CreateWidget<UUserWidget>(World, LoadingScreenWidgetClass);
+        if (IsValid(LoadingWidget))
         {
-            LoadingWidget->AddToViewport();
-            UE_LOG(LogTemp, Warning, TEXT("Loading Screen displayed."));
+            LoadingWidget->AddToViewport(); // 뷰포트에 추가
         }
     }
-    // ...
-
-    // 2. 메인 메뉴 숨기기
+    // 2. 메인 메뉴 숨김
     this->SetVisibility(ESlateVisibility::Hidden);
 
-    // [수정된 부분] 로딩 화면을 띄울 때 입력 모드를 명시적으로 설정합니다.
-    APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
-    if (PC)
+    // 3. 입력모드 설정
+    APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+    if (IsValid(PC))
     {
-        FInputModeUIOnly InputMode;
-        // InputMode.SetWidgetToFocus(...) // <-- 로딩 화면은 포커스가 필요 없으므로 호출 안 함
-        InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
-        PC->SetInputMode(InputMode);
+        FInputModeUIOnly InputMode; // 키보드 마우스 입력 잠금
+        InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways); // 마우스 커서 게임 창 밖으로 나가지 않게 잠금 (듀얼모니터)
+        PC->SetInputMode(InputMode); // 입력 목적지를 게임 월드가 아닌 UI로 고정 (UI 우선권 부여)
         PC->SetShowMouseCursor(false); // 로딩 중 커서 숨김
     }
-    // [수정 끝]
-
-    // 4. 약간의 지연 후 레벨 로드 (로딩 스크린이 보이도록)
-    FTimerHandle TimerHandle;
-    GetWorld()->GetTimerManager().SetTimer(TimerHandle, this, &UMainMenuWidget::LoadTargetLevel, 2.0f, false);
+    // 게임이 불러오는 중인 걸 시각적으로 보여주기 위해 지연 타이머 설정
+    TWeakObjectPtr<UMainMenuWidget> WeakThis(this); // 약참조 선언
+    FTimerHandle TimerHandle; 
+    World->GetTimerManager().SetTimer(TimerHandle, [WeakThis]()
+        {
+            if (WeakThis.IsValid()) // 유효성 검사
+            {
+                WeakThis->LoadTargetLevel(); // 레벨 로드
+            }
+        }, LoadingDisplayTime, false); // 로딩화면 재생시간만큼, 단발성
 }
 
-/**
- * "Option" 버튼 기능
- */
 void UMainMenuWidget::OnOptionClicked()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Option Button Clicked!"));
+    UWorld* World = GetWorld();
+    if (!World) return;
+    if (!OptionsWidgetClass) return;
 
-    if (OptionsWidgetClass)
+    // 옵션 위젯을 생성하고 리플렉션을 통해 뒤로가기 이벤트를 바인딩
+    if (UUserWidget* OptionsWidget = CreateWidget<UUserWidget>(GetWorld(), OptionsWidgetClass))
     {
-        UUserWidget* OptionsWidget = CreateWidget<UUserWidget>(GetWorld(), OptionsWidgetClass);
-        if (OptionsWidget)
+        // 콜백 함수 바인딩
+        FScriptDelegate BackDelegate;
+        BackDelegate.BindUFunction(this, FName("OnBackFromOptions")); // 문자열로 함수를 찾음
+
+        // BP에서 정의된 OnBackClicked 이벤트 디스패처를 찾음
+        FProperty* DispatcherProperty = OptionsWidget->GetClass()->FindPropertyByName(FName("OnBackClicked"));
+        // 찾은 것이 이벤트 디스패처 형식이 맞는지 확인 (아니라면 nullptr 반환)
+        if (FMulticastDelegateProperty* MulticastDelegateProperty = CastField<FMulticastDelegateProperty>(DispatcherProperty))
         {
-            FScriptDelegate BackDelegate;
-            BackDelegate.BindUFunction(this, FName("OnBackFromOptions"));
-
-            FProperty* DispatcherProperty = OptionsWidget->GetClass()->FindPropertyByName(FName("OnBackClicked"));
-            if (FMulticastDelegateProperty* MulticastDelegateProperty = CastField<FMulticastDelegateProperty>(DispatcherProperty))
-            {
-                MulticastDelegateProperty->AddDelegate(BackDelegate, OptionsWidget);
-            }
-            else
-            {
-                UE_LOG(LogTemp, Error, TEXT("WBP_Options에 'OnBackClicked' Event Dispatcher None!"));
-            }
-
-            OptionsWidget->AddToViewport();
-            this->SetVisibility(ESlateVisibility::Hidden);
+            MulticastDelegateProperty->AddDelegate(BackDelegate, OptionsWidget); // BP에서 OnBackClicked 호출 시 c++ 함수 OnBackedFromOptions 실행
         }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("OptionsWidgetClass is not set..."));
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("WBP_Options 'OnBackClicked' Event Dispatcher None!"));
+        }
+        OptionsWidget->AddToViewport(); // 뷰포트에 옵션 위젯 표시
+        this->SetVisibility(ESlateVisibility::Hidden); // 메인메뉴 숨김
     }
 }
 
-/**
- * "Exit" 버튼 기능
- */
 void UMainMenuWidget::OnExitClicked()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Exit Button Clicked! Quitting Game..."));
+    UWorld* World = GetWorld();
+    if (!World) return;
 
-    // [수정된 부분]
-    // GetOwningPlayerController() 대신 UGameplayStatics::GetPlayerController를 사용합니다.
-    // 'this'는 이 위젯이 속한 월드(UObject*)를 의미하고, '0'은 0번 플레이어를 의미합니다.
-    APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
-
-    // PlayerController가 유효한지 확인하는 것은 동일하게 중요합니다.
-    if (PlayerController)
+    // 플레이어 컨트롤러 유효성 검사 후
+    APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+    if (IsValid(PC))
     {
-        UKismetSystemLibrary::QuitGame(this, PlayerController, EQuitPreference::Quit, true);
-    }
-    else
-    {
-        // 혹시 모르니 컨트롤러를 못 찾았을 때의 로그를 추가합니다.
-        UE_LOG(LogTemp, Error, TEXT("OnExitClicked: Failed to get PlayerController!"));
+        UKismetSystemLibrary::QuitGame(this, PC, EQuitPreference::Quit, true); // 게임 종료
     }
 }
 
 void UMainMenuWidget::OnBackFromOptions()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Back from Options received. Showing Main Menu."));
-
-    // [추가된 부분]
-    // 1. SettingsGameInstance를 가져옵니다.
+    // 옵션창을 닫을때 GameInstance를 통해 현재 설정을 디스크에 저장
     USettingsGameInstance* SettingsGI = Cast<USettingsGameInstance>(UGameplayStatics::GetGameInstance(GetWorld()));
-
-    // 2. 인스턴스가 유효하면 SaveSettings()를 호출합니다.
-    if (SettingsGI)
+    if (IsValid(SettingsGI)) // 유효성 검사
     {
-        SettingsGI->SaveSettings();
+        SettingsGI->SaveSettings(); // 세이브 세팅스 함수 호출
     }
-    // [추가된 부분 끝]
-
-    // WBP_Options는 스스로 'Remove from Parent'를 호출했으므로,
-    // 우리는 이 메인 메뉴 위젯을 다시 '보이게'만 하면 됩니다.
-    this->SetVisibility(ESlateVisibility::Visible);
+    this->SetVisibility(ESlateVisibility::Visible); // 메인메뉴 활성화
 }
 
 void UMainMenuWidget::LoadTargetLevel()
 {
-    // 기존 OnPlayClicked에 있던 레벨 로드 로직
-    UGameplayStatics::OpenLevel(this, FName("LowerSector_Mod"));
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    if (World) // 유효성 검사 후
+    {
+        UGameplayStatics::OpenLevel(this, FName("LowerSector_Mod")); // 레벨 로드
+    }
 }

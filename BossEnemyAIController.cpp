@@ -1,441 +1,422 @@
 #include "BossEnemyAIController.h"
 #include "Kismet/GameplayStatics.h"
-#include "NavigationSystem.h"
-#include "GameFramework/Character.h"
-#include "GameFramework/RotatingMovementComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "BossEnemy.h"
 #include "BossEnemyAnimInstance.h"
 
 ABossEnemyAIController::ABossEnemyAIController()
 {
-    PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = true; // Tick í™œì„±í™”
 }
 
 void ABossEnemyAIController::BeginPlay()
 {
-    Super::BeginPlay();
+	Super::BeginPlay();
 
-    PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-    CurrentState = EBossEnemyAIState::Idle;
+	UWorld* World = GetWorld();
+	if (!IsValid(World)) return;
+
+	PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0); // í”Œë ˆì´ì–´ í° ìºì‹±
+	CachedBoss = Cast<ABossEnemy>(GetPawn()); // ë³´ìŠ¤ ìºì‹±
+	CurrentState = EBossEnemyAIState::Idle; // ê¸°ë³¸ì ìœ¼ë¡œ Idle ìƒíƒœë¡œ ì‹œì‘
 }
 
 void ABossEnemyAIController::Tick(float DeltaTime)
 {
-    Super::Tick(DeltaTime);
+	Super::Tick(DeltaTime);
 
-    if (!GetPawn() || !PlayerPawn) return;
+	UWorld* World = GetWorld();
+	if (!(World)) return;
 
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
-    if (!Boss) return;
+	if (!IsValid(CachedBoss) || CachedBoss->IsDead()) return; // í”Œë ˆì´ì–´ ë˜ëŠ” ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šê±°ë‚˜ ì£½ì—ˆìœ¼ë©´ ì¢…ë£Œ
 
-    // µîÀå ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı ÁßÀÌ¸é AI Çàµ¿ ÁßÁö
-    if (Boss->bIsPlayingBossIntro)
-    {
-        // µîÀå Áß¿¡´Â NormalAttack »óÅÂ¸¦ À¯ÁöÇÏµÇ Çàµ¿Àº ÇÏÁö ¾ÊÀ½
-        if (CurrentState != EBossEnemyAIState::NormalAttack)
-        {
-            SetBossAIState(EBossEnemyAIState::NormalAttack);
-        }
-        /*DrawDebugInfo();*/
-        return;
-    }
+	if (!IsValid(PlayerPawn))
+	{
+		PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+		if (!IsValid(PlayerPawn)) return; // ì—¬ì „íˆ ì—†ìœ¼ë©´ ë‹¤ìŒ í‹±ì— ì¬ì‹œë„
+	}
 
-    // ½ºÅÚ½º °ø°İ ÁßÀÌ¸é AI Çàµ¿ ¿ÏÀü ÁßÁö
-    if (IsExecutingStealthAttack() || bIsAIDisabledForStealth)
-    {
-        if (CurrentState != EBossEnemyAIState::NormalAttack)
-        {
-            SetBossAIState(EBossEnemyAIState::NormalAttack);
-        }
-        /*DrawDebugInfo();*/
-        return; // ´Ù¸¥ Çàµ¿Àº ¼öÇàÇÏÁö ¾ÊÀ½
-    }
+	if (ShouldHoldForIntroOrStealth()) return; // ì¸íŠ¸ë¡œ ë˜ëŠ” ìŠ¤í…”ìŠ¤ ê³µê²© ì¤‘ì´ë©´ ëŒ€ê¸°
 
-    // ½ºÅÚ½º Á¾·á ÈÄ Idle »óÅÂ¿¡ °¤Èù °æ¿ì °­Á¦·Î MoveToPlayer »óÅÂ·Î ÀüÈ¯
-    if (CurrentState == EBossEnemyAIState::Idle && !Boss->bIsPlayingBossIntro)
-    {
-        float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
-        if (DistToPlayer <= BossDetectRadius)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Force transitioning from Idle to MoveToPlayer"));
-            SetBossAIState(EBossEnemyAIState::MoveToPlayer);
-        }
-    }
+	const float DistanceToPlayer = FVector::Dist(CachedBoss->GetActorLocation(), PlayerPawn->GetActorLocation()); // ë³´ìŠ¤ì™€ í”Œë ˆì´ì–´ì˜ ê±°ë¦¬ ê³„ì‚°
 
-    // ½ºÅÚ½º Á¾·á ÈÄ AI »óÅÂ º¹±¸ ¾ÈÀüÀåÄ¡
-    if (!bIsAIDisabledForStealth && !IsExecutingStealthAttack() &&
-        !Boss->bIsFullBodyAttacking && !Boss->bIsPlayingBossIntro)
-    {
-        // ½ºÅÚ½º°¡ ¿ÏÀüÈ÷ ³¡³µ´Âµ¥ Idle »óÅÂ¿¡ °¤Èù °æ¿ì
-        if (CurrentState == EBossEnemyAIState::Idle)
-        {
-            float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
-            if (DistToPlayer <= BossDetectRadius)
-            {
-                UE_LOG(LogTemp, Warning, TEXT("Force recovering from post-stealth Idle state"));
-                SetBossAIState(EBossEnemyAIState::MoveToPlayer);
-                SetFocus(PlayerPawn); // ÇÃ·¹ÀÌ¾î Æ÷Ä¿½º Àç¼³Á¤
-            }
-        }
-    }
+	HandleIdleRecovery(DistanceToPlayer); // Idle ìƒíƒœì—ì„œ ë‹¤ë¥¸ ìƒíƒœë¡œ ì „í™˜
 
-    // Àü½Å°ø°İ ÁßÀÌ°Å³ª ¸ğµç Á¾·ùÀÇ ÅÚ·¹Æ÷Æ® ÁßÀÏ ¶§´Â »óÅÂ ¾÷µ¥ÀÌÆ®¸¦ Á¦ÇÑ
-    if (Boss->bIsFullBodyAttacking || Boss->bIsBossTeleporting ||
-        Boss->bIsBossAttackTeleporting || Boss->bIsBossRangedAttacking)
-    {
-        // ÇØ´ç »óÅÂµé Áß¿¡´Â NormalAttack »óÅÂ¸¦ À¯Áö
-        if (CurrentState != EBossEnemyAIState::NormalAttack)
-        {
-            SetBossAIState(EBossEnemyAIState::NormalAttack);
-        }
-        /*DrawDebugInfo();*/
-        return; // ´Ù¸¥ Çàµ¿Àº ¼öÇàÇÏÁö ¾ÊÀ½
-    }
+	if (IsBossBusy()) return; // ë³´ìŠ¤ê°€ ë°”ìœì§€ í™•ì¸
 
-    UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(Boss->GetMesh()->GetAnimInstance());
-    if (AnimInstance && Boss->BossHitReactionMontages.Num() > 0)
-    {
-        for (UAnimMontage* Montage : Boss->BossHitReactionMontages)
-        {
-            if (Montage && AnimInstance->Montage_IsPlaying(Montage))
-            {
-                StopMovement();
-                return; // ÇÇ°İ ¸ùÅ¸ÁÖ Àç»ı ÁßÀÌ¸é Áï½Ã Tick Á¾·á
-            }
-        }
-    }
+	if (IsBossInHitReaction()) // ë³´ìŠ¤ê°€ ë°”ì˜ê±°ë‚˜ í”¼ê²© ë¦¬ì•¡ì…˜ ì¤‘ì´ë©´
+	{
+		StopMovement();
+		return;
+	}
 
-    float DistToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation());
-    UpdateBossAIState(DistToPlayer);
+	UpdateBossAIState(DistanceToPlayer); // í”Œë ˆì´ì–´ì™€ì˜ ê±°ë¦¬ë¥¼ ê¸°ë°˜ìœ¼ë¡œ AI ìƒíƒœ ì—…ë°ì´íŠ¸
 
-    //DrawDebugInfo(); // µğ¹ö±× ½Ã°¢È­
+	switch (CurrentState) // ìƒíƒœì— ë”°ë¥¸ í–‰ë™ ìˆ˜í–‰
+	{
+	case EBossEnemyAIState::MoveToPlayer: // í”Œë ˆì´ì–´ì—ê²Œ ì´ë™
+		BossMoveToPlayer(); 
+		break;
+	case EBossEnemyAIState::NormalAttack: // ê·¼ê±°ë¦¬ ê³µê²©
+		if (bCanBossAttack) // ê³µê²© ê°€ëŠ¥í•˜ë©´
+		{
+			BossNormalAttack(); // ê·¼ê±°ë¦¬ ê³µê²© ì‹¤í–‰
+		}
+		break;
+	case EBossEnemyAIState::Idle: // Idle ìƒíƒœ
+		StopMovement(); // ë©ˆì¶¤
+		break;
+	}
+}
 
-    // »óÅÂº° Çàµ¿
-    switch (CurrentState)
-    {
-    case EBossEnemyAIState::MoveToPlayer:
-        BossMoveToPlayer();
-        break;
-    case EBossEnemyAIState::NormalAttack:
-        if (bCanBossAttack)
-            BossNormalAttack();
-        break;
-    }
+void ABossEnemyAIController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+	CachedBoss = Cast<ABossEnemy>(InPawn);
+}
+
+bool ABossEnemyAIController::IsBossBusy() const 
+{
+	if (!IsValid(CachedBoss)) return false; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ false ë°˜í™˜
+	return CachedBoss->IsPerformingAction(); // trueì¸ì§€ falseì¸ì§€ ì°¾ê¸° ìœ„í•´ ë³´ìŠ¤ì˜ IsPerformingAction í•¨ìˆ˜ í˜¸ì¶œ
+}
+
+bool ABossEnemyAIController::ShouldHoldForIntroOrStealth()
+{
+	if (!IsValid(CachedBoss)) return true; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ true ë°˜í™˜í•´ì„œ ë©ˆì¶¤
+
+	if (CachedBoss->IsInState(EBossState::Intro) || IsExecutingStealthAttack() || bIsAIDisabledForStealth) // ì¸íŠ¸ë¡œì¬ìƒì¤‘ì´ê±°ë‚˜ ìŠ¤í…”ìŠ¤ ê³µê²© ì¤‘ì´ê±°ë‚˜ AIê°€ ë¹„í™œì„±í™”ëœ ê²½ìš°
+	{
+		if (CurrentState != EBossEnemyAIState::NormalAttack) // í˜„ì¬ ìƒíƒœê°€ NormalAttackì´ ì•„ë‹ˆë©´
+		{
+			SetBossAIState(EBossEnemyAIState::NormalAttack); // ìƒíƒœë¥¼ NormalAttackìœ¼ë¡œ ì„¤ì •
+		}
+		return true; // ture ë°˜í™˜í•´ì„œ ë©ˆì¶¤
+	}
+
+	return false; // false ë°˜í™˜í•´ì„œ ë©ˆì¶”ì§€ ì•ŠìŒ
+}
+
+bool ABossEnemyAIController::ShouldHoldForBossAction()
+{
+	if (!IsValid(CachedBoss) || !CachedBoss->IsPerformingAction()) return false; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šê±°ë‚˜ ì•¡ì…˜ ìˆ˜í–‰ ì¤‘ì´ ì•„ë‹ˆë©´ false ë°˜í™˜
+	
+	if (CurrentState != EBossEnemyAIState::NormalAttack) // í˜„ì¬ ìƒíƒœê°€ NormalAttackì´ ì•„ë‹ˆë©´
+	{
+		SetBossAIState(EBossEnemyAIState::NormalAttack); // ìƒíƒœë¥¼ NormalAttackìœ¼ë¡œ ì„¤ì •
+	}
+
+	return true; // true ë°˜í™˜í•´ì„œ ë©ˆì¶¤
+}
+
+void ABossEnemyAIController::HandleIdleRecovery(float DistanceToPlayer)
+{
+	if (!IsValid(CachedBoss)) return; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ ì¢…ë£Œ
+	if (CurrentState != EBossEnemyAIState::Idle) return; // í˜„ì¬ ìƒíƒœê°€ Idleì´ ì•„ë‹ˆë©´ ì¢…ë£Œ
+	if (CachedBoss->IsInState(EBossState::Intro)) return; // ì¸íŠ¸ë¡œ ì¬ìƒ ì¤‘ì´ë©´ ì¢…ë£Œ
+	if (DistanceToPlayer > BossDetectRadius) return; // í”Œë ˆì´ì–´ê°€ ê°ì§€ ë°˜ê²½ ë°–ì— ìˆìœ¼ë©´ ì¢…ë£Œ
+
+	SetBossAIState(EBossEnemyAIState::MoveToPlayer); // ìƒíƒœë¥¼ MoveToPlayerë¡œ ì„¤ì •
+
+	if (!bIsAIDisabledForStealth && !IsExecutingStealthAttack() && 
+		!CachedBoss->IsPerformingAction() && !CachedBoss->IsInState(EBossState::Intro)) 
+	{
+		if (IsValid(PlayerPawn)) // í”Œë ˆì´ì–´ í°ì´ ìœ íš¨í•˜ë©´
+		{
+			SetFocus(PlayerPawn); // í”Œë ˆì´ì–´ í°ì„ ë°”ë¼ë³´ê²Œ ì…‹ í¬ì»¤ìŠ¤ í˜¸ì¶œ
+		}
+	}
+}
+
+bool ABossEnemyAIController::IsBossInHitReaction() const
+{
+	if (!IsValid(CachedBoss)) return false; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ false ë°˜í™˜
+
+	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(CachedBoss->GetMesh()->GetAnimInstance()); // ë³´ìŠ¤ ì• ë‹ˆë©”ì´ì…˜ ì¸ìŠ¤í„´ìŠ¤ ê°€ì ¸ì˜´
+	if (!AnimInstance || CachedBoss->BossHitReactionMontages.Num() == 0) return false; // ì• ë‹ˆë©”ì´ì…˜ ì¸ìŠ¤í„´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šê±°ë‚˜ í”¼ê²© ë¦¬ì•¡ì…˜ ëª½íƒ€ì£¼ê°€ ì—†ìœ¼ë©´ false ë°˜í™˜
+
+	for (UAnimMontage* Montage : CachedBoss->BossHitReactionMontages) // í”¼ê²© ë¦¬ì•¡ì…˜ ëª½íƒ€ì£¼ë“¤ì— ëŒ€í•´ ë°˜ë³µ
+	{
+		if (Montage && AnimInstance->Montage_IsPlaying(Montage)) // ëª½íƒ€ì£¼ê°€ ìœ íš¨í•˜ê³  í˜„ì¬ ì¬ìƒ ì¤‘ì´ë©´
+		{
+			return true; // true ë°˜í™˜
+		}
+	}
+
+	return false; // ê·¸ ì™¸ false ë°˜í™˜
+}
+
+bool ABossEnemyAIController::TryStartStealthAttack()
+{
+	if (!IsValid(CachedBoss)) return false; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ false ë°˜í™˜
+	if (!CanExecuteStealthAttack()) return false; // ìŠ¤í…”ìŠ¤ ê³µê²©ì„ ì‹¤í–‰í•  ìˆ˜ ì—†ìœ¼ë©´ false ë°˜í™˜
+	if (FMath::RandRange(0.0f, 1.0f) > 0.5f) return false; // ìŠ¤í…”ìŠ¤ ê³µê²© ë°œë™ (0~100% ì¤‘ 50% í™•ë¥ )
+
+	CachedBoss->PlayBossStealthAttackAnimation(); // ìŠ¤í…”ìŠ¤ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	return true; // true ë°˜í™˜
+}
+
+bool ABossEnemyAIController::TryStartCloseRangeAttack(float DistanceToPlayer)
+{
+	// ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šê±°ë‚˜ í”Œë ˆì´ì–´ì™€ì˜ ê±°ë¦¬ê°€ ì„œ ìˆëŠ” ê³µê²© ë²”ìœ„ë¥¼ ì´ˆê³¼í•˜ë©´ false ë°˜í™˜
+	if (!IsValid(CachedBoss) || DistanceToPlayer > BossStandingAttackRange) return false; 
+
+	const bool bShouldTeleport = FMath::RandBool(); // í…”ë ˆí¬íŠ¸ ì—¬ë¶€ ëœë¤ ê²°ì •
+	if (bShouldTeleport && CachedBoss->CanTeleport()) // í…”ë ˆí¬íŠ¸ ê°€ëŠ¥í•˜ë©´
+	{
+		CachedBoss->PlayBossTeleportAnimation(); // í…”ë ˆí¬íŠ¸ ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	}
+	else // í…”ë ˆí¬íŠ¸í•˜ì§€ ì•Šìœ¼ë©´
+	{
+		CachedBoss->PlayBossNormalAttackAnimation(); // ì¼ë°˜ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+		StopMovement(); // ì´ë™ ë©ˆì¶¤
+	}
+
+	return true; // true ë°˜í™˜
+}
+
+bool ABossEnemyAIController::TryStartMidRangeAttack(float DistanceToPlayer, float CurrentTime)
+{
+	if (!IsValid(CachedBoss)) return false; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ false ë°˜í™˜
+	// í”Œë ˆì´ì–´ì™€ì˜ ê±°ë¦¬ê°€ ê·¼ì ‘ ê³µê²© ë²”ìœ„ ì´ë‚´ë¼ë©´ false ë°˜í™˜
+	if (DistanceToPlayer <= BossStandingAttackRange || DistanceToPlayer > BossMovingAttackRange) return false;
+
+	const bool bDoRangedAttack = CanDoRangedAttack(CurrentTime) && FMath::RandBool(); // ì›ê±°ë¦¬ ê³µê²© ê°€ëŠ¥ ì—¬ë¶€ ë° ëœë¤ ê²°ì •
+	if (bDoRangedAttack) // ì›ê±°ë¦¬ ê³µê²© ìˆ˜í–‰
+	{
+		CachedBoss->PlayBossRangedAttackAnimation(); // ì›ê±°ë¦¬ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+		LastRangedAttackTime = CurrentTime; // ì›ê±°ë¦¬ ê³µê²© ì‹œê°„ ê°±ì‹ 
+		if (bIgnoreRangedCooldownOnce) bIgnoreRangedCooldownOnce = false; // ì¿¨ë‹¤ìš´ ë¬´ì‹œ í”Œë˜ê·¸ ì´ˆê¸°í™”
+	}
+	else
+	{
+		CachedBoss->PlayBossUpperBodyAttackAnimation(); // ìƒì²´ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	}
+
+	return true; // true ë°˜í™˜
+}
+
+bool ABossEnemyAIController::CanDoRangedAttack(float CurrentTime) const
+{
+	// ì›ê±°ë¦¬ ê³µê²© ì¿¨íƒ€ìš´ ë¬´ì‹œ í”Œë˜ê·¸ê°€ ì„¤ì •ë˜ì–´ ìˆê±°ë‚˜ ì¿¨íƒ€ì„ì´ ì¶©ì¡±ëœë‹¤ë©´ true ë°˜í™˜ ì•„ë‹ˆë©´ false ë°˜í™˜
+	return bIgnoreRangedCooldownOnce || ((CurrentTime - LastRangedAttackTime) >= RangedAttackCooldown);
 }
 
 void ABossEnemyAIController::SetBossAIState(EBossEnemyAIState NewState)
 {
-    if (CurrentState != NewState)
-    {
-        CurrentState = NewState;
+	if (CurrentState == NewState) return; // ìƒíƒœê°€ ë™ì¼í•˜ë©´ ì¢…ë£Œ
 
-        // »óÅÂº° ÁøÀÔ ·Î±× Ãâ·Â
-        FString LocalStateName;
-        switch (CurrentState)
-        {
-        case EBossEnemyAIState::Idle: LocalStateName = TEXT("Idle"); break;
-        case EBossEnemyAIState::MoveToPlayer: LocalStateName = TEXT("MoveToPlayer"); break;
-        case EBossEnemyAIState::NormalAttack: LocalStateName = TEXT("NormalAttack"); break;
-        }
-        UE_LOG(LogTemp, Warning, TEXT("Boss State Changed: %s"), *LocalStateName);
+	// ìƒíƒœ ë³€ê²½ ë¡œê·¸ ì¶”ê°€
+	FString OldStateStr = StaticEnum<EBossEnemyAIState>()->GetValueAsString(CurrentState);
+	FString NewStateStr = StaticEnum<EBossEnemyAIState>()->GetValueAsString(NewState);
 
-    }
+	CurrentState = NewState; // ìƒíƒœ ê°±ì‹ 
 }
 
 void ABossEnemyAIController::UpdateBossAIState(float DistanceToPlayer)
 {
-    switch (CurrentState)
-    {
-    case EBossEnemyAIState::Idle:
-        if (DistanceToPlayer <= BossDetectRadius)
-            SetBossAIState(EBossEnemyAIState::MoveToPlayer);
-        break;
-    case EBossEnemyAIState::MoveToPlayer:
-        // Á¤Áö °ø°İ ¹üÀ§ (0-200) ¶Ç´Â ÀÌµ¿ °ø°İ ¹üÀ§ (201-250)¿¡ ÁøÀÔ
-        if (DistanceToPlayer <= BossStandingAttackRange ||
-            (DistanceToPlayer > BossStandingAttackRange && DistanceToPlayer <= BossMovingAttackRange))
-        {
-            SetBossAIState(EBossEnemyAIState::NormalAttack);
-        }
-        break;
-    case EBossEnemyAIState::NormalAttack:
-        if (DistanceToPlayer > BossMovingAttackRange)
-            SetBossAIState(EBossEnemyAIState::MoveToPlayer);
-        break;
-    }
+	switch (CurrentState) // ìƒíƒœì— ë”°ë¥¸ ì „í™˜ ë¡œì§
+	{
+	case EBossEnemyAIState::Idle: // Idle ìƒíƒœ
+		if (DistanceToPlayer <= BossDetectRadius) // í”Œë ˆì´ì–´ê°€ ê°ì§€ ë°˜ê²½ ë‚´ì— ìˆìœ¼ë©´
+			SetBossAIState(EBossEnemyAIState::MoveToPlayer); // ìƒíƒœë¥¼ MoveToPlayerë¡œ ì„¤ì •
+		break;
+	case EBossEnemyAIState::MoveToPlayer: // í”Œë ˆì´ì–´ì—ê²Œ ì´ë™
+		if (DistanceToPlayer <= BossStandingAttackRange || // í”Œë ˆì´ì–´ê°€ ì¼ë°˜ê³µê²© ë²”ìœ„ ë‚´ì— ìˆê³ 
+			(DistanceToPlayer > BossStandingAttackRange && DistanceToPlayer <= BossMovingAttackRange)) // í”Œë ˆì´ì–´ê°€ ì´ë™ê³µê²© ë²”ìœ„ ë‚´ì— ìˆìœ¼ë©´
+		{
+			SetBossAIState(EBossEnemyAIState::NormalAttack); // ìƒíƒœë¥¼ NormalAttackìœ¼ë¡œ ì„¤ì •
+		}
+		break;
+	case EBossEnemyAIState::NormalAttack: // ê·¼ê±°ë¦¬ ê³µê²©
+		if (DistanceToPlayer > BossMovingAttackRange) // í”Œë ˆì´ì–´ê°€ ì´ë™ê³µê²© ë²”ìœ„ ë°–ì— ìˆìœ¼ë©´
+			SetBossAIState(EBossEnemyAIState::MoveToPlayer); // ìƒíƒœë¥¼ MoveToPlayerë¡œ ì„¤ì •
+		break;
+	}
 }
-
 
 void ABossEnemyAIController::BossMoveToPlayer()
 {
-    if (!PlayerPawn || !GetPawn()) return;
+	if (!IsValid(PlayerPawn) || !IsValid(CachedBoss))
+	{
+		return;
+	}
 
-    // Àü½Å°ø°İ ÁßÀÏ ¶§´Â ÀÌµ¿ÇÏÁö ¾ÊÀ½
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
-    if (Boss && Boss->bIsFullBodyAttacking)
-    {
-        StopMovement();
-        UE_LOG(LogTemp, Warning, TEXT("Cannot move during full body attack"));
-        return;
-    }
 
-    MoveToActor(PlayerPawn, 5.0f);
+	if (CachedBoss->IsPerformingAction()) // ì•¡ì…˜ ìˆ˜í–‰ ì¤‘ì´ë©´
+	{
+		StopMovement(); // ì¤‘ì§€
+		return;
+	}
+
+	// ì‹¤ì œ ì´ë™ ëª…ë ¹ì´ ìˆ˜í–‰ë¨ì„ ì•Œë¦¼
+	MoveToActor(PlayerPawn, 5.0f); // í”Œë ˆì´ì–´ì—ê²Œ ì´ë™, AcceptanceRadius 5.0f ê·¼ë°©
 }
 
 void ABossEnemyAIController::BossNormalAttack()
 {
-    if (!bCanBossAttack) return; // °ø°İ °¡´É »óÅÂ°¡ ¾Æ´Ï¸é ¸®ÅÏ
+	UWorld* World = GetWorld();
+	if (!IsValid(World)) return;
 
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn()); // º¸½º °´Ã¼¸¦ Ä³½ºÆ®ÇØ¼­ °¡Á®¿È
-    if (!Boss) return; // º¸½º°¡ ¾øÀ¸¸é ¸®ÅÏ
+	if (!IsValid(CachedBoss) || !IsValid(PlayerPawn)) return;
+	if (!bCanBossAttack) return;
 
-    // ÇÇ°İ ÁßÀÌ°Å³ª »ç¸ÁÇÑ °æ¿ì ¶Ç´Â Àü½Å°ø°İ ÁßÀÎ °æ¿ì ¶Ç´Â ÅÚ·¹Æ÷Æ® ÁßÀÎ °æ¿ì °ø°İÇÏÁö ¾ÊÀ½
-    if (Boss->bIsBossHit || Boss->bIsBossDead || Boss->bIsFullBodyAttacking ||
-        Boss->bIsBossTeleporting || Boss->bIsBossAttackTeleporting || Boss->bIsBossRangedAttacking) return;
+	// ë³´ìŠ¤ê°€ í”¼ê²© ë¦¬ì•¡ì…˜ ì¤‘ì´ê±°ë‚˜ ì£½ì—ˆê±°ë‚˜ ì•¡ì…˜ ìˆ˜í–‰ ì¤‘ì´ë©´ ì¢…ë£Œ
+	if (CachedBoss->IsInState(EBossState::HitReaction) || CachedBoss->IsDead() || CachedBoss->IsPerformingAction()) return;
 
-    float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation()); // ÇÃ·¹ÀÌ¾î¿Í º¸½º °£ÀÇ °Å¸® °è»ê
-    float CurrentTime = GetWorld()->GetTimeSeconds();
+	const float DistanceToPlayer = FVector::Dist(CachedBoss->GetActorLocation(), PlayerPawn->GetActorLocation()); // ë³´ìŠ¤ì™€ í”Œë ˆì´ì–´ì˜ ê±°ë¦¬ ê³„ì‚°
+	const float CurrentTime = World->GetTimeSeconds(); // í˜„ì¬ ì‹œê°„ ê°€ì ¸ì˜¤ê¸°
 
-    UE_LOG(LogTemp, Warning, TEXT("Boss choosing attack - Distance: %f"), DistanceToPlayer); // µğ¹ö±× ·Î±×: ÇöÀç °Å¸® Ãâ·Â
+	if (TryStartStealthAttack() || !CachedBoss->CanPerformAttack()) return; // ìŠ¤í…”ìŠ¤ ê³µê²© ì‹œë„ì¤‘ì´ê±°ë‚˜ ê³µê²© ë¶ˆê°€ ì‹œ ì¢…ë£Œ
 
-    // ÃÖ¿ì¼±¼øÀ§: ½ºÅÚ½º °ø°İ Ã¼Å©¸¦ ¸ğµç °Å¸® Á¶°Ç ÀÌÀü¿¡ ½ÇÇà
-    if (CanExecuteStealthAttack()) // ½ºÅÚ½º °ø°İ Á¶°ÇÀ» ¸¸Á·ÇÏ´ÂÁö Ã¼Å©
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Stealth conditions met - rolling dice")); // µğ¹ö±× ·Î±×: ½ºÅÚ½º Á¶°Ç ¸¸Á·µÊ
-        float StealthChance = FMath::RandRange(0.0f, 1.0f); // 0.0~1.0 »çÀÌÀÇ ·£´ı °ª »ı¼º
-        if (StealthChance <= 0.5f) // 50% È®·ü·Î ½ºÅÚ½º °ø°İ ½ÇÇà
-        {
-            Boss->PlayBossStealthAttackAnimation(); // ½ºÅÚ½º °ø°İ ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı
-            UE_LOG(LogTemp, Warning, TEXT("Boss executing STEALTH ATTACK!")); // µğ¹ö±× ·Î±×: ½ºÅÚ½º °ø°İ ½ÇÇàµÊ
-            return; // ½ºÅÚ½º °ø°İÀÌ ¼±ÅÃµÇ¸é ´Ù¸¥ °ø°İÀº ½ÇÇàÇÏÁö ¾ÊÀ½
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Stealth dice roll failed - continuing with normal attacks")); // µğ¹ö±× ·Î±×: ½ºÅÚ½º È®·ü ½ÇÆĞ, ÀÏ¹İ °ø°İÀ¸·Î ÁøÇà
-        }
-    }
+	// ê·¼ê±°ë¦¬ ë˜ëŠ” ì¤‘ê±°ë¦¬ ê³µê²© ì‹œë„ë¥¼ í†µí•´ ì•¡ì…˜ ì‹œì‘
+	const bool bStartedAction = TryStartCloseRangeAttack(DistanceToPlayer) || TryStartMidRangeAttack(DistanceToPlayer, CurrentTime);
 
-    // ±× ´ÙÀ½¿¡ ±âÁ¸ °Å¸®º° °ø°İ ·ÎÁ÷ ½ÇÇà
-    if (Boss && Boss->bCanBossAttack) // º¸½º°¡ Á¸ÀçÇÏ°í °ø°İ °¡´É »óÅÂÀÎÁö Ã¼Å©
-    {
-        if (DistanceToPlayer <= BossStandingAttackRange) // 0-200 ¹üÀ§: ±Ù°Å¸® °ø°İ ¹üÀ§
-        {
-            bool bShouldTeleport = FMath::RandBool(); // 50% È®·ü·Î true/false °áÁ¤
-            if (bShouldTeleport && Boss->bCanTeleport) // ÅÚ·¹Æ÷Æ®°¡ ¼±ÅÃµÇ°í ÅÚ·¹Æ÷Æ® °¡´É »óÅÂÀÎ °æ¿ì
-            {
-                // 50% È®·ü - ¸Ö¾îÁö´Â ÅÚ·¹Æ÷Æ® ½ÇÇà
-                Boss->PlayBossTeleportAnimation(); // ÈÄÅğ ÅÚ·¹Æ÷Æ® ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı
-                UE_LOG(LogTemp, Warning, TEXT("Boss chose retreat teleport - Distance: %f"), DistanceToPlayer); // µğ¹ö±× ·Î±×: ÈÄÅğ ÅÚ·¹Æ÷Æ® ¼±ÅÃµÊ
-            }
-            else
-            {
-                // 50% È®·ü - Àü½Å °ø°İ ½ÇÇà
-                Boss->PlayBossNormalAttackAnimation(); // ÀÏ¹İ °ø°İ ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı
-                StopMovement(); // AI ÀÌµ¿ ÁßÁö (°ø°İ Áß¿¡´Â ¿òÁ÷ÀÌÁö ¾ÊÀ½)
-                UE_LOG(LogTemp, Warning, TEXT("Boss chose standing attack - Distance: %f"), DistanceToPlayer); // µğ¹ö±× ·Î±×: ±Ù°Å¸® °ø°İ ¼±ÅÃµÊ
-            }
-        }
-        else if (DistanceToPlayer > BossStandingAttackRange && DistanceToPlayer <= BossMovingAttackRange) // 201-250 ¹üÀ§: Áß°Å¸® °ø°İ ¹üÀ§
-        {
-            bool bDoRangedAttack = false;
-            // 1. ¿ø°Å¸® ÄğÅ¸ÀÓ ¹× ¿¹¿Ü(µŞÅÚ·¹Æ÷Æ® ÈÄ 1È¸ Çã¿ë) Ã¼Å©
-            if (bIgnoreRangedCooldownOnce ||
-                ((CurrentTime - LastRangedAttackTime) >= RangedAttackCooldown))
-            {
-                bDoRangedAttack = FMath::RandBool(); // 50% È®·ü (º¯°æ °¡´É)
-            }
+	if (!bStartedAction) return; // ì•„ë¬´ ì•¡ì…˜ë„ ì‹œì‘í•˜ì§€ ëª»í–ˆìœ¼ë©´ ì¢…ë£Œ
 
-            // 2. ½ÇÁ¦ °ø°İ ½ÇÇà
-            if (bDoRangedAttack)
-            {
-                Boss->PlayBossRangedAttackAnimation();
-                LastRangedAttackTime = CurrentTime;
-                if (bIgnoreRangedCooldownOnce) bIgnoreRangedCooldownOnce = false; // ÇÑ ¹ø¸¸ Àû¿ë
-                UE_LOG(LogTemp, Warning, TEXT("Moving Ranged Attack - CD OK - Distance: %f"), DistanceToPlayer);
-            }
-            else
-            {
-                Boss->PlayBossUpperBodyAttackAnimation();
-                UE_LOG(LogTemp, Warning, TEXT("Moving UpperBody Attack - or RangedAttack on CD - Distance: %f"), DistanceToPlayer);
-            }
-        }
-        else
-        {
-            // °ø°İ ¹üÀ§¸¦ ¹ş¾î³­ °æ¿ì (251 ÀÌ»ó) °ø°İÇÏÁö ¾ÊÀ½
-            UE_LOG(LogTemp, Warning, TEXT("Out of attack range - Distance: %f"), DistanceToPlayer); // µğ¹ö±× ·Î±×: °ø°İ ¹üÀ§ ¹ş¾î³²
-            return; // °ø°İÇÏÁö ¾ÊÀ¸¹Ç·Î bCanBossAttackÀ» false·Î ¼³Á¤ÇÏÁö ¾Ê°í ¸®ÅÏ
-        }
-
-        // ½ºÅÚ½º °ø°İÀÌ ¾Æ´Ñ ÀÏ¹İ °ø°İÀÌ ½ÇÇàµÈ °æ¿ì¿¡¸¸ °ø°İ ºÒ°¡ »óÅÂ·Î ¼³Á¤
-        if (!Boss->bIsBossTeleporting && !Boss->bIsBossAttackTeleporting && !IsExecutingStealthAttack())
-        {
-            bCanBossAttack = false; // °ø°İ ÈÄ ÄğÅ¸ÀÓÀ» À§ÇØ °ø°İ ºÒ°¡ »óÅÂ·Î ¼³Á¤
-        }
-    }
+	// ì•¡ì…˜ì´ í…”ë ˆí¬íŠ¸ì¤‘, ê³µê²©í…”ë ˆí¬íŠ¸, ìŠ¤í…”ìŠ¤ ê³µê²©ì´ ì•„ë‹ˆë©´
+	if (!CachedBoss->IsInState(EBossState::Teleporting) && !CachedBoss->IsInState(EBossState::AttackTeleport) && !IsExecutingStealthAttack()) 
+	{
+		bCanBossAttack = false; // ê³µê²© ë¶ˆê°€
+	}
 }
-
 
 void ABossEnemyAIController::OnBossNormalAttackMontageEnded()
 {
-    bCanBossAttack = true;
+	bCanBossAttack = true; // ê³µê²© ê°€ëŠ¥
 }
 
 void ABossEnemyAIController::OnBossAttackTeleportEnded()
 {
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
-    if (!Boss)
-    {
-        bCanBossAttack = true;
-        return;
-    }
+	UWorld* World = GetWorld();
+	if (!IsValid(World)) return;
 
-    if (Boss->bShouldUseRangedAfterTeleport)
-    {
-        bIgnoreRangedCooldownOnce = true; // ´ÙÀ½ Åõ»çÃ¼ °ø°İ¸¸ ÄğÅ¸ÀÓ ¹«½Ã
-        Boss->PlayBossRangedAttackAnimation();
-        LastRangedAttackTime = GetWorld()->GetTimeSeconds(); // CD °»½Å
-        Boss->bShouldUseRangedAfterTeleport = false;
-    }
-    else 
-    {
-        bCanBossAttack = true;
-    }
+	if (!IsValid(CachedBoss)) return; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šë‹¤ë©´
+
+	if (CachedBoss->bShouldUseRangedAfterTeleport) // í…”ë ˆí¬íŠ¸ í›„ ì›ê±°ë¦¬ ê³µê²© ì‚¬ìš© í”Œë˜ê·¸ê°€ ì„¤ì •ë˜ì–´ ìˆë‹¤ë©´
+	{
+		bIgnoreRangedCooldownOnce = true; // ì¿¨ë‹¤ìš´ ë¬´ì‹œ í”Œë˜ê·¸ ì„¤ì •
+		CachedBoss->PlayBossRangedAttackAnimation(); // ì›ê±°ë¦¬ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+		LastRangedAttackTime = World->GetTimeSeconds(); // ì›ê±°ë¦¬ ê³µê²© ì‹œê°„ ê°±ì‹ 
+		CachedBoss->bShouldUseRangedAfterTeleport = false; // í”Œë˜ê·¸ ì´ˆê¸°í™”
+	}
+	else // ì›ê±°ë¦¬ ê³µê²© ì‚¬ìš© í”Œë˜ê·¸ê°€ ì„¤ì •ë˜ì–´ ìˆì§€ ì•Šë‹¤ë©´
+	{
+		bCanBossAttack = true; // ê³µê²© ê°€ëŠ¥ í”Œë˜ê·¸ ì„¤ì •
+	}
 }
 
 void ABossEnemyAIController::OnBossRangedAttackEnded()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Ranged attack ended - resuming chase logic"));
-    bCanBossAttack = true; // Áï½Ã Ãß°İ Àç°³
+	bCanBossAttack = true; // ê³µê²© ê°€ëŠ¥
+}
+
+bool ABossEnemyAIController::HandlePostTeleportPause()
+{
+	if (!IsValid(CachedBoss)) return false; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šë‹¤ë©´ false ë°˜í™˜
+
+	const float RandomValue = FMath::FRandRange(0.0f, 100.0f);
+
+	if (RandomValue <= 50.0f) // ê³µê²© í…”ë ˆí¬íŠ¸ ì‚¬ìš© ì‹œ
+	{
+		CachedBoss->PlayBossAttackTeleportAnimation(); // ê³µê²© í…”ë ˆí¬íŠ¸ ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+		return CachedBoss->IsInState(EBossState::AttackTeleport); // ìƒíƒœê°€ AttackTeleportì¸ì§€ ë°˜í™˜
+	}
+	else
+	{
+		CachedBoss->PlayBossRangedAttackAnimation(); // ì›ê±°ë¦¬ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+		return CachedBoss->IsInState(EBossState::RangedAttack); // ìƒíƒœê°€ RangedAttackì¸ì§€ ë°˜í™˜
+	}
+}
+
+void ABossEnemyAIController::HandlePostStealthRecovery()
+{
+	if (!IsValid(PlayerPawn)) return;
+
+	SetBossAIState(EBossEnemyAIState::MoveToPlayer); // ìƒíƒœë¥¼ MoveToPlayerë¡œ ì„¤ì •
+
+	SetFocus(PlayerPawn); // í”Œë ˆì´ì–´ í°ì„ ë°”ë¼ë³´ê²Œ ì…‹ í¬ì»¤ìŠ¤ í˜¸ì¶œ
 }
 
 bool ABossEnemyAIController::CanExecuteStealthAttack() const
 {
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
-    if (!Boss) return false;
+	if (!IsValid(CachedBoss)) return false; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ false ë°˜í™˜
 
-    // ½ºÅÚ½º °ø°İ °¡´É ¿©ºÎ Ã¼Å© (BossEnemy¿¡ ÀÖ´Â º¯¼ö)
-    if (!Boss->bCanUseStealthAttack) return false;
+	if (!CachedBoss->CanUseStealthAttack()) return false; // ìŠ¤í…”ìŠ¤ ê³µê²© ì‚¬ìš© ë¶ˆê°€ ì‹œ false ë°˜í™˜
 
-    // ´Ù¸¥ Æ¯¼ö °ø°İÀÌ ÁøÇà ÁßÀÎÁö Ã¼Å© (BossEnemy¿¡ ÀÖ´Â º¯¼öµé)
-    if (Boss->bIsBossRangedAttacking || Boss->bIsBossTeleporting ||
-        Boss->bIsBossAttackTeleporting) return false;
+	if (CachedBoss->IsPerformingAction()) return false; // ì•¡ì…˜ ìˆ˜í–‰ ì¤‘ì´ë©´ false ë°˜í™˜
 
-    // °Å¸® Á¶°Ç Ã¼Å©
-    if (!IsInOptimalStealthRange()) return false;
+	if (!IsInOptimalStealthRange()) return false; // ìµœì  ê±°ë¦¬ ë‚´ì— ì—†ìœ¼ë©´ false ë°˜í™˜
 
-    return true;
+	return true; // ê·¸ì™¸ true ë°˜í™˜
 }
 
 bool ABossEnemyAIController::IsInOptimalStealthRange() const
 {
-    APawn* TargetPlayer = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);  // º¯¼ö¸í º¯°æ
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
+	if (!IsValid(PlayerPawn) || !IsValid(CachedBoss)) return false;
 
-    if (!TargetPlayer || !Boss) return false;
+	const float Distance = FVector::Dist(CachedBoss->GetActorLocation(), PlayerPawn->GetActorLocation()); // ë³´ìŠ¤ì™€ í”Œë ˆì´ì–´ ê°„ì˜ ê±°ë¦¬ ê³„ì‚°
 
-    float Distance = FVector::Dist(Boss->GetActorLocation(), TargetPlayer->GetActorLocation());
-
-    // ½ºÅÚ½º °ø°İ ÃÖÀû °Å¸®: 300-600
-    return (Distance >= StealthAttackMinRange && Distance <= StealthAttackOptimalRange);
+	// ìŠ¤í…”ìŠ¤ ê³µê²© ìµœì  ê±°ë¦¬: 200-300
+	return (Distance >= StealthAttackMinRange && Distance <= StealthAttackOptimalRange); // ìŠ¤í…”ìŠ¤ ê³µê²© ìµœì  ê±°ë¦¬ ë‚´ì— ìˆëŠ”ì§€ í™•ì¸
 }
-
 
 bool ABossEnemyAIController::IsExecutingStealthAttack() const
 {
-    ABossEnemy* Boss = Cast<ABossEnemy>(GetPawn());
-    if (!Boss) return false;
+	if (!IsValid(CachedBoss)) return false; // ë³´ìŠ¤ê°€ ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ false ë°˜í™˜
 
-    // BossEnemy¿¡ ½ÇÁ¦·Î ¼±¾ğµÈ ½ºÅÚ½º º¯¼öµé¸¸ Ã¼Å©
-    return (Boss->bIsStealthStarting ||
-        Boss->bIsStealthDiving ||
-        Boss->bIsStealthInvisible ||
-        Boss->bIsStealthKicking ||
-        Boss->bIsStealthFinishing);
+	return CachedBoss->IsExecutingStealthAttack(); // ë³´ìŠ¤ê°€ ìŠ¤í…”ìŠ¤ ê³µê²©ì„ ì‹¤í–‰ ì¤‘ì¸ì§€ ë°˜í™˜
 }
 
 void ABossEnemyAIController::HandleStealthPhaseTransition(int32 NewPhase)
 {
-    switch (NewPhase)
-    {
-    case 1: // ½ºÅÚ½º ½ÃÀÛ
-        bIsAIDisabledForStealth = true;
-        bCanBossAttack = false;  // **AI °ø°İµµ ºñÈ°¼ºÈ­**
-        StopMovement();
-        UE_LOG(LogTemp, Warning, TEXT("AI Disabled for Stealth Attack"));
-        break;
+	EStealthPhase Phase = static_cast<EStealthPhase>(NewPhase); // NewPhaseì˜ int ê°’ì„ EStealthPhase Enumìœ¼ë¡œ ë³€í™˜
 
-    case 3: // Åõ¸íÈ­ ´Ü°è
-        SetFocus(nullptr);
-        StopMovement();
-        UE_LOG(LogTemp, Warning, TEXT("Stealth invisible - AI tracking disabled"));
-        break;
+	switch (Phase)
+	{
+	case EStealthPhase::Starting: // ìŠ¤í…”ìŠ¤ ì‹œì‘
+		bIsAIDisabledForStealth = true; // AI ë¹„í™œì„±í™”
+		bCanBossAttack = false; // ê³µê²© ë¶ˆê°€
+		StopMovement(); // ë©ˆì¶¤
+		break;
 
-    case 5: // Å± °ø°İ
-        if (APawn* Player = UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
-        {
-            SetFocus(Player);
-        }
-        UE_LOG(LogTemp, Warning, TEXT("Stealth kick phase - refocusing player"));
-        break;
+	case EStealthPhase::Invisible: // íˆ¬ëª… ë‹¨ê³„
+		SetFocus(nullptr); // SetFocus í•´ì œ
+		StopMovement(); // ë©ˆì¶¤
+		break;
 
-    case 6: // ÇÇ´Ï½¬ °ø°İ ´Ü°è
-        StopMovement();
-        UE_LOG(LogTemp, Warning, TEXT("Stealth finish phase - AI disabled"));
-        break;
+	case EStealthPhase::Kicking: // í‚¥ ê³µê²©
+		if (PlayerPawn) // í”Œë ˆì´ì–´ í°ì´ ìœ íš¨í•˜ë©´
+		{
+			SetFocus(PlayerPawn); // í”Œë ˆì´ì–´ í°ì„ ë°”ë¼ë³´ê²Œ ì…‹ í¬ì»¤ìŠ¤ í˜¸ì¶œ
+		}
+		break;
 
-    case 0: // ½ºÅÚ½º Á¾·á AI »óÅÂ º¹±¸
-        bIsAIDisabledForStealth = false;
-        bCanBossAttack = true;  // AI ÄÁÆ®·Ñ·¯ °ø°İ »óÅÂ º¹±¸
+	case EStealthPhase::Finishing: // ë§ˆë¬´ë¦¬ ê³µê²©
+		StopMovement(); // ë©ˆì¶¤
+		break;
 
-        // ÇÃ·¹ÀÌ¾î ´Ù½Ã Å¸°ÙÆÃ
-        if (APawn* Player = UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
-        {
-            SetFocus(Player);
-        }
+	case EStealthPhase::None: // ìŠ¤í…”ìŠ¤ ì¢…ë£Œ
+		bIsAIDisabledForStealth = false; // AI í™œì„±í™”
+		bCanBossAttack = true; // ê³µê²© ê°€ëŠ¥
 
-        // AI »óÅÂ¸¦ °­Á¦·Î MoveToPlayer·Î ¼³Á¤
-        SetBossAIState(EBossEnemyAIState::MoveToPlayer);
+		if (PlayerPawn) // í”Œë ˆì´ì–´ í°ì´ ìœ íš¨í•˜ë©´
+		{
+			SetFocus(PlayerPawn); // í”Œë ˆì´ì–´ í°ì„ ë°”ë¼ë³´ê²Œ ì…‹ í¬ì»¤ìŠ¤ í˜¸ì¶œ
+		}
 
-        UE_LOG(LogTemp, Warning, TEXT("AI Fully Enabled after Stealth Attack - Attack capability restored"));
-        break;
-    }
+		SetBossAIState(EBossEnemyAIState::MoveToPlayer); // ìƒíƒœë¥¼ MoveToPlayerë¡œ ì„¤ì •
+		break;
+	}
 }
 
-//void ABossEnemyAIController::DrawDebugInfo()
-//{
-//    if (!PlayerPawn || !GetPawn()) return;
-//
-//    FVector PlayerLoc = PlayerPawn->GetActorLocation();
-//    FVector BossLoc = GetPawn()->GetActorLocation();
-//
-//    // ÇÃ·¹ÀÌ¾î ±âÁØ ¿ø ¹İÁö¸§ Ç¥½Ã
-//    DrawDebugCircle(GetWorld(), PlayerLoc, BossMoveRadius, 64, FColor::Cyan, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-//
-//    // º¸½º °ø°İ ¹üÀ§ Ç¥½Ã
-// 
-//    DrawDebugCircle(GetWorld(), BossLoc, BossMovingAttackRange, 64, FColor::Orange, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-//
-//    DrawDebugCircle(GetWorld(), BossLoc, BossStandingAttackRange, 64, FColor::Yellow, false, -1, 0, 1, FVector(1, 0, 0), FVector(0, 1, 0), false);
-//
-//    DrawDebugCircle(GetWorld(), BossLoc, StealthAttackMinRange, 64, FColor::Green, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-//
-//    DrawDebugCircle(GetWorld(), BossLoc, StealthAttackOptimalRange, 64, FColor::Blue, false, -1, 0, 2, FVector(1, 0, 0), FVector(0, 1, 0), false);
-//}
-
 void ABossEnemyAIController::StopBossAI()
-{
-    APawn* ControlledPawn = GetPawn();
-    if (!ControlledPawn) return;
+{ 
+	APawn* ControlledPawn = GetPawn(); // ì œì–´ ì¤‘ì¸ í° ê°€ì ¸ì˜¤ê¸°
+	if (!IsValid(ControlledPawn)) return; // ìœ íš¨í•˜ì§€ ì•Šìœ¼ë©´ ì¢…ë£Œ
 
-    // ÀÌµ¿ ÁßÁö
-    StopMovement();
-    UE_LOG(LogTemp, Warning, TEXT("%s Boss AI Movement Stopped"), *ControlledPawn->GetName());
+	StopMovement(); // ì´ë™ ì¤‘ì§€
+	UnPossess(); // í° ì†Œìœ  í•´ì œ
 
-    // AI ÄÁÆ®·Ñ·¯¿¡¼­ Æù ºĞ¸®
-    UnPossess();
-
-    // Ä³¸¯ÅÍ Ãæµ¹ ¹× Æ½ ºñÈ°¼ºÈ­
-    ControlledPawn->SetActorEnableCollision(false);
-    ControlledPawn->SetActorTickEnabled(false);
+	ControlledPawn->SetActorEnableCollision(false); // ì¶©ëŒ ë¹„í™œì„±í™”
+	ControlledPawn->SetActorTickEnabled(false); // í‹± ë¹„í™œì„±í™”
 }

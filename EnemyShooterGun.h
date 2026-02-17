@@ -1,12 +1,10 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h" // AActor 클래스 상속
-#include "Kismet/GameplayStatics.h" // 게임플레이 유틸리티 함수 사용
-#include "DrawDebugHelpers.h" // 디버그 시각화 기능 사용
-#include "NiagaraComponent.h" // 나이아가라 컴포넌트 사용
-#include "NiagaraSystem.h" // 나이아가라 시스템 사용
-#include "Components/StaticMeshComponent.h" // 스태틱 메쉬 컴포넌트 사용
 #include "EnemyShooterGun.generated.h"
+
+class UNiagaraSystem;
+class UNiagaraComponent;
 
 UCLASS()
 class LOCOMOTION_API AEnemyShooterGun : public AActor
@@ -28,33 +26,33 @@ protected:
 private:
 	// 컴포넌트
 	UPROPERTY(VisibleAnywhere, Category = "Components")
-	UStaticMeshComponent* GunMesh; // 총의 외형을 나타내는 스태틱 메쉬
+	TObjectPtr<UStaticMeshComponent> GunMesh = nullptr; // 총의 외형을 나타내는 스태틱 메쉬
 
 	UPROPERTY(VisibleAnywhere, Category = "Components")
-	UStaticMeshComponent* MuzzleSocket; // 총구 위치를 나타내는 소켓용 메쉬
+	TObjectPtr<UStaticMeshComponent> MuzzleSocket = nullptr; // 총구 위치를 나타내는 소켓용 메쉬
 
 	UPROPERTY(VisibleAnywhere, Category = "Visual Effects")
-	UStaticMeshComponent* AimingLaserMesh; // 조준 경고용 레이저를 표시할 스태틱 메쉬
+	TObjectPtr<UStaticMeshComponent> AimingLaserMesh = nullptr; // 조준 경고용 레이저를 표시할 스태틱 메쉬
 
 	// 이펙트 및 사운드
 	UPROPERTY(EditAnywhere, Category = "Effects")
-	USoundBase* FireSound; // 격발 사운드
+	TObjectPtr<USoundBase> FireSound = nullptr; // 격발 사운드
 
 	UPROPERTY(EditAnywhere, Category = "Effects")
-	USoundBase* AimWarningSound; // 조준 경고 사운드
+	TObjectPtr<USoundBase> AimWarningSound = nullptr; // 조준 경고 사운드
 
 	UPROPERTY(EditAnywhere, Category = "Effects")
-	class UNiagaraSystem* MuzzleFlash; // 총구 섬광 이펙트
+	TObjectPtr<UNiagaraSystem> MuzzleFlash = nullptr; // 총구 섬광 이펙트
 
 	UPROPERTY(EditAnywhere, Category = "Effects")
-	class UNiagaraSystem* ImpactEffect; // 피격 지점 이펙트
+	TObjectPtr<UNiagaraSystem> ImpactEffect = nullptr; // 피격 지점 이펙트
 
 	// 레이저 설정
 	UPROPERTY(EditAnywhere, Category = "Laser Settings")
-	UStaticMesh* AimingLaserMeshAsset; // 레이저로 사용할 스태틱 메쉬 에셋
+	TObjectPtr<UStaticMesh> AimingLaserMeshAsset = nullptr; // 레이저로 사용할 스태틱 메쉬 에셋
 
 	UPROPERTY(EditAnywhere, Category = "Laser Settings")
-	UMaterialInterface* AimingLaserMaterial; // 레이저에 적용할 머티리얼
+	TObjectPtr<UMaterialInterface> AimingLaserMaterial = nullptr; // 레이저에 적용할 머티리얼
 
 	// 무기 스탯
 	UPROPERTY(EditAnywhere, Category = "Weapon Stats")
@@ -113,12 +111,12 @@ private:
 
 	// 현재 재생 중인 이펙트 컴포넌트에 대한 참조
 	UPROPERTY()
-	class UNiagaraComponent* CurrentMuzzleFlashComponent;
+	TObjectPtr<UNiagaraComponent> CurrentMuzzleFlashComponent = nullptr;
 	UPROPERTY()
-	class UNiagaraComponent* CurrentImpactEffectComponent;
+	TObjectPtr<UNiagaraComponent> CurrentImpactEffectComponent = nullptr;
 
 	// 내부 관리 함수
-	FVector CalculatePredictedPlayerPosition(APawn* Player); // 플레이어의 미래 위치 예측
+	FVector CalculatePredictedPlayerPosition(); // 플레이어의 미래 위치 예측
 	FVector ApplyAccuracySpread(FVector TargetLocation); // 명중률에 따라 탄착군 형성
 	void ShowAimingLaserMesh(FVector StartLocation, FVector EndLocation); // 레이저 표시
 	void HideAimingLaserMesh(); // 레이저 숨김
@@ -128,4 +126,11 @@ private:
 	void StopMuzzleFlash(); // 총구 섬광 정지
 	void StopImpactEffect(); // 피격 이펙트 정지
 	bool PerformLineTrace(FVector StartLocation, FVector EndLocation, FHitResult& OutHitResult); // 라인 트레이스 실행
+
+	UPROPERTY()
+	TObjectPtr<APawn> CachedPlayerPawn; // 플레이어 폰에 대한 참조
+	float LastPlayerCacheTime = 0.0f; // 플레이어 캐시 마지막 업데이트 시간
+
+	void UpdateCachedPlayerPawn(); // 플레이어 폰 캐시 업데이트
+	float PlayerCacheInterval = 1.0f; // 플레이어 캐시 업데이트 간격
 };

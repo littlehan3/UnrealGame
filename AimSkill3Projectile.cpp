@@ -137,9 +137,13 @@ void AAimSkill3Projectile::Explode()
 
     // 컴포넌트 널 체크
     if (CollisionComponent)
+    {
         CollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
     if (MeshComponent)
+    {
         MeshComponent->SetVisibility(false);
+    }
 
     SetActorHiddenInGame(true);
     SetLifeSpan(0.5f);

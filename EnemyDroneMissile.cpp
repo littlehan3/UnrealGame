@@ -15,7 +15,7 @@ AEnemyDroneMissile::AEnemyDroneMissile()
 
     // 충돌 컴포넌트 생성 및 설정
     CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionComponent"));
-    CollisionComponent->InitSphereRadius(14.f);
+    CollisionComponent->InitSphereRadius(14.0f);
     CollisionComponent->SetCollisionProfileName(TEXT("BlockAllDynamic")); // 동적인 모든 것과 충돌
     CollisionComponent->OnComponentHit.AddDynamic(this, &AEnemyDroneMissile::OnHit); // OnHit 함수와 델리게이트 바인딩
     RootComponent = CollisionComponent; // 루트 컴포넌트로 설정
@@ -27,8 +27,8 @@ AEnemyDroneMissile::AEnemyDroneMissile()
 
     // 투사체 이동 컴포넌트 생성 및 설정
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
-    ProjectileMovement->InitialSpeed = 600.f; // 초기 속도
-    ProjectileMovement->MaxSpeed = 600.f; // 최대 속도
+    ProjectileMovement->InitialSpeed = 600.0f; // 초기 속도
+    ProjectileMovement->MaxSpeed = 600.0f; // 최대 속도
     ProjectileMovement->bRotationFollowsVelocity = true; // 이동 방향에 따라 자동으로 회전
     ProjectileMovement->ProjectileGravityScale = 0.0f; // 중력 영향 없음
 
@@ -44,14 +44,12 @@ void AEnemyDroneMissile::SetTarget(AActor* Target)
     TargetActor = Target; // 타겟 설정
 }
 
-void AEnemyDroneMissile::BeginPlay()
-{
-    Super::BeginPlay();
-}
-
 // 오브젝트 풀링을 위한 재활용 함수
-void AEnemyDroneMissile::ResetMissile(FVector SpawnLocation, AActor* NewTarget)
+void AEnemyDroneMissile::ResetMissile(const FVector& SpawnLocation, AActor* NewTarget)
 {
+	UWorld* World = GetWorld();
+	if (!World) return;
+
     ProjectileMovement->StopMovementImmediately(); // 기존 움직임 즉시 중지
     ProjectileMovement->SetUpdatedComponent(CollisionComponent); // 이동 기준 컴포넌트 재설정
     ProjectileMovement->Activate(true); // 이동 컴포넌트 재활성화
@@ -71,12 +69,12 @@ void AEnemyDroneMissile::ResetMissile(FVector SpawnLocation, AActor* NewTarget)
     CollisionComponent->MoveIgnoreActors.Empty();
     // 모든 아군 드론을 충돌에서 무시하도록 설정
     TArray<AActor*> AllDrones;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyDrone::StaticClass(), AllDrones);
+    UGameplayStatics::GetAllActorsOfClass(World, AEnemyDrone::StaticClass(), AllDrones);
     for (AActor* Drone : AllDrones)
         CollisionComponent->IgnoreActorWhenMoving(Drone, true);
     // 자기 자신을 제외한 다른 모든 미사일을 충돌에서 무시하도록 설정
     TArray<AActor*> AllMissiles;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyDroneMissile::StaticClass(), AllMissiles);
+    UGameplayStatics::GetAllActorsOfClass(World, AEnemyDroneMissile::StaticClass(), AllMissiles);
     for (AActor* Missile : AllMissiles)
     {
         if (Missile != this)
@@ -115,7 +113,7 @@ void AEnemyDroneMissile::Tick(float DeltaTime)
     if (!Dir.IsNearlyZero()) // 방향이 유효하다면
     {
         FRotator NewRot = Dir.Rotation(); // 새로운 방향으로의 회전값
-        SetActorRotation(FMath::RInterpTo(GetActorRotation(), NewRot, DeltaTime, 5.f)); // 부드럽게 방향 전환
+        SetActorRotation(FMath::RInterpTo(GetActorRotation(), NewRot, DeltaTime, 5.0f)); // 부드럽게 방향 전환
         ProjectileMovement->Velocity = Dir * ProjectileMovement->InitialSpeed; // 새로운 방향으로 속도 업데이트
         LastMoveDirection = Dir; // 마지막 이동 방향 갱신
     }
@@ -138,6 +136,9 @@ void AEnemyDroneMissile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 
 void AEnemyDroneMissile::Explode()
 {
+	UWorld* World = GetWorld();
+	if (!World) return;
+
     if (bExploded) return; // 중복 폭발 방지
     bExploded = true; // 폭발 상태로 전환
 
@@ -159,30 +160,30 @@ void AEnemyDroneMissile::Explode()
     }
 
     // 폭발 범위 내에서 플레이어를 찾아 데미지 적용 (범위 공격)
-    FVector ExplosionCenter = GetActorLocation();
-    float ExplosionRadiusTemp = ExplosionRadius;
-    TArray<FOverlapResult> Overlaps;
-    FCollisionShape CollisionShape = FCollisionShape::MakeSphere(ExplosionRadiusTemp);
+	FVector ExplosionCenter = GetActorLocation(); // 폭발 중심 위치
+	float ExplosionRadiusTemp = ExplosionRadius; // 폭발 반경
+	TArray<FOverlapResult> Overlaps; // 오버랩 결과 저장용 배열
+	FCollisionShape CollisionShape = FCollisionShape::MakeSphere(ExplosionRadiusTemp); // 구체 형태의 충돌 범위 생성
     // Pawn 채널에 대해서만 오버랩(범위) 검사 수행
-    bool bHasOverlaps = GetWorld()->OverlapMultiByChannel(Overlaps, ExplosionCenter, FQuat::Identity, ECC_Pawn, CollisionShape);
+    bool bHasOverlaps = World->OverlapMultiByChannel(Overlaps, ExplosionCenter, FQuat::Identity, ECC_Pawn, CollisionShape);
     if (bHasOverlaps) // 범위 내에 Pawn이 있다면
     {
-        ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
+        ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(World, 0);
         for (auto& Overlap : Overlaps) // 모든 오버랩된 액터에 대해
         {
             if (Overlap.GetActor() == PlayerCharacter) // 만약 플레이어라면
             {
-                UGameplayStatics::ApplyDamage(PlayerCharacter, Damage, GetInstigator() ? GetInstigator()->GetController() : nullptr, this, nullptr);
+				UGameplayStatics::ApplyDamage(PlayerCharacter, Damage, GetInstigator() ? GetInstigator()->GetController() : nullptr, this, nullptr); // 데미지 적용
                 break; // 플레이어는 한 명이므로 찾으면 바로 중단
             }
         }
     }
 
     // 폭발 후 미사일을 풀에 반환하기 위해 비활성화
-    MeshComp->SetHiddenInGame(true);
-    SetActorHiddenInGame(true);
-    SetActorEnableCollision(false);
-    ProjectileMovement->StopMovementImmediately();
+	MeshComp->SetHiddenInGame(true); // 메쉬 숨기기
+	SetActorHiddenInGame(true); // 액터 숨기기
+	SetActorEnableCollision(false); // 충돌 비활성화
+	ProjectileMovement->StopMovementImmediately(); // 이동 중지
 }
 
 float AEnemyDroneMissile::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent,

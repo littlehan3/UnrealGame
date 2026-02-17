@@ -1,8 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h" // AActor 클래스 상속
-#include "NiagaraSystem.h" // 나이아가라 이펙트 시스템 사용
+#include "GameFramework/Actor.h"
 #include "EnemyShooterGrenade.generated.h"
 
 // 전방 선언
@@ -10,6 +9,8 @@ class USphereComponent;
 class UStaticMeshComponent;
 class UProjectileMovementComponent;
 class UAudioComponent;
+class URotatingMovementComponent;
+class UNiagaraSystem;
 
 UCLASS()
 class LOCOMOTION_API AEnemyShooterGrenade : public AActor
@@ -22,7 +23,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override; // 게임 시작 시 호출
-	virtual void Tick(float DeltaTime) override; // 매 프레임 호출
+	//virtual void Tick(float DeltaTime) override; // 매 프레임 호출
 
 	void Explode(); // 폭발을 처리하는 함수
 
@@ -31,29 +32,33 @@ protected:
 
 	// 컴포넌트
 	UPROPERTY(EditDefaultsOnly, Category = "Components")
-	USphereComponent* CollisionComp; // 충돌을 감지하는 구체 컴포넌트
+	TObjectPtr<USphereComponent> CollisionComp = nullptr; // 충돌을 감지하는 구체 컴포넌트
 
 	UPROPERTY(EditDefaultsOnly, Category = "Components")
-	UStaticMeshComponent* GrenadeMesh; // 수류탄의 외형을 나타내는 스태틱 메쉬
+	TObjectPtr<UStaticMeshComponent> GrenadeMesh = nullptr; // 수류탄의 외형을 나타내는 스태틱 메쉬
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
-	UProjectileMovementComponent* ProjectileMovement; // 투사체 이동을 관리하는 컴포넌트
+	TObjectPtr<UProjectileMovementComponent> ProjectileMovement = nullptr; // 투사체 이동을 관리하는 컴포넌트
+
+	// Tick에서 수류탄을 회전시키는 대신 URotatingMovementComponent를 사용하여 자동으로 회전
+	UPROPERTY(VisibleAnywhere, Category = "Movement")
+	TObjectPtr<URotatingMovementComponent> RotatingMovement = nullptr; 
 
 	// 이펙트 및 사운드
 	UPROPERTY(EditDefaultsOnly)
-	UNiagaraSystem* ExplosionEffect; // 폭발 시 재생될 나이아가라 이펙트
+	TObjectPtr<UNiagaraSystem> ExplosionEffect = nullptr; // 폭발 시 재생될 나이아가라 이펙트
 
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* ExplosionSound; // 폭발 시 재생될 사운드
+	TObjectPtr<USoundBase> ExplosionSound = nullptr; // 폭발 시 재생될 사운드
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Audio")
-	UAudioComponent* FuseAudioComponent;
+	TObjectPtr<UAudioComponent> FuseAudioComponent = nullptr;
 
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* BounceSound;
+	TObjectPtr<USoundBase> BounceSound = nullptr;
 
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* FuseSound;
+	TObjectPtr<USoundBase> FuseSound = nullptr;
 
 	// 전투 관련 속성
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
@@ -71,4 +76,5 @@ protected:
 
 private:
 	bool bHasExploded = false; // 중복 폭발을 방지하기 위한 플래그
+	FTimerHandle FuseTimerHandle;
 };

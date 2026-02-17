@@ -2,13 +2,11 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h" // ACharacter 클래스를 상속받기 위해 포함
-#include "EnemyDogAnimInstance.h" // 적 애니메이션 인스턴스 클래스를 사용하기 위해 포함
-#include "Animation/AnimInstance.h" // UAnimInstance 클래스를 사용하기 위해 포함
-#include "NiagaraSystem.h" // 나이아가라 이펙트 시스템을 사용하기 위해 포함
 #include "HealthInterface.h"
 #include "EnemyDog.generated.h"
 
 class UNiagaraSystem;
+class USoundBase;
 
 UCLASS(Blueprintable)
 class LOCOMOTION_API AEnemyDog : public ACharacter, public IHealthInterface
@@ -16,9 +14,7 @@ class LOCOMOTION_API AEnemyDog : public ACharacter, public IHealthInterface
 	GENERATED_BODY()
 
 public:
-	AEnemyDog(); // 생성자
-
-	virtual void PostInitializeComponents() override; // 컴포넌트 초기화 이후 호출되는 함수
+	AEnemyDog();
 
 	void PlaySpawnIntroAnimation(); // 스폰 시 등장 애니메이션을 재생하는 함수
 	bool bIsPlayingIntro = false; // 등장 애니메이션 재생 여부
@@ -38,8 +34,7 @@ public:
 	void HideEnemy(); // 적 캐릭터를 숨기고 메모리에서 제거하는 함수
 	void EnterInAirStunState(float Duration); // 공중 스턴(에어본) 상태로 전환하는 함수
 	void ExitInAirStunState(); // 공중 스턴 상태를 해제하는 함수
-	// [수정] AEnemy와 동일하게 함수 이름 변경 및 Disable 함수 추가
-	void EnableGravityPull(FVector ExplosionCenter, float PullStrength); //
+	void EnableGravityPull(FVector ExplosionCenter, float PullStrength); // 중력장 효과를 활성화하는 함수
 	void DisableGravityPull();
 	void RaycastAttack(); // 레이캐스트를 이용해 공격 판정을 하는 함수
 	void StartAttack(); // 공격 시작 함수
@@ -51,26 +46,27 @@ public:
 	TSet<AActor*> DamagedActors; // 이미 데미지를 입은 액터들을 저장하는 Set
 
 	// HealthBar 연동을 위한 MaxHealth 추가
-	UPROPERTY(EditAnyWhere, BlueprintReadWrite, Category = "Health")
+	UPROPERTY(EditAnyWhere, BlueprintReadWrite, Category = "Stats")
 	float MaxHealth = 50.0f; // 최대 체력
 
-	UPROPERTY(EditAnyWhere, BlueprintReadWrite, Category = "Health")
+	UPROPERTY(EditAnyWhere, BlueprintReadWrite, Category = "Stats")
 	float Health = 50.0f;
 
+	UPROPERTY(VisibleInstanceOnly, Category = "State")
 	bool bIsDead = false; // 사망 상태 여부
+	UPROPERTY(VisibleInstanceOnly, Category = "State")
 	bool bIsInAirStun = false; // 공중 스턴 상태 여부
+	UPROPERTY(VisibleInstanceOnly, Category = "State")
 	bool bCanAttack = false; // 공격 가능 여부
+	UPROPERTY(VisibleInstanceOnly, Category = "State")
 	bool bIsAttacking = false; // 현재 공격 중인지 여부
+	UPROPERTY(VisibleInstanceOnly, Category = "State")
 	bool bHasExecutedRaycast = false; // 이번 공격에서 레이캐스트 판정을 실행했는지 여부
-	float Damage = 10.0f; // 일반 공격 데미지
-	float ExplosionDamage = 40.0f; // 폭발 데미지
-
-	/** IHealthInterface 구현 함수 */
-	virtual float GetHealthPercent_Implementation() const override;
-	virtual bool IsEnemyDead_Implementation() const override;
-
-	// [신규 추가] 중력장(블랙홀) 상태 변수 (AEnemy와 동일)
+	UPROPERTY(VisibleInstanceOnly, Category = "State")
 	bool bIsTrappedInGravityField = false;
+
+	virtual float GetHealthPercent_Implementation() const override; // 현재 체력 비율 반환
+	virtual bool IsEnemyDead_Implementation() const override; // 적이 사망했는지 여부 반환
 	FVector GravityFieldCenter = FVector::ZeroVector;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
@@ -80,50 +76,101 @@ protected:
 	virtual void BeginPlay() override; // 게임 시작 시 호출되는 함수
 
 private:
+	UPROPERTY()
+	class AEnemyDogAIController* AICon; // AI 컨트롤러 캐싱을 위한 참조
+
+	UPROPERTY()
+	class UEnemyDogAnimInstance* AnimInstance; // 애니메이션 인스턴스 캐싱을 위한 참조
+
+	UPROPERTY()
+	class UCharacterMovementComponent* MoveComp; // 무브 컴포넌트 캐싱을 위한 참조
+
 	// 애니메이션 몽타주
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
 	UAnimMontage* SpawnIntroMontage; // 등장 애니메이션 몽타주
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
 	TArray<UAnimMontage*> NormalAttackMontages; // 일반 공격 몽타주 배열 (랜덤 재생용)
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
 	TArray<UAnimMontage*> DeadMontages; // 사망 몽타주 배열 (랜덤 재생용)
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
 	UAnimMontage* InAirStunMontage; // 공중 스턴 상태 몽타주
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
 	UAnimMontage* InAirStunDeathMontage; // 공중 스턴 상태에서 사망 시 재생될 몽타주
 
 	// 이펙트 및 사운드
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditAnywhere, Category = "SoundEffects", meta = (AllowPrivateAccess = "true"))
 	UNiagaraSystem* ExplosionEffect; // 폭발 시 재생될 나이아가라 이펙트
 
-	UPROPERTY(EditAnywhere, Category = "SoundEffects")
+	UPROPERTY(EditAnywhere, Category = "SoundEffects", meta = (AllowPrivateAccess = "true"))
 	USoundBase* ExplosionSound; // 폭발 시 재생될 사운드
+
+	UPROPERTY(EditDefaultsOnly, Category = "NiagaraEffects", meta = (AllowPrivateAccess = "true"))
+	class UNiagaraSystem* WeaponHitNiagaraEffect = nullptr;
+
+	UPROPERTY(EditAnywhere, Category = "SoundEffects", meta = (AllowPrivateAccess = "true"))
+	USoundBase* AttackHitSound; // 공격이 성공했을 때 재생될 사운드
 
 	// 몽타주 종료 시 호출될 함수들 (델리게이트 바인딩용)
 	UFUNCTION()
 	void OnIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 등장 몽타주 종료 시
-
+	UFUNCTION()
 	void OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 피격 몽타주 종료 시 (에어본 상태 관리용)
+	UFUNCTION()
 	void OnDeadMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 사망 몽타주 종료 시
+	UFUNCTION()
 	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 공격 몽타주 종료 시
 
 	// 타이머 핸들
 	FTimerHandle DeathTimerHandle; // 사망 후 폭발까지의 지연을 위한 타이머
 	FTimerHandle StunTimerHandle; // 공중 스턴 지속시간을 제어하는 타이머
 	FTimerHandle StunAnimRepeatTimerHandle; // 공중 스턴 애니메이션 반복을 위한 타이머
+	FTimerHandle GravityDisableHandle; // 중력장 해제 타이머 핸들
 
-	// 공격 속성
-	UPROPERTY(EditAnywhere, Category = "Missile")
+	UPROPERTY(EditDefaultsOnly, Category = "Stats", meta = (AllowPrivateAccess = "true"))
 	float ExplosionRadius = 100.f; // 폭발 반경
+	UPROPERTY(EditDefaultsOnly, Category = "Stats", meta = (AllowPrivateAccess = "true"))
+	float Damage = 10.0f; // 일반 공격 데미지
+	UPROPERTY(EditDefaultsOnly, Category = "Stats", meta = (AllowPrivateAccess = "true"))
+	float ExplosionDamage = 40.0f; // 폭발 데미지
 
-	UPROPERTY(EditDefaultsOnly, Category = "FX")
-	class UNiagaraSystem* WeaponHitNiagaraEffect = nullptr;
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float AttackTraceDistance = 150.0f; // 레이캐스트 사거리
 
-	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* AttackHitSound; // 공격이 성공했을 때 재생될 사운드
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float ExplosionDelay = 0.5f; // 사망 후 폭발까지 지연 시간
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float AIUpdateInterval = 0.05f; // 틱 주기 (최적화용)
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float AirborneLaunchStrength = 600.0f; // 에어본 띄우기 강도
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float GravityDisableDelay = 0.3f; // 에어본 후 중력 정지 지연 시간
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float StunRepeatInterval = 0.4f; // 스턴 애니메이션 반복 주기
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Movement", meta = (AllowPrivateAccess = "true"))
+	float BaseMaxWalkSpeed = 600.0f; // 기본 이동 속도
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Movement", meta = (AllowPrivateAccess = "true"))
+	float BaseMaxAcceleration = 5000.0f; // 최대 가속도
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Movement", meta = (AllowPrivateAccess = "true"))
+	float BaseBrakingFrictionFactor = 10.0f; // 제동 마찰력
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float AttackAnimSpeed = 1.5f; // 공격 애니메이션 재생 속도
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float GravityPullTolerance = 50.0f; // 중앙 고정 판정 범위
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Config", meta = (AllowPrivateAccess = "true"))
+	float RecoveryGravityScale = 1.5f; // 스턴 해제 후 낙하 중력
 
 };

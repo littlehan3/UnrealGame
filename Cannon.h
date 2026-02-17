@@ -19,7 +19,6 @@ public:
 	void SetProjectileClass(TSubclassOf<AAimSkill2Projectile> InClass);
 
 protected:
-	virtual void BeginPlay() override;
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
@@ -30,4 +29,10 @@ private:
 
 	UPROPERTY()
 	AActor* Shooter;
+
+	UPROPERTY(EditAnywhere, Category = "Projectile|Offset")
+	float SpawnForwardOffset = 200.f; // 투사체 소환 시작 거리
+
+	UPROPERTY(EditAnywhere, Category = "Projectile|Offset")
+	float SpawnVerticalOffset = -150.f; // 투사체 소환 높이 보정
 };

@@ -9,11 +9,10 @@
 
 void USettingsGameInstance::Init()
 {
-	Super::Init(); // 부모 클래스의 Init을 먼저 실행
+    Super::Init(); // 부모 클래스의 Init을 먼저 실행
 
-	LoadSettings(); // 게임 시작 시 저장된 설정 로드
-
-	ApplySettings(false); // 불러온 설정을 게임에 적용 (파일에 저장하지 않음)
+    LoadSettings(); // 게임 시작 시 저장된 설정 로드
+    ApplySettings(false); // 불러온 설정을 게임에 적용 (파일에 저장하지 않음)
 
     // 레벨이 로드될 때마다 OnWorldLoaded 함수를 실행하도록 등록
     FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &USettingsGameInstance::OnWorldLoaded);
@@ -27,36 +26,21 @@ void USettingsGameInstance::OnWorldLoaded(UWorld* World)
 
 void USettingsGameInstance::LoadSettings()
 {
-    // 클래스 기본 객체에서 저장 슬롯 이름을 가져옴
-    const FString SlotName = Cast<USettingsSaveGame>(USettingsSaveGame::StaticClass()->GetDefaultObject())->SaveSlotName;
+    // USettingsSaveGame의 함수 호출
+    CurrentSettings = USettingsSaveGame::LoadOrCreate();
 
-    // 파일이 존재하는지 확인
-    if (UGameplayStatics::DoesSaveGameExist(SlotName, 0))
+    // 만약 방금 새로 생성된 객체라면(인덱스가 초기값이라면) 즉시 파일 저장하여 물리 파일 생성
+    if (CurrentSettings && !UGameplayStatics::DoesSaveGameExist(USettingsSaveGame::SaveSlotName, USettingsSaveGame::UserIndex))
     {
-        // 존재하면 로드
-        CurrentSettings = Cast<USettingsSaveGame>(UGameplayStatics::LoadGameFromSlot(SlotName, 0));
-    }
-    else
-    {
-        // 존재하지 않으면 기본값으로 새 객체를 생성
-        CurrentSettings = Cast<USettingsSaveGame>(UGameplayStatics::CreateSaveGameObject(USettingsSaveGame::StaticClass()));
-
-        // 새 객체가 유효하다면
-        if (CurrentSettings)
-        {
-            // 기본값으로 생성된 새 설정을 파일로 바로 저장하여 다음 실행 시 불러옴
-            UGameplayStatics::SaveGameToSlot(CurrentSettings, CurrentSettings->SaveSlotName, 0);
-        }
+        SaveSettings();
     }
 }
 
 void USettingsGameInstance::SaveSettings()
 {
-    // 현재 설정이 존재한다면
-    if (CurrentSettings)
+    if (CurrentSettings) // 데이터가 유효할 때만 저장
     {
-        // 슬롯에 게임을 저장
-        UGameplayStatics::SaveGameToSlot(CurrentSettings, CurrentSettings->SaveSlotName, 0);
+        UGameplayStatics::SaveGameToSlot(CurrentSettings, USettingsSaveGame::SaveSlotName, USettingsSaveGame::UserIndex);
     }
 }
 
@@ -66,10 +50,8 @@ void USettingsGameInstance::ApplySettings(bool bSaveToFile)
 
     // 1. 그래픽 설정 적용 함수 호출
     ApplyGraphicsSettingsOnly();
-
     // 2. 사운드 설정 적용 함수 호출
     ApplySoundSettingsOnly();
-
     // 3. bSaveToFile이 true 인 경우 파일로 저장
     if (bSaveToFile)
     {
@@ -83,7 +65,7 @@ void USettingsGameInstance::ApplyGraphicsSettingsOnly()
 
     // UGameuserSettings 개체를 가져옴
     UGameUserSettings* UserSettings = GEngine->GetGameUserSettings();
-    
+
     // 객체가 유효하다면
     if (UserSettings)
     {
@@ -112,16 +94,16 @@ void USettingsGameInstance::ApplyGraphicsSettingsOnly()
 void USettingsGameInstance::ApplySoundSettingsOnly()
 {
     if (!CurrentSettings) return; // 설정값 객체가 없으면 리턴
-    
-    // 현재 월드에 대한 포인터를 가져옴
-    UWorld* World = GetWorld();
+
+    UWorld* World = GetWorld(); // 월드 가져옴
+    if (!World) return; // 유효성 검사
 
     // 사운드 믹스, 사운드 클래스, 월드가 유효한지 확인
     if (MasterSoundMix && MasterSoundClass && World)
     {
         // 볼륨 값이 0.0에서 1.0을 벗어나지 않도록 Clamp로 보정
         float ClampedVolume = FMath::Clamp(CurrentSettings->MasterVolume, 0.0f, 1.0f);
-        
+
         // 지정한 사운드 클래스의 볼륨을 덮어씌움
         UGameplayStatics::SetSoundMixClassOverride(
             World,
@@ -161,7 +143,6 @@ TArray<FString> USettingsGameInstance::GetSupportedResolutions()
 {
     // 반환할 문자열 배열 형태 선언 1920 x 1080
     TArray<FString> ResolutionsList;
-
     // 시스템 함수가 채워줄 FIntPoint 배열을 선언
     TArray<FIntPoint> Resolutions;
 

@@ -5,7 +5,6 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "EnemyAnimInstance.generated.h"
 
-
 UCLASS()
 class LOCOMOTION_API UEnemyAnimInstance : public UAnimInstance
 {

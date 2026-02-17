@@ -2,8 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "AIController.h" // AIController 클래스 상속
-#include "Engine/World.h" // UWorld 클래스 사용
-#include "EngineUtils.h" // TActorIterator 사용
 #include "EnemyGuardianAIController.generated.h"
 
 // 전방 선언
@@ -23,22 +21,9 @@ protected:
     virtual void BeginPlay() override; // 게임 시작 시 호출
     virtual void Tick(float DeltaTime) override; // 매 프레임 호출
 
-    // AI 행동 관련 설정값
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Behavior")
-    float ProtectionDistance = 150.0f; // 보호할 슈터로부터 떨어져 있을 거리
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Behavior")
-    float MinDistanceToTarget = 50.0f; // 목표 지점 도달로 판정할 최소 거리
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Behavior")
-    float SurroundRadius = 150.0f; // 플레이어를 포위할 때 유지할 거리
-
-    // 성능 최적화 설정
-    UPROPERTY(EditAnywhere, Category = "AI Performance")
-    float AllyCacheUpdateInterval = 2.0f; // 주변 아군 목록을 갱신하는 주기
-
 private:
-    APawn* PlayerPawn; // 플레이어 폰에 대한 참조
+    UPROPERTY()
+    APawn* PlayerPawn;
 
     // 핵심 행동 로직 함수
     void PerformShooterProtection(); // 아군 슈터를 보호하는 로직
@@ -52,4 +37,18 @@ private:
     // 캐시된 아군 목록 (TWeakObjectPtr로 사용하여 아군이 죽어도 메모리 누수 방지)
     TArray<TWeakObjectPtr<AEnemyShooter>> CachedShooters;
     TArray<TWeakObjectPtr<AEnemyGuardian>> CachedGuardians;
+
+    // AI 행동 관련 설정값
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Behavior", meta = (AllowPrivateAccess = "true"))
+    float ProtectionDistance = 150.0f; // 보호할 슈터로부터 떨어져 있을 거리
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Behavior", meta = (AllowPrivateAccess = "true"))
+    float MinDistanceToTarget = 50.0f; // 목표 지점 도달로 판정할 최소 거리
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Behavior", meta = (AllowPrivateAccess = "true"))
+    float SurroundRadius = 150.0f; // 플레이어를 포위할 때 유지할 거리
+
+    // 성능 최적화 설정
+    UPROPERTY(EditAnywhere, Category = "AI Performance", meta = (AllowPrivateAccess = "true"))
+    float AllyCacheUpdateInterval = 2.0f; // 주변 아군 목록을 갱신하는 주기
 };

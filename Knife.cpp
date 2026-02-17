@@ -11,33 +11,28 @@
 
 AKnife::AKnife()
 {
-    PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.bCanEverTick = false; // Tick 비활성화
 
     // 칼 메시 생성
     KnifeMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("KnifeMesh"));
-    RootComponent = KnifeMesh;
+    RootComponent = KnifeMesh; // 루트 컴포넌트로 설정
 
     // 히트 박스 생성
     HitBox = CreateDefaultSubobject<UBoxComponent>(TEXT("HitBox"));
-    HitBox->SetupAttachment(KnifeMesh);
-    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 기본적으로 비활성화
+    HitBox->SetupAttachment(KnifeMesh); // 나이프 메쉬에 부착
+    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 충돌 비활성화
 
     // 충돌 감지 이벤트 바인딩
     HitBox->OnComponentBeginOverlap.AddDynamic(this, &AKnife::OnHitBoxOverlap);
 
+    // 기본 데이터 세팅
     KnifeType = EKnifeType::Left;
-
-    ComboDamages = { 20.0f, 25.0f, 30.0f, 0.0f, 50.0f }; // 4번째(발차기) 공격은 캐릭터에서 독립적으로 데미지 처리
-}
-
-void AKnife::BeginPlay()
-{
-    Super::BeginPlay();
-}
-
-void AKnife::Tick(float DeltaTime)
-{
-    Super::Tick(DeltaTime);
+    ComboDamages.SetNum(5); // 콤보데미지 배열 직접 초기화로 BP수정 가능하게끔
+    ComboDamages[0] = 20.0f; // 콤보1 데미지
+    ComboDamages[1] = 25.0f; // 콤보2 데미지
+    ComboDamages[2] = 30.0f; // 콤보3 데미지
+    ComboDamages[3] = 0.0f;  // 발차기는 메인캐릭터에서 관리하기에 0
+    ComboDamages[4] = 50.0f; // 콤보5 데미지
 }
 
 // 칼 초기화
@@ -50,93 +45,82 @@ void AKnife::InitializeKnife(EKnifeType NewType)
 void AKnife::EnableHitBox(int32 ComboIndex, float KnockbackStrength)
 {
     if (ComboIndex == 3) return; // 발차기 예외 처리
+    if (!ComboDamages.IsValidIndex(ComboIndex)) return; // 콤보 인덱스 유효성 검사
 
-    if (ComboDamages.IsValidIndex(ComboIndex)) // 콤보 인덱스가 유효한 경우 해당 데미지 설정
-    {
-        CurrentDamage = ComboDamages[ComboIndex];
-        CurrentKnockbackStrength = KnockbackStrength;
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("Invalid ComboIndex: %d! Cannot retrieve damage."), ComboIndex);
-        return;
-    }
+    CurrentDamage = ComboDamages[ComboIndex]; // 콤보에 맞는 데미지 값 저장
+    CurrentKnockbackStrength = KnockbackStrength; // 넉백 강도 저장
 
+    // 소유자인 메인캐릭터 유효성 검사 후
     if (AMainCharacter* MainChar = Cast<AMainCharacter>(GetOwner()))
     {
-        KnifeHitEffectOffset = MainChar->GetKnifeEffectOffset();
-    }
-    else
-    {
-        KnifeHitEffectOffset = 0.0f;
+        KnifeHitEffectOffset = MainChar->GetKnifeEffectOffset(); // 이펙트 오프셋값 불러옴
     }
 
-    RaycastAttack(); // 레이캐스트 실행하여 맞은 적 저장
+    // 이전 공격 기록을 초기화
+    DamagedActors.Empty();
+    RaycastHitActors.Empty(); 
 
-    DamagedActors.Empty(); // 중복 히트 방지를 위해 초기화
+    RaycastAttack(); // 공격 수행
 
-    if (RaycastHitActors.Num() > 0)
+    if (RaycastHitActors.Num() > 0) // 감지된 적이 있는 경우
     {
-        HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly); // 히트박스 충돌 활성화
         UE_LOG(LogTemp, Warning, TEXT("Knife HitBox Enabled! Targets: %d"), RaycastHitActors.Num());
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("No valid targets in Raycast."));
     }
 }
 
 // 히트 박스 비활성화
 void AKnife::DisableHitBox()
 {
-    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 히트박스 충돌 비활성화
+    // 리스트를 비움
     RaycastHitActors.Empty();
     DamagedActors.Empty();
-    UE_LOG(LogTemp, Warning, TEXT("Knife HitBox Disabled!"));
 }
-
 
 void AKnife::RaycastAttack()
 {
     AActor* OwnerActor = GetOwner();
-    if (!OwnerActor) return;
+    UWorld* World = GetWorld();
+    if (!IsValid(OwnerActor) || !World) return;
 
-    FVector StartLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 20.0f);
-    float Radius = 180.0f;
-    float Angle = 60.0f;
-    int RayCount = 9;
-    float HalfAngle = Angle / 2.0f;
+    // 플레이어 전방 위치에서 연산 시작
+    const FVector Forward = OwnerActor->GetActorForwardVector();
+    const FVector StartLocation = OwnerActor->GetActorLocation() + (Forward * TraceStartOffset);
+
+    float HalfAngle = AttackAngle / 2.0f; 
 
     FCollisionQueryParams Params;
-    Params.AddIgnoredActor(OwnerActor);
+    Params.AddIgnoredActor(OwnerActor); // 소유자 무시
+    Params.AddIgnoredActor(this); // 나이프 본인 무시
 
-    RaycastHitActors.Empty();
-    // [추가] FirstHitResult 초기화
-    FirstHitResult.Reset();
-    bool bNiagaraPlayed = false; // [추가] 이펙트 재생 여부 플래그
-    bool bSoundPlayed = false;
-    FVector ForwardVector = OwnerActor->GetActorForwardVector();
+    RaycastHitActors.Empty(); // 맞은엑터 목록 초기화
+    FirstHitResult.Reset(); // 첫번째 히트 대상 초기화
 
-    for (int i = 0; i < RayCount; ++i)
+    bool bNiagaraPlayed = false; // 나이아가라 재생 여부 플래그
+    bool bSoundPlayed = false; // 사운드 재생 여부 플래그
+
+    for (int32 i = 0; i < AttackRayCount; i++) 
     {
-        float t = float(i) / (RayCount - 1);
+        // 보간으로 레이 발사 각도 계산
+        float t = float(i) / (AttackRayCount - 1);
         float AngleOffset = FMath::Lerp(-HalfAngle, HalfAngle, t);
         FVector Direction = OwnerActor->GetActorForwardVector().RotateAngleAxis(AngleOffset, FVector::UpVector);
-        FVector EndLocation = StartLocation + Direction * Radius;
+        FVector EndLocation = StartLocation + Direction * AttackRadius;
 
         // Sphere Trace 다중 감지
         TArray<FHitResult> OutHits;
-        bool bHit = GetWorld()->SweepMultiByChannel(
+        bool bHit = World->SweepMultiByChannel(
             OutHits,
             StartLocation,
             EndLocation,
             FQuat::Identity,
             ECC_Pawn,
-            FCollisionShape::MakeSphere(20.0f),
+            FCollisionShape::MakeSphere(TraceSphereRadius),
             Params
         );
 
-        // 디버그 라인 그리기
+        // 스피어 트레이스 디버깅
        /* FColor TraceColor = bHit ? FColor::Red : FColor::Green;
         DrawDebugLine(GetWorld(), StartLocation, EndLocation, TraceColor, false, 1.0f, 0, 2.0f);*/
 
@@ -145,36 +129,36 @@ void AKnife::RaycastAttack()
             for (const FHitResult& Hit : OutHits)
             {
                 AActor* HitActor = Hit.GetActor();
-                if (HitActor && !RaycastHitActors.Contains(HitActor))
+                if (IsValid(HitActor) && !RaycastHitActors.Contains(HitActor))
                 {
                     RaycastHitActors.Add(HitActor);
-                    /*DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 10.0f, 12, FColor::Red, false, 1.0f);*/
-                    FVector ImpactPointWithOffset = Hit.ImpactPoint + (ForwardVector * KnifeHitEffectOffset);
+                    
+                    // 피격 위치 구체로 디버깅
+                    // DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 10.0f, 12, FColor::Red, false, 1.0f);
+                    FVector ImpactPointWithOffset = Hit.ImpactPoint + (Forward * KnifeHitEffectOffset);
 
-                    // ----------------------------------------
-                    // ⭐ [신규] 히트 나이아가라 이펙트 재생 ⭐
-                    // ----------------------------------------
+                    // 히트 나이아가라 이펙트 재생
                     if (HitNiagaraEffect && !bNiagaraPlayed) // 이펙트는 한 번만 재생
                     {
                         UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-                            GetWorld(),
+                            World,
                             HitNiagaraEffect,
-                            ImpactPointWithOffset, // <-- 디버그 구체와 동일한 위치
-                            Hit.Normal.Rotation(), // <-- 피격 면의 노멀 방향으로 회전
-                            FVector(1.0f),
+                            ImpactPointWithOffset, // 디버그 구체와 동일한 위치
+                            Hit.Normal.Rotation(), // 피격 면의 노멀 방향으로 회전
+                            FVector(1.0f), // 크기
                             true,
                             true
                         );
-                        bNiagaraPlayed = true;
+                        bNiagaraPlayed = true; // 이펙트 재생 플래그 설정
                     }
-
+                    // 히트 사운드 재생
                     if (HitSound && !bSoundPlayed) // 사운드도 한 번만 재생
                     {
                         UGameplayStatics::PlaySoundAtLocation(
-                            GetWorld(),
-                            HitSound, // 추가된 HitSound 에셋 사용
-                            ImpactPointWithOffset, // 이펙트와 동일한 위치에서 재생
-                            Hit.Normal.Rotation()
+                            World,
+                            HitSound, 
+                            ImpactPointWithOffset, // 이펙트와 동일한 위치
+                            Hit.Normal.Rotation() // 피격 면의 노멀 방향으로 화전
                         );
                         bSoundPlayed = true; // 사운드 재생 플래그 설정
                     }
@@ -184,38 +168,29 @@ void AKnife::RaycastAttack()
     }
 }
 
-
 void AKnife::OnHitBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-    if (!OtherActor || OtherActor == GetOwner()) return;
+    // 유효하지 않은 엑터나 본인은 무시
+    if (!IsValid(OtherActor) || OtherActor == GetOwner() || OtherActor == this) return;
 
+    // 레이캐스트에 감지된 적이면서 이번 공격에서 아직 데미지를 받지 않은 대상인 경우
     if (RaycastHitActors.Contains(OtherActor) && !DamagedActors.Contains(OtherActor))
     {
-        UGameplayStatics::ApplyDamage(OtherActor, CurrentDamage, nullptr, this, nullptr);
+        UGameplayStatics::ApplyDamage(OtherActor, CurrentDamage, nullptr, this, nullptr); // 데미지 적용
 
-        // --- [신규] 나이프 넉백 적용 ---
-        ACharacter* HitCharacter = Cast<ACharacter>(OtherActor);
-        AActor* OwnerActor = GetOwner(); // GetOwner()는 AMainCharacter입니다.
+        ACharacter* HitCharacter = Cast<ACharacter>(OtherActor); // 맞은 캐릭터 가져옴
+        AActor* OwnerActor = GetOwner(); // 소유자인 메인 캐릭터 가져옴
 
-        if (HitCharacter && HitCharacter->GetCharacterMovement() && OwnerActor)
+        if (HitCharacter && HitCharacter->GetCharacterMovement() && OwnerActor) 
         {
-            // Owner(플레이어)의 전방 벡터를 넉백 방향으로 사용합니다.
-            FVector LaunchDir = OwnerActor->GetActorForwardVector();
-            LaunchDir.Z = 0; // 수평으로만 밀어냅니다.
-            LaunchDir.Normalize();
-
-            // 저장해둔 넉백 강도를 사용합니다.
-            HitCharacter->LaunchCharacter(LaunchDir * CurrentKnockbackStrength, true, false);
+            // 메인캐릭터의 전방 벡터를 넉백 방향으로 사용
+            FVector LaunchDir = OwnerActor->GetActorForwardVector(); // 메인캐릭터 전방 벡터 가져옴
+            LaunchDir.Z = 0; // 수평으로만 밀어냄
+            LaunchDir.Normalize(); // 정규화
+            HitCharacter->LaunchCharacter(LaunchDir * CurrentKnockbackStrength, true, false); // 넉백 강도만큼 Launch
         }
-        // --- [신규] 종료 ---
-
-        DamagedActors.Add(OtherActor);
-
+        DamagedActors.Add(OtherActor); // 피해를 입은 엑터 목록에 추가
         UE_LOG(LogTemp, Warning, TEXT("Knife Hit! Applied %f Damage to %s"), CurrentDamage, *OtherActor->GetName());
-    }
-    else
-    {
-        //UE_LOG(LogTemp, Warning, TEXT("HitBox ignored %s"), *OtherActor->GetName());
     }
 }

@@ -13,27 +13,27 @@
 AEnemy::AEnemy()
 {
     PrimaryActorTick.bCanEverTick = true;
+
+	AICon = nullptr;
+	AnimInstance = nullptr;
+	MoveComp = GetCharacterMovement();
+
+	ApplyBaseWalkSpeed(); // 기본 이동 속도 적용 함수 호출
+
     LastPlayedJumpAttackMontage = nullptr;
-    bCanAttack = true;
 
     AIControllerClass = AEnemyAIController::StaticClass(); // AI 컨트롤러 설정
     AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned; //스폰 시에도 AI 컨트롤러 자동 할당
-
-    GetMesh()->SetAnimInstanceClass(UEnemyAnimInstance::StaticClass()); // 애님 인스턴스 설정으로 보장
-
-    if (!AIControllerClass)
-    {
-        //UE_LOG(LogTemp, Error, TEXT("AEnemy: AIControllerClass is NULL!"));
-    }
-
-    GetCharacterMovement()->MaxWalkSpeed = 300.0f; // 기본 이동속도 세팅
 }
 
 void AEnemy::BeginPlay()
 {
     Super::BeginPlay();
-    SetCanBeDamaged(true);
+    
+    UWorld* World = GetWorld();
+    if (!World) return;
 
+    SetCanBeDamaged(true); // 데미지를 받을 수 있음
     // Actor Tick 빈도 제한 (60fps → 20fps)
     SetActorTickInterval(0.05f);
 
@@ -44,58 +44,47 @@ void AEnemy::BeginPlay()
     //    AICon->SetActorTickEnabled(false);
     //}
 
-    // 체력 초기화 확인
-    UE_LOG(LogTemp, Warning, TEXT("Enemy BeginPlay: Health=%f, MaxHealth=%f"), Health, MaxHealth);
-
-    // AI 컨트롤러 강제 할당
-    if (!GetController())
+    AICon = Cast<AEnemyAIController>(GetController()); // AI 컨트롤러 가져옴
+    if (!AICon) // AI 컨트롤러가 없다면
     {
-        SpawnDefaultController();
-        UE_LOG(LogTemp, Warning, TEXT("Enemy AI Controller manually spawned"));
+        SpawnDefaultController(); // AI 컨트롤러 스폰
+        AICon = Cast<AEnemyAIController>(GetController());  // AI 컨트롤러 다시 가져옴
     }
 
-    AAIController* AICon = Cast<AAIController>(GetController());
-    if (AICon)
+    if (GetMesh())
     {
-        //UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned: %s"), *AICon->GetName());
+        AnimInstance = Cast<UEnemyAnimInstance>(GetMesh()->GetAnimInstance());
     }
-    else
-    {
-        //UE_LOG(LogTemp, Error, TEXT("AEnemy AIController is NULL!"));
-    }
+
+    MoveComp = GetCharacterMovement();
 
     SetUpAI();  // AI 설정 함수 호출
 
-    EnemyAnimInstance = Cast<UEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-
-    // 앨리트 적 확률 판정
-    float EliteChance = 0.3f;
-    if (FMath::FRand() < EliteChance)
+    // 앨리트 설정
+    if (FMath::FRand() < EliteChance) // 앨리트 스폰 확률로 등장
     {
-        bIsEliteEnemy = true;
-        ApplyEliteSettings();
-        ApplyBaseWalkSpeed();
+        bIsEliteEnemy = true; // 앨리트 상태
+        ApplyEliteSettings(); // 앨리트 설정 적용함수 호출
+        ApplyBaseWalkSpeed(); // 앨리트의 이동속도 적용함수 호출
     }
+    Health = MaxHealth; // 체력은 최대체력
 
-    Health = MaxHealth;
-
-    // KatanaClass가 설정되어 있다면 Katana 스폰 및 부착
-    if (KatanaClass)
+    // 무기 설정
+    if (IsValid(KatanaClass))
     {
-        EquippedKatana = GetWorld()->SpawnActor<AEnemyKatana>(KatanaClass);
-        if (EquippedKatana)
+        EquippedKatana = World->SpawnActor<AEnemyKatana>(KatanaClass); // EnemyKatana 클래스를 가져옴
+        if (EquippedKatana) // 클래스가 있다면
         {
-            EquippedKatana->SetOwner(this);
-            USkeletalMeshComponent* MeshComp = GetMesh();
-            if (MeshComp)
+            EquippedKatana->SetOwner(this); // 소유자를 Enemy로 설정
+            if (USkeletalMeshComponent* MeshComp = GetMesh()) // 스켈레탈 메시 컴포넌트를 가져옴
             {
-                FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
-                EquippedKatana->AttachToComponent(MeshComp, AttachmentRules, FName("EnemyKatanaSocket"));
+                FAttachmentTransformRules Rules(EAttachmentRule::SnapToTarget, true); // 부착
+                EquippedKatana->AttachToComponent(MeshComp, Rules, FName("EnemyKatanaSocket")); // 무기클래스를 해당 소켓에 부착
             }
         }
     }
 
-    PlaySpawnIntroAnimation(); // 등장 애니메이션 재생
+    PlaySpawnIntroAnimation(); // 스폰 애니메이션 재생
 }
 
 float AEnemy::GetHealthPercent_Implementation() const
@@ -130,7 +119,7 @@ void AEnemy::PlaySpawnIntroAnimation()
 {
     UAnimMontage* SelectedIntroMontage = bIsEliteEnemy ? EliteSpawnIntroMontage : SpawnIntroMontage;
 
-    if (!SelectedIntroMontage || !EnemyAnimInstance)
+    if (!SelectedIntroMontage || !AnimInstance)
     {
         UE_LOG(LogTemp, Warning, TEXT("No intro montage found - skipping intro animation"));
         return;
@@ -140,21 +129,21 @@ void AEnemy::PlaySpawnIntroAnimation()
     bCanAttack = false; // 등장 중에는 공격 불가
 
     // AI 이동 잠시 중지
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    //AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
     if (AICon)
     {
         AICon->StopMovement();
     }
 
     // 등장 몽타주 재생
-    float PlayResult = EnemyAnimInstance->Montage_Play(SelectedIntroMontage, 1.0f);
+    float PlayResult = AnimInstance->Montage_Play(SelectedIntroMontage, 1.0f);
 
     if (PlayResult > 0.0f)
     {
         // 등장 몽타주 종료 델리게이트 바인딩
         FOnMontageEnded IntroEndDelegate;
         IntroEndDelegate.BindUObject(this, &AEnemy::OnIntroMontageEnded);
-        EnemyAnimInstance->Montage_SetEndDelegate(IntroEndDelegate, SelectedIntroMontage);
+        AnimInstance->Montage_SetEndDelegate(IntroEndDelegate, SelectedIntroMontage);
 
         UE_LOG(LogTemp, Warning, TEXT("%s Enemy intro animation playing"),
             bIsEliteEnemy ? TEXT("Elite") : TEXT("Normal"));
@@ -186,84 +175,85 @@ void AEnemy::ApplyEliteSettings()
 
 void AEnemy::ApplyBaseWalkSpeed()
 {
-    GetCharacterMovement()->MaxWalkSpeed = bIsEliteEnemy ? 500.0f : 300.0f; // 앨리트 일시 500 아닐시 300
-    GetCharacterMovement()->MaxAcceleration = 5000.0f; // 즉시 최대속도 도달
-    GetCharacterMovement()->BrakingFrictionFactor = 10.0f;
+    if (MoveComp)
+    {
+        MoveComp->MaxWalkSpeed = bIsEliteEnemy ? 500.0f : 300.0f; // 앨리트 일시 500 아닐시 300
+        MoveComp->MaxAcceleration = 5000.0f; // 즉시 최대속도 도달로 가속없이 정해진 이동 속도로 이동
+        MoveComp->BrakingFrictionFactor = 10.0f;
+    }
 }
 
 float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-    if (bIsDead || bIsPlayingIntro)  // 이미 죽은 상태면 데미지 무시
-    {
-        return 0.0f;
-    }
+    UWorld* World = GetWorld();
+    if (!World) return 0.0f;
+    if (bIsDead || bIsPlayingIntro) return 0.0f; // 이미 죽은 상태면 데미지 무시
 
-    // 1. [핵심 수정] Super::TakeDamage를 호출하기 전에 
-    //    먼저 내부 체력 계산과 데미지 적용을 수행합니다.
-    float DamageApplied = FMath::Min(Health, DamageAmount);
-    Health -= DamageApplied;
+	if (!AICon || !AnimInstance) return 0.0f; // AI 컨트롤러나 애님 인스턴스가 없으면 데미지 무시
+
+    // Super::TakeDamage를 호출하기 전에 내부 체력 계산, 데미지 적용
+    float DamageApplied = FMath::Min(Health, DamageAmount); // 데미지값은 체력에서 차감
+    Health -= DamageApplied; // 체력- 데미지값
     UE_LOG(LogTemp, Warning, TEXT("Enemy took %f damage, Health remaining: %f"), DamageAmount, Health);
 
-    if (HitSound)
+    if (IsValid(HitSound) && World) // 피격음이 있다면
     {
-        UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation());
+        UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation()); // 피격음 재생
     }
 
-    // 피격 애니메이션 재생
-    if (!bIsStrongAttack && EnemyAnimInstance && HitReactionMontage)
+    // AI 컨트롤러를 가져옴
+    //AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+
+    // 피격 애니메이션 재생 (강공격시엔 피격 애니메이션이 안나옴)
+    if (!bIsStrongAttack && IsValid(AnimInstance) && IsValid(HitReactionMontage))
     {
-        EnemyAnimInstance->Montage_Play(HitReactionMontage, 1.0f);
+        AnimInstance->Montage_Play(HitReactionMontage, 1.0f);
         FOnMontageEnded EndDelegate;
         EndDelegate.BindUObject(this, &AEnemy::OnHitMontageEnded);
-        EnemyAnimInstance->Montage_SetEndDelegate(EndDelegate, HitReactionMontage);
-    }
-    // [수정/추가]: 피격 시 AI 이동 중지
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon)
-    {
-        AICon->StopMovement();
+        AnimInstance->Montage_SetEndDelegate(EndDelegate, HitReactionMontage);
+
+        // 피격 애니메이션 재생중에는
+        if (AICon) 
+        {
+            AICon->StopMovement(); // 움직이지 않음
+        }
     }
 
-    // 2. [핵심 수정] 체력 감소 직후에 바로 사망 여부를 검사하고 Die()를 호출합니다.
-    if (Health <= 0.0f)
+    // 사망
+    if (Health <= 0.0f) // 체력이 0 이하라면
     {
-        Die(); // Die() 함수가 bIsDead = true, Health = 0.0f로 설정합니다.
+        Die(); // 사망 함수 호출
     }
 
-    // 3. [핵심 수정] 모든 내부 상태(Health, bIsDead)가 완벽히 업데이트된 *후에*
-    //    Super::TakeDamage를 호출하여 OnTakeAnyDamage 이벤트를 방송(Broadcast)시킵니다.
-    //    이제 UHealthBarComponent는 가장 최신 상태(bIsDead=true, Health=0)를 받아갑니다.
+    // 모든 내부 상태(Health, bIsDead)를 처리한 후에
+    // Super::TakeDamage를 호출하여 OnTakeAnyDamage 이벤트를 Broadcast시킴
+    // 이를 통해 UHealthBarComponent는 가장 최신 상태(bIsDead=true, Health=0)를 받아가게함
     Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
-    // 4. 실제 적용된 데미지를 반환합니다.
-    if (DamageApplied > 0.f)
-    {
-        return DamageApplied;
-    }
-
-    return 0.0f;
+    return DamageApplied;
 }
 
 void AEnemy::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
     if (bIsDead) return;
 
     // 공중 스턴 상태일 때만 다시 스턴 애니메이션 실행
     if (bIsInAirStun)
     {
-        if (EnemyAnimInstance && InAirStunMontage)
+        if (AnimInstance && InAirStunMontage)
         {
             UE_LOG(LogTemp, Warning, TEXT("Hit animation ended while airborne. Resuming InAirStunMontage."));
-            EnemyAnimInstance->Montage_Play(InAirStunMontage, 1.0f);
+            AnimInstance->Montage_Play(InAirStunMontage, 1.0f);
         }
     }
     else
     {
-        AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+        // AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
         if (AICon)
         {
             // AI가 멈춰있다가 다시 플레이어를 추적하게 함
-            AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+            AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(World, 0));
         }
 
         UE_LOG(LogTemp, Warning, TEXT("Hit animation ended on ground. No need to resume InAirStunMontage."));
@@ -272,61 +262,67 @@ void AEnemy::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 
 void AEnemy::Die()
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
     if (bIsDead) return;
 
     bIsDead = true;
     Health = 0.0f;  // 확실하게 0으로 설정
 
-    if (DieSound)
+    if (IsValid(DieSound))
     {
         UGameplayStatics::PlaySoundAtLocation(this, DieSound, GetActorLocation());
-        UE_LOG(LogTemp, Warning, TEXT("DieSound played at location: %s"), *GetActorLocation().ToString());
     }
 
     StopActions();
 
     float HideTime = 0.0f;
-
     if (bIsInAirStun && InAirStunDeathMontage) // 공중에서 사망 시
     {
-        float AirDeathDuration = InAirStunDeathMontage->GetPlayLength();
-        EnemyAnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f); // 애니메이션 재생속도 조절
+        float AirDeathDuration = InAirStunDeathMontage->GetPlayLength(); // 몽타주의 재생시간을 가져옴
+        AnimInstance->Montage_Play(InAirStunDeathMontage, 1.0f); // 애니메이션 재생
         HideTime = AirDeathDuration * 0.35f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
     }
-    else if (EnemyAnimInstance && DeadMontage) // 일반 사망 시
+    else if (AnimInstance && DeadMontage) // 일반 사망 시
     {
-        float DeathAnimDuration = DeadMontage->GetPlayLength();
-        EnemyAnimInstance->Montage_Play(DeadMontage, 1.0f);
+        float DeathAnimDuration = DeadMontage->GetPlayLength(); // 몽타주의 재생시간을 가져옴
+        AnimInstance->Montage_Play(DeadMontage, 1.0f); // 애니메이션 재생
         HideTime = DeathAnimDuration * 0.6f; // 애니메이션 재생 시간의 설정한 % 만큼 재생 후 사라짐
     }
-    else
+    else // 사망 애니메이션이 없을 경우
     {
-        // 사망 애니메이션이 없을 경우 즉시 사라지게 함
-        HideEnemy();
+        HideEnemy(); // 즉시 숨김
         return;
     }
-    // 일정 시간 후 사라지도록 설정
-    GetWorld()->GetTimerManager().SetTimer(DeathTimerHandle, this, &AEnemy::HideEnemy, HideTime, false);
+    // HideTime 만큼의 재생 시간 후 사라지도록 타이머 설정
+    TWeakObjectPtr<AEnemy> WeakThis(this); // 약참조 선언
+    World->GetTimerManager().SetTimer(DeathTimerHandle, [WeakThis]()
+        {
+            if (WeakThis.IsValid()) // 유효성 검사
+            {
+                WeakThis->HideEnemy(); // 사망한 적을 숨기는 함수 호출
+            }
+        }, HideTime, false); // HideTIme 만큼의 재생 시간 후, 단발성
 
     // AI 컨트롤러 중지
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon)
+    //AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    if(AICon)
     {
         AICon->StopAI();
     }
-    else
+
+    // 이동 중지
+    if (MoveComp) // 캐릭터 무브먼트 컴포넌트를 가져옴
     {
-        UE_LOG(LogTemp, Error, TEXT("AIController is NULL! Can not stop AI."));
+        MoveComp->DisableMovement(); // 이동 중지
+        MoveComp->StopMovementImmediately(); // 즉시 이동 중지
     }
-    // 이동 비활성화
-    GetCharacterMovement()->DisableMovement();
-    GetCharacterMovement()->StopMovementImmediately();
-    SetActorTickEnabled(false); // AI Tick 중지
+    SetActorTickEnabled(false); // Tick 종료
 }
 
 void AEnemy::PlayWeaponHitSound()
 {
-    if (EnemyWeaponHitSound)
+    if (IsValid(EnemyWeaponHitSound))
     {
         UGameplayStatics::PlaySoundAtLocation(this, EnemyWeaponHitSound, GetActorLocation());
     }
@@ -334,15 +330,20 @@ void AEnemy::PlayWeaponHitSound()
 
 void AEnemy::StopActions()
 {
-    AAIController* AICon = Cast<AAIController>(GetController());
+    UWorld* World = GetWorld();
+    if (!World) return;
+    /*AAIController* AICon = Cast<AAIController>(GetController());*/
 
-    GetCharacterMovement()->DisableMovement(); // 모든 이동 차단
-    GetCharacterMovement()->StopMovementImmediately(); // 모든 이동 즉시차단
-
-    // 모든 공격 중지
-    if (EnemyAnimInstance)
+    if (MoveComp) // 캐릭터 무브먼트 컴포넌트를 가져옴
     {
-        EnemyAnimInstance->Montage_Stop(0.1f);
+        MoveComp->DisableMovement(); // 이동 중지
+        MoveComp->StopMovementImmediately(); // 즉시 이동 중지
+    }
+
+    // 모든 몽타주 중지
+    if (AnimInstance)
+    {
+        AnimInstance->Montage_Stop(0.1f);
     }
 
     // 스턴 상태일 경우 추가 조치
@@ -350,7 +351,7 @@ void AEnemy::StopActions()
     {
         UE_LOG(LogTemp, Warning, TEXT("Enemy is stunned! Forcing all actions to stop."));
         bCanAttack = false; // 공격 불가 상태 유지
-        GetWorld()->GetTimerManager().ClearTimer(StunTimerHandle); // 스턴 해제 타이머 취소
+        World->GetTimerManager().ClearTimer(StunTimerHandle); // 스턴 해제 타이머 취소
     }
 
     // 카타나 공격판정 중지
@@ -362,35 +363,37 @@ void AEnemy::StopActions()
 
 void AEnemy::HideEnemy()
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
     if (!bIsDead) return; // 사망하지 않았으면 리턴
 
     UE_LOG(LogTemp, Warning, TEXT("Hiding Enemy - Memory Cleanup"));
 
     // GameMode에 파괴 알림
-    if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
+    if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(World->GetAuthGameMode()))
     {
         GameMode->OnEnemyDestroyed(this);
     }
 
     // 1. 이벤트 및 델리게이트 정리 (최우선)
-    GetWorld()->GetTimerManager().ClearAllTimersForObject(this); // 모든 타이머 해제
+    World->GetTimerManager().ClearAllTimersForObject(this); // 모든 타이머 해제
 
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 애님 인스턴스 참조 받아옴
-    if (AnimInstance && IsValid(AnimInstance)) // 애님 인스턴스 유효성 검사
+    UAnimInstance* MyAnimInstance = GetMesh()->GetAnimInstance(); // 애님 인스턴스 참조 받아옴
+    if (MyAnimInstance && IsValid(MyAnimInstance)) // 애님 인스턴스 유효성 검사
     {
         // 애니메이션 이벤트 바인딩 완전 해제
-        AnimInstance->OnMontageEnded.RemoveAll(this); // 몽타주 종료 이벤트 바인딩 해제
-        AnimInstance->OnMontageBlendingOut.RemoveAll(this); // 몽타주 블랜드 아웃 이벤트 바인딩 해체
-        AnimInstance->OnMontageStarted.RemoveAll(this); // 몽타주 시작 이벤트 바인딩 해제
+        MyAnimInstance->OnMontageEnded.RemoveAll(this); // 몽타주 종료 이벤트 바인딩 해제
+        MyAnimInstance->OnMontageBlendingOut.RemoveAll(this); // 몽타주 블랜드 아웃 이벤트 바인딩 해체
+        MyAnimInstance->OnMontageStarted.RemoveAll(this); // 몽타주 시작 이벤트 바인딩 해제
     }
 
     // 2. AI 시스템 완전 정리
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController()); // AI 컨트롤러 참조 받아옴
-    if (AICon && IsValid(AICon)) // AI 컨트롤러 유효성 검사
+    AEnemyAIController* EnemyAICon = Cast<AEnemyAIController>(GetController()); // AI 컨트롤러 참조 받아옴
+    if (EnemyAICon && IsValid(EnemyAICon)) // AI 컨트롤러 유효성 검사
     {
-        AICon->StopAI(); // AI 로직 중단
-        AICon->UnPossess(); // 컨트롤러-폰 관계 해제
-        AICon->Destroy(); // AI 컨트롤러 완전 제거
+        EnemyAICon->StopAI(); // AI 로직 중단
+        EnemyAICon->UnPossess(); // 컨트롤러-폰 관계 해제
+        EnemyAICon->Destroy(); // AI 컨트롤러 완전 제거
     }
 
     // 3. 무기 시스템 정리 (AI 정리 후 안전하게)
@@ -401,13 +404,13 @@ void AEnemy::HideEnemy()
     }
 
     // 4. 무브먼트 시스템 정리
-    UCharacterMovementComponent* MovementComp = GetCharacterMovement(); // 캐릭터 무브먼트 컴포넌트 참조 받아옴
-    if (MovementComp && IsValid(MovementComp)) // 무브먼트 컴포넌트 유효성 검사
+    UCharacterMovementComponent* EnemyMoveComp = GetCharacterMovement(); // 캐릭터 무브먼트 컴포넌트 참조 받아옴
+    if (EnemyMoveComp && IsValid(EnemyMoveComp)) // 무브먼트 컴포넌트 유효성 검사
     {
-        MovementComp->DisableMovement(); // 이동 비활성화
-        MovementComp->StopMovementImmediately(); // 현재 이동 즉시 중단
-        MovementComp->SetMovementMode(EMovementMode::MOVE_None); // Move모드 None 설정으로 네비게이션에서 제외
-        MovementComp->SetComponentTickEnabled(false); // 무브먼트 컴포넌트 Tick 비활성화
+        EnemyMoveComp->DisableMovement(); // 이동 비활성화
+        EnemyMoveComp->StopMovementImmediately(); // 현재 이동 즉시 중단
+        EnemyMoveComp->SetMovementMode(EMovementMode::MOVE_None); // Move모드 None 설정으로 네비게이션에서 제외
+        EnemyMoveComp->SetComponentTickEnabled(false); // 무브먼트 컴포넌트 Tick 비활성화
     }
 
     // 5. 메쉬 컴포넌트 정리
@@ -437,7 +440,9 @@ void AEnemy::HideEnemy()
     SetCanBeDamaged(false); // 데미지 처리 비활성화
 
     // 7. 현재 프레임 처리 완료 후 다음 프레임에 안전하게 엑터 제거 (크래쉬 방지)
-    GetWorld()->GetTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<AEnemy>(this)]() // 스마트 포인터 WeakObjectPtr로 약한 참조를 사용하여 안전하게 지연 실행
+	TWeakObjectPtr<AEnemy> WeakThis(this); // 스마트 포인터 WeakObjectPtr로 약한 참조 생성
+    World->GetTimerManager().SetTimerForNextTick(
+        [WeakThis]() // 스마트 포인터 WeakObjectPtr로 약한 참조를 사용하여 안전하게 지연 실행
         {
             if (WeakThis.IsValid() && !WeakThis->IsActorBeingDestroyed()) // 약한 참조한 엑터가 유효하고 파괴되지 않았다면
             {
@@ -450,45 +455,27 @@ void AEnemy::HideEnemy()
 // AI가 NavMesh에서 이동할 수 있도록 설정
 void AEnemy::SetUpAI()
 {
-    GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_NavWalking);
-}
-
-// AI 컨트롤러 확인
-void AEnemy::PostInitializeComponents()
-{
-    Super::PostInitializeComponents();
-
-    GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
-        {
-            AAIController* AICon = Cast<AAIController>(GetController());
-            if (AICon)
-            {
-                //UE_LOG(LogTemp, Warning, TEXT("AEnemy AIController Assigned Later: %s"), *AICon->GetName());
-            }
-            else
-            {
-                //UE_LOG(LogTemp, Error, TEXT("AEnemy AIController STILL NULL!"));
-            }
-        });
+    if (MoveComp)
+    {
+        MoveComp->SetMovementMode(EMovementMode::MOVE_NavWalking);
+    }
 }
 
 void AEnemy::PlayNormalAttackAnimation()
 {
-    if (!EnemyAnimInstance || NormalAttackMontages.Num() == 0) return;
+    UWorld* World = GetWorld();
+    if (!World) return;
+    if (!AnimInstance || NormalAttackMontages.Num() == 0) return;
 
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    //UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 
     // 애니메이션 실행 중이라면 공격 실행 금지
-    if (AnimInstance && AnimInstance->IsAnyMontagePlaying())
-    {
-        //UE_LOG(LogTemp, Warning, TEXT("PlayNormalAttackAnimation() blocked: Animation still playing."));
-        return;
-    }
-
+    if (AnimInstance && AnimInstance->IsAnyMontagePlaying()) return;
+  
     int32 RandomIndex = FMath::RandRange(0, NormalAttackMontages.Num() - 1);
     UAnimMontage* SelectedMontage = NormalAttackMontages[RandomIndex];
 
-    if (SelectedMontage)
+    if (IsValid(SelectedMontage))
     {
         UE_LOG(LogTemp, Warning, TEXT("Enemy is playing attack montage: %s"), *SelectedMontage->GetName());
 
@@ -502,13 +489,13 @@ void AEnemy::PlayNormalAttackAnimation()
             UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
         }
 
-        if (bIsEliteEnemy && EnemyAnimInstance && SelectedMontage) // 앨리트 적인 경우
+        if (bIsEliteEnemy && AnimInstance && SelectedMontage) // 앨리트 적인 경우
         {
-            EnemyAnimInstance->Montage_SetPlayRate(SelectedMontage, 1.5f); // 몽타주 배속
+            AnimInstance->Montage_SetPlayRate(SelectedMontage, 1.5f); // 몽타주 배속
         }
 
         // 공격 실행 후 AI 이동 정지
-        AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+        //AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
         if (AICon)
         {
             AICon->StopMovement();
@@ -525,11 +512,13 @@ void AEnemy::PlayNormalAttackAnimation()
 
 void AEnemy::PlayStrongAttackAnimation()
 {
-    if (!EnemyAnimInstance || !StrongAttackMontage) return;
+    UWorld* World = GetWorld();
+    if (!World) return;
+    if (!AnimInstance || !StrongAttackMontage) return;
 
     bIsStrongAttack = true;
 
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    //UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 
     // 애니메이션 실행 중이라면 강공격 실행 금지
     if (AnimInstance && AnimInstance->IsAnyMontagePlaying())
@@ -541,9 +530,9 @@ void AEnemy::PlayStrongAttackAnimation()
     UE_LOG(LogTemp, Warning, TEXT("Enemy is performing StrongAttack: %s"), *StrongAttackMontage->GetName());
     AnimInstance->Montage_Play(StrongAttackMontage, 1.0f);
 
-    if (bIsEliteEnemy && EnemyAnimInstance) // 앨리트 적인 경우
+    if (bIsEliteEnemy && AnimInstance) // 앨리트 적인 경우
     {
-        EnemyAnimInstance->Montage_SetPlayRate(StrongAttackMontage, 1.5f); // 몽타주 배속
+        AnimInstance->Montage_SetPlayRate(StrongAttackMontage, 1.5f); // 몽타주 배속
     }
 
     if (StrongAttackSound)
@@ -559,7 +548,7 @@ void AEnemy::PlayStrongAttackAnimation()
 
 void AEnemy::PlayDodgeAnimation(bool bDodgeLeft)
 {
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    //UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
     if (!AnimInstance) return;
 
     UAnimMontage* SelectedMontage = (bDodgeLeft) ? DodgeLeftMontage : DodgeRightMontage;
@@ -579,8 +568,10 @@ void AEnemy::PlayDodgeAnimation(bool bDodgeLeft)
 
 void AEnemy::SetRootMotionEnable(bool bEnable)
 {
-    if (EnemyAnimInstance)
-        EnemyAnimInstance->SetRootMotionMode(bEnable ? ERootMotionMode::RootMotionFromMontagesOnly : ERootMotionMode::NoRootMotionExtraction);
+    if (AnimInstance)
+    {
+        AnimInstance->SetRootMotionMode(bEnable ? ERootMotionMode::RootMotionFromMontagesOnly : ERootMotionMode::NoRootMotionExtraction);
+    }
 }
 
 void AEnemy::OnDodgeLaunchNotify(bool bDodgeLeft)
@@ -609,9 +600,11 @@ float AEnemy::GetDodgeRightDuration() const
 
 void AEnemy::PlayJumpAttackAnimation()
 {
-    if (!EnemyAnimInstance || JumpAttackMontages.Num() == 0) return;
+    UWorld* World = GetWorld();
+    if (!World) return;
+    if (!AnimInstance || JumpAttackMontages.Num() == 0) return;
 
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    //UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 
     if (AnimInstance && AnimInstance->IsAnyMontagePlaying()) return;
 
@@ -631,13 +624,13 @@ void AEnemy::PlayJumpAttackAnimation()
         {
             UE_LOG(LogTemp, Warning, TEXT("Montage successfully playing."));
         }
-        if (bIsEliteEnemy && EnemyAnimInstance && SelectedMontage) // 앨리트 적인 경우
+        if (bIsEliteEnemy && AnimInstance && SelectedMontage) // 앨리트 적인 경우
         {
-            EnemyAnimInstance->Montage_SetPlayRate(SelectedMontage, 1.5f); // 몽타주 배속
+            AnimInstance->Montage_SetPlayRate(SelectedMontage, 1.5f); // 몽타주 배속
         }
 
         // 공격 실행 후 AI 이동 정지
-        AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+        // AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
         if (AICon)
         {
             AICon->StopMovement();
@@ -660,13 +653,15 @@ float AEnemy::GetJumpAttackDuration() const
 
 void AEnemy::EnterInAirStunState(float Duration)
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
     if (bIsDead || bIsInAirStun) return;
     UE_LOG(LogTemp, Warning, TEXT("Entering InAirStunState..."));
 
     bIsInAirStun = true;
 
     // AI 멈추기 (바로 이동 정지하지 않고, 스턴 종료 시점에서 다시 활성화)
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    //AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
     if (AICon)
     {
         UE_LOG(LogTemp, Warning, TEXT("Stopping AI manually..."));
@@ -686,69 +681,81 @@ void AEnemy::EnterInAirStunState(float Duration)
 
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s launched upwards! Current Location: %s"), *GetName(), *GetActorLocation().ToString());
 
-    // 일정 시간 후 중력 제거 (즉시 0으로 만들면 착지가 방해될 수 있음)
+    // 타이머 선언
     FTimerHandle GravityDisableHandle;
-    GetWorld()->GetTimerManager().SetTimer(
+    // 일정 시간 후 중력 제거 (즉시 0으로 만들면 착지가 방해될 수 있음)
+    World->GetTimerManager().SetTimer(
         GravityDisableHandle,
-        [this]()
+        [WeakThis = TWeakObjectPtr<AEnemy>(this)]() // 약참조 적용
         {
-            GetCharacterMovement()->SetMovementMode(MOVE_Flying);
-            GetCharacterMovement()->GravityScale = 0.0f;
-            GetCharacterMovement()->Velocity = FVector::ZeroVector; // 위치 고정
-            UE_LOG(LogTemp, Warning, TEXT("Enemy %s gravity disabled, now floating!"), *GetName());
+            if (WeakThis.IsValid())
+            {
+                if (auto* MC = WeakThis->GetCharacterMovement())
+                {
+                    MC->SetMovementMode(MOVE_Flying);
+                    MC->GravityScale = 0.0f;
+                    MC->Velocity = FVector::ZeroVector;
+                }
+            }
         },
-        0.3f, // 0.3초 후 중력 제거
+        0.3f,
         false
     );
 
     // 스턴 애니메이션 실행
-    if (EnemyAnimInstance && InAirStunMontage)
+    if (AnimInstance && InAirStunMontage)
     {
-        EnemyAnimInstance->Montage_Play(InAirStunMontage, 1.0f);
+        AnimInstance->Montage_Play(InAirStunMontage, 1.0f);
     }
 
     // 일정 시간이 지나면 원래 상태로 복귀
-    GetWorld()->GetTimerManager().SetTimer(StunTimerHandle, this, &AEnemy::ExitInAirStunState, Duration, false);
+    World->GetTimerManager().SetTimer(StunTimerHandle, this, &AEnemy::ExitInAirStunState, Duration, false);
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s is now stunned for %f seconds!"), *GetName(), Duration);
 }
 
 void AEnemy::ExitInAirStunState()
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
     if (bIsDead) return;
     UE_LOG(LogTemp, Warning, TEXT("Exiting InAirStunState..."));
 
     bIsInAirStun = false;
 
-    // 중력 복구 및 낙하 상태로 변경
-    GetCharacterMovement()->SetMovementMode(MOVE_Falling);
-    GetCharacterMovement()->GravityScale = 1.5f; // 조금 더 빠르게 낙하
+    //UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+    if (MoveComp)
+    {
+        MoveComp->SetMovementMode(MOVE_Falling); // 낙하 상태로 변경
+        MoveComp->GravityScale = 1.5f; // 조금 더 빠르게 낙하
+    }
+
     ApplyBaseWalkSpeed();
 
     // AI 이동 다시 활성화
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon)
+    //AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
+    if(AICon)
     {
         UE_LOG(LogTemp, Warning, TEXT("Reactivating AI movement..."));
-        GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
-        GetCharacterMovement()->SetDefaultMovementMode();
-
+        MoveComp->SetMovementMode(MOVE_NavWalking);
+        MoveComp->SetDefaultMovementMode();
         // 다시 이동 시작
-        AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+        AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(World, 0));
     }
 
     // 애니메이션 정지
-    if (EnemyAnimInstance)
+    if (AnimInstance)
     {
-        EnemyAnimInstance->Montage_Stop(0.1f);
+        AnimInstance->Montage_Stop(0.1f);
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Enemy %s has recovered from stun and resumed AI behavior!"), *GetName());
-
     bIsInAirStun = false;
 }
 
 void AEnemy::EnableGravityPull(FVector ExplosionCenter, float PullStrength)
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
     if (bIsDead) return; // 죽은 적은 끌어당기지 않음
 
     // 중력장 상태 업데이트
@@ -756,15 +763,20 @@ void AEnemy::EnableGravityPull(FVector ExplosionCenter, float PullStrength)
     GravityFieldCenter = ExplosionCenter;
 
     // AI·이동 전면 차단
-    if (AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController()))
+    if (AICon)
     {
         AICon->StopMovement();
         AICon->SetActorTickEnabled(false); // AI Tick 완전 중지
     }
 
-    GetCharacterMovement()->StopMovementImmediately();
-    GetCharacterMovement()->DisableMovement(); // AI 네비게이션 이동 막음
-    GetCharacterMovement()->SetMovementMode(MOVE_Flying); // 중심 고정에 유리
+    //UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+    if (MoveComp)
+    {
+        MoveComp->StopMovementImmediately();
+        MoveComp->DisableMovement(); // AI 네비게이션 이동 막음
+        MoveComp->SetMovementMode(MOVE_Flying); // 중심 고정에 유리
+        MoveComp->Velocity = FVector::ZeroVector;
+    }
 
     // 중력장 중앙으로 강제 이동 로직
     FVector Direction = GravityFieldCenter - GetActorLocation();
@@ -779,31 +791,33 @@ void AEnemy::EnableGravityPull(FVector ExplosionCenter, float PullStrength)
     {
         Direction.Normalize();
         float PullSpeed = PullStrength * 10.f; // 강도 강화
-        FVector NewLocation = GetActorLocation() + Direction * PullSpeed * GetWorld()->GetDeltaSeconds();
+        FVector NewLocation = GetActorLocation() + Direction * PullSpeed * World->GetDeltaSeconds();
         SetActorLocation(NewLocation, true);
     }
-
-    // 중력장에 붙잡힌 상태에서 절대 못 빠져나가도록 위치·이동 고정
-    GetCharacterMovement()->Velocity = FVector::ZeroVector;
 }
 
 void AEnemy::DisableGravityPull()
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
     if (!bIsTrappedInGravityField) return;
 
     bIsTrappedInGravityField = false;
 
     // 이동 모드 복구
     ApplyBaseWalkSpeed();
-    GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
-    GetCharacterMovement()->SetDefaultMovementMode();
-    GetCharacterMovement()->StopMovementImmediately();
 
-    // AI 복구
-    if (AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController()))
+    //UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+    if (MoveComp)
     {
-        // 다시 플레이어를 추적하게 함
-        AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+        MoveComp->SetMovementMode(MOVE_NavWalking);
+        MoveComp->SetDefaultMovementMode();
+        MoveComp->StopMovementImmediately();
+    }
+
+    if (AICon)
+    {
+        AICon->MoveToActor(UGameplayStatics::GetPlayerCharacter(World, 0));
         AICon->SetActorTickEnabled(true); // AI Tick 완전 중지
     }
 

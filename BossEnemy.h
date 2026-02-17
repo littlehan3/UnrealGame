@@ -2,17 +2,43 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "BossEnemyAnimInstance.h"
-#include "Animation/AnimInstance.h"
-#include "Components/CapsuleComponent.h"
-#include "DrawDebugHelpers.h"
-#include "NiagaraSystem.h"
 #include "HealthInterface.h"
 #include "BossEnemy.generated.h"
 
 class ABossProjectile;
 class AEnemyBossKatana;
 class UNiagaraSystem;
+class ABossEnemyAIController;
+class UBossEnemyAnimInstance;
+
+// ë³´ìŠ¤ ì „ì²´ ìƒíƒœ Enum
+UENUM(BlueprintType)
+enum class EBossState : uint8
+{
+	Idle,           // ëŒ€ê¸°
+	Intro,          // ë“±ì¥ ì• ë‹ˆë©”ì´ì…˜
+	Combat,         // ì „íˆ¬ ê°€ëŠ¥ ìƒíƒœ
+	Teleporting,    // í›„í‡´ í…”ë ˆí¬íŠ¸
+	AttackTeleport, // ê³µê²© í…”ë ˆí¬íŠ¸
+	RangedAttack,   // ì›ê±°ë¦¬ ê³µê²©
+	NormalAttack,   // ê·¼ì ‘ ê³µê²©
+	UpperBodyAttack,// ìƒì²´ ê³µê²©
+	StealthAttack,  // ìŠ¤í…”ìŠ¤ ê³µê²©
+	HitReaction,    // í”¼ê²© ë°˜ì‘
+	Dead            // ì‚¬ë§
+};
+
+// ìŠ¤í…”ìŠ¤ ì„¸ë¶€ ë‹¨ê³„ Enum
+UENUM(BlueprintType)
+enum class EStealthPhase : uint8
+{
+	None = 0,	// 0ë‹¨ê³„: ì—†ìŒ (ìŠ¤í…”ìŠ¤ ì¢…ë£Œ,  AI ë³µêµ¬ ì‹œì )
+	Starting,   // 1ë‹¨ê³„: ìŠ¤í…”ìŠ¤ ì‹œì‘ ì• ë‹ˆë©”ì´ì…˜
+	Diving,     // 2ë‹¨ê³„: ìŠ¤í…”ìŠ¤ ë‹¤ì´ë¹™
+	Invisible,  // 3ë‹¨ê³„: ìŠ¤í…”ìŠ¤ ì‹œ íˆ¬ëª…í™”
+	Kicking,    // 4ë‹¨ê³„: ìŠ¤í…”ìŠ¤ ì¢…ë£Œ í›„ í‚¥ ê³µê²©
+	Finishing   // 6ë‹¨ê³„: ìŠ¤í…”ìŠ¤ í‚¥ ì ì¤‘ì‹œ í”¼ë‹ˆì‹œ ê³µê²©
+};
 
 UCLASS(Blueprintable)
 class LOCOMOTION_API ABossEnemy : public ACharacter, public IHealthInterface
@@ -22,242 +48,282 @@ class LOCOMOTION_API ABossEnemy : public ACharacter, public IHealthInterface
 public:
 	ABossEnemy();
 
-	virtual void PostInitializeComponents() override; // AI ÄÁÆ®·Ñ·¯ È®ÀÎ ÇÔ¼ö
+	void PlayBossNormalAttackAnimation(); // ê·¼ì ‘ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	void PlayBossUpperBodyAttackAnimation(); // ìƒì²´ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	void PlayBossTeleportAnimation(); // í›„í‡´ í…”ë ˆí¬íŠ¸ ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	void PlayBossSpawnIntroAnimation(); // ë“±ì¥ ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	void PlayBossAttackTeleportAnimation(); // ê³µê²© í…”ë ˆí¬íŠ¸ ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	void PlayBossRangedAttackAnimation(); // ì›ê±°ë¦¬ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
+	void PlayBossStealthAttackAnimation(); // ìŠ¤í…”ìŠ¤ ê³µê²© ì• ë‹ˆë©”ì´ì…˜ ì¬ìƒ
 
-	void PlayBossNormalAttackAnimation(); // ÀÏ¹İ°ø°İ ¾Ö´Ï¸ŞÀÌ¼Ç ½ÇÇà ÇÔ¼ö
-	void PlayBossUpperBodyAttackAnimation(); // »óÃ¼ Àü¿ë ¾Ö´Ï¸ŞÀÌ¼Ç ½ÇÇà ÇÔ¼ö
-	void PlayBossTeleportAnimation(); // ÅÚ·¹Æ÷Æ® ÇÔ¼ö
-	bool bIsBossTeleporting = false; // ÅÚ·¹Æ÷Æ® Áß ¿©ºÎ
-	bool bCanTeleport = true; // ÅÚ·¹Æ÷Æ® °¡´É ¿©ºÎ
-	void PlayBossSpawnIntroAnimation(); // º¸½º µîÀå ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı ÇÔ¼ö
-	bool bIsPlayingBossIntro = false; // º¸½º µîÀå ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı Áß ¿©ºÎ
-	void PlayBossAttackTeleportAnimation(); // °ø°İ¿ë ÅÚ·¹Æ÷Æ® ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı ÇÔ¼ö
-	void PlayBossRangedAttackAnimation(); // ¿ø°Å¸® °ø°İ ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı ÇÔ¼ö
-	bool bIsBossAttackTeleporting = false; // °ø°İ¿ë ÅÚ·¹Æ÷Æ® Áß ¿©ºÎ
-	bool bIsBossRangedAttacking = false; // ¿ø°Å¸® °ø°İ Áß ¿©ºÎ
-	bool bShouldUseRangedAfterTeleport = false; // ÅÚ·¹Æ÷Æ® ÈÄ ¿ø°Å¸® °ø°İ »ç¿ë ¿©ºÎ 
-	bool bIsInvincible = false; // ¹«Àû»óÅÂ ¿©ºÎ
-
-	void PlayBossStealthAttackAnimation(); // 1´Ü°è ½ºÅÚ½º ½ÃÀÛ ¿¡´Ï¸ŞÀÌ¼Ç ½ÇÇà ÇÔ¼ö
-	void StartStealthDivePhase(); // 2´Ü°è ½ºÅÚ½º ÁøÀÔ ÇÔ¼ö
-	void StartStealthInvisiblePhase(); // 3´Ü°è ½ºÅÚ½º ÇÔ¼ö
-	FVector CalculateRandomTeleportLocation(); // 4´Ü°è ½ºÅÚ½º ÅÚ·¹Æ÷Æ® À§Ä¡ °è»ê ÇÔ¼ö
-	void ExecuteStealthKick(); // 5´Ü°è ½ºÅÚ½º Å± ÇÔ¼ö
-	void ExecuteStealthKickRaycast(); // ½ºÅÚ½º Å± ·¹ÀÌÄ³½ºÆ® ÇÔ¼ö
-	void LaunchPlayerIntoAir(APawn* PlayerPawn, float LaunchHeight); // ½ºÅÚ½º Å± ¿¡¾îº» ÇÔ¼ö
-	void ExecuteStealthFinish(); // 6´Ü°è ½ºÅÚ½º ÇÇ´Ï½¬ ÇÔ¼ö
-	void ExecuteStealthFinishRaycast(); // ½ºÅÚ½º ÇÇ´Ï½¬ ·¹ÀÌÄ³½ºÆ® ÇÔ¼ö
-	void EndStealthAttack(); // ½ºÅÚ½º °ø°İ Á¾·á ÇÔ¼ö
-	bool bCanUseStealthAttack = true; // ½ºÅÚ½º °ø°İ »ç¿ë °¡´É ¿©ºÎ
-	bool bIsStealthStarting = false;  // ½ºÅÚ½º ½ÃÀÛ Áß
-	bool bIsStealthDiving = false;    // ¶Ù¾îµå´Â Áß
-	bool bIsStealthInvisible = false; // ¿ÏÀü Åõ¸í »óÅÂ
-	bool bIsStealthKicking = false;   // Å± °ø°İ Áß
-	bool bIsStealthFinishing = false; // ÇÇ´Ï½¬ °ø°İ Áß
-	void UpdateStealthTeleportLocation(); // ½ºÅÚ½º ÅÚ·¹Æ÷Æ® À§Ä¡ ¾÷µ¥ÀÌÆ® ÇÔ¼ö
+	// ìŠ¤í…”ìŠ¤ ê³µê²© ë‹¨ê³„ í•¨ìˆ˜
+	void StartStealthDivePhase(); // ìŠ¤í…”ìŠ¤ ë‹¤ì´ë¹™
+	void StartStealthInvisiblePhase(); // ìŠ¤í…”ìŠ¤ íˆ¬ëª…í™”
+	FVector CalculateRandomTeleportLocation(); // ëœë¤ ìœ„ì¹˜ ê³„ì‚°
+	void ExecuteStealthKick(); // í‚¥ ê³µê²©
+	void ExecuteStealthKickRaycast(); // í‚¥ ê³µê²© ë ˆì´ìºìŠ¤íŠ¸
+	void LaunchPlayerIntoAir(APawn* PlayerPawn, float LaunchHeight); // í”Œë ˆì´ì–´ ê³µì¤‘ ë°œì‚¬
+	void ExecuteStealthFinish(); // í”¼ë‹ˆì‹œ ê³µê²©
+	void ExecuteStealthFinishRaycast(); // í”¼ë‹ˆì‹œ ê³µê²© ë ˆì´ìºìŠ¤íŠ¸
+	void EndStealthAttack(); // ìŠ¤í…”ìŠ¤ ê³µê²© ì¢…ë£Œ
+	void UpdateStealthTeleportLocation(); // íˆ¬ëª…í™” ì¤‘ ìœ„ì¹˜ ì—…ë°ì´íŠ¸
 
 	UFUNCTION()
-	void OnStealthCooldownEnd(); // ½ºÅÚ½º ÄğÅ¸ÀÓ Á¾·á
+	void OnStealthCooldownEnd(); // ìŠ¤í…”ìŠ¤ ì¿¨ë‹¤ìš´ ì¢…ë£Œ
 
-	
-	virtual float TakeDamage( // µ¥¹ÌÁö¸¦ ÀÔ¾úÀ»¶§ È£ÃâµÇ´Â ÇÔ¼ö (AActorÀÇ TakeDamage ¿À¹ö¶óÀÌµå)
-		float DamageAmount, // ÀÔÀº µ¥¹ÌÁö ¾ç
-		struct FDamageEvent const& DamageEvent, // µ¥¹ÌÁö ÀÌº¥Æ® Á¤º¸
-		class AController* EventInstigator, // µ¥¹ÌÁö¸¦ °¡ÇÑ ÄÁÆ®·Ñ·¯
-		AActor* DamageCauser // µ¥¹ÌÁö¸¦ À¯¹ßÇÑ ¿¢ÅÍ
+	// ë°ë¯¸ì§€ ì²˜ë¦¬ ì˜¤ë²„ë¼ì´ë“œ
+	virtual float TakeDamage(
+		float DamageAmount,
+		struct FDamageEvent const& DamageEvent,
+		class AController* EventInstigator,
+		AActor* DamageCauser
 	) override;
 
-	bool bIsBossDead = false; // »ç¸Á ¿©ºÎ
-	bool bIsBossStrongAttacking = false; // °­°ø°İÁß ¿©ºÎ
-	bool bCanBossAttack = false; // °ø°İ °¡´É ¿©ºÎ
-	bool bIsBossHit = false; // ÇÇ°İÁß ¿©ºÎ
-	bool bIsFullBodyAttacking = false;// Àü½Å°ø°İÁß ¿©ºÎ
-	bool bHasExecutedKickRaycast = false; // Å± ·¹ÀÌÄ³½ºÆ® ¿©ºÎ
+	// ìƒíƒœ ì¿¼ë¦¬ í•¨ìˆ˜ AIControllerìš©
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	EBossState GetCurrentState() const { return CurrentState; } // í˜„ì¬ ë³´ìŠ¤ ìƒíƒœ ë°˜í™˜
 
-	// MaxHealth Ãß°¡ ¹× ±âÁ¸ Health º¯¼ö ¼öÁ¤
-	UPROPERTY(EditDefaultsOnly, Category = "Health")
-	float MaxBossHealth = 2000.0f; // ÃÖ´ë Ã¼·Â
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	EStealthPhase GetStealthPhase() const { return CurrentStealthPhase; } // í˜„ì¬ ìŠ¤í…”ìŠ¤ ë‹¨ê³„ ë°˜í™˜
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
-	float BossHealth = 2000.0f;
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool IsInState(EBossState State) const { return CurrentState == State; } // íŠ¹ì • ìƒíƒœì¸ì§€ í™•ì¸
 
-	UFUNCTION() // ¾Ö´Ô ³ëÆ¼ÆÄÀÌ¿¡¼­ È£ÃâÇÒ ÇÔ¼ö
-	void SpawnBossProjectile();
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool IsDead() const { return CurrentState == EBossState::Dead; } // ì‚¬ë§ ìƒíƒœì¸ì§€ í™•ì¸
 
-	// º¸½º Àü¿ë Ä«Å¸³ª ÂüÁ¶
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
-	AEnemyBossKatana* EquippedBossKatana;
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool IsInCombatState() const { return CurrentState == EBossState::Combat; } // ì „íˆ¬ ìƒíƒœì¸ì§€ í™•ì¸
 
-	void StartAttack();
-	void EndAttack();
-	void BossDie(); // »ç¸Á ÇÔ¼ö
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool IsPerformingAction() const; // ì•¡ì…˜ ìˆ˜í–‰ ì¤‘ì¸ì§€ í™•ì¸
 
-	/** IHealthInterface ±¸Çö ÇÔ¼ö */
-	virtual float GetHealthPercent_Implementation() const override;
-	virtual bool IsEnemyDead_Implementation() const override;
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool IsExecutingStealthAttack() const; // ìŠ¤í…”ìŠ¤ ê³µê²© ì‹¤í–‰ ì¤‘ì¸ì§€ í™•ì¸
 
-	void PlayWeaponHitSound();
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool CanPerformAttack() const { return bCanBossAttack && CurrentState == EBossState::Combat; } // ê³µê²© ê°€ëŠ¥ ì—¬ë¶€ í™•ì¸
+
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool CanTeleport() const { return bCanTeleport; } // í…”ë ˆí¬íŠ¸ ê°€ëŠ¥ ì—¬ë¶€ í™•ì¸
+
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool CanUseStealthAttack() const { return bCanUseStealthAttack; } // ìŠ¤í…”ìŠ¤ ê³µê²© ê°€ëŠ¥ ì—¬ë¶€ í™•ì¸
+
+	UFUNCTION(BlueprintCallable, Category = "Boss|State")
+	bool IsInvincible() const { return bIsInvincible; } // ë¬´ì  ìƒíƒœì¸ì§€ í™•ì¸
+
+	void SetCanBossAttack(bool bValue) { bCanBossAttack = bValue; } // AI ì»¨íŠ¸ë¡¤ëŸ¬ìš© ê³µê²© ê°€ëŠ¥ í”Œë˜ê·¸ ì„¤ì •
+
+	void StartAttack(); // ê³µê²© ì‹œì‘
+	void EndAttack(); // ê³µê²© ì¢…ë£Œ
+	void BossDie(); // ë³´ìŠ¤ ì‚¬ë§ ì²˜ë¦¬
+
+	UFUNCTION()
+	void SpawnBossProjectile(); // ë³´ìŠ¤ íˆ¬ì‚¬ì²´ ìƒì„±
+
+	// IHealthInterface ì—°ë™ í•¨ìˆ˜
+	virtual float GetHealthPercent_Implementation() const override; // ì²´ë ¥ ë°±ë¶„ìœ¨ ë°˜í™˜
+	virtual bool IsEnemyDead_Implementation() const override; // ì ì´ ì‚¬ë§í–ˆëŠ”ì§€ ë°˜í™˜
+
+	void PlayWeaponHitSound(); // ë¬´ê¸° íˆíŠ¸ ì‚¬ìš´ë“œ ì¬ìƒ
 
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossHitReactionMontages; // ÇÇ°İ ¸ùÅ¸ÁÖ ¹è¿­
+	TArray<UAnimMontage*> BossHitReactionMontages; // íˆíŠ¸ ëª½íƒ€ì£¼ ë°°ì—´
 
-	FORCEINLINE class UNiagaraSystem* GetWeaponHitNiagaraEffect() const { return WeaponHitNiagaraEffect; }
+	FORCEINLINE class UNiagaraSystem* GetWeaponHitNiagaraEffect() const { return WeaponHitNiagaraEffect; } // ë¬´ê¸° íˆíŠ¸ ì´í™íŠ¸ ë°˜í™˜
+
+	UPROPERTY(EditDefaultsOnly, Category = "Health")
+	float MaxBossHealth = 2000.0f; // ìµœëŒ€ ì²´ë ¥
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
+	float BossHealth = 2000.0f; // í˜„ì¬ ì²´ë ¥
+
+	bool bShouldUseRangedAfterTeleport = false; // í…”ë ˆí¬íŠ¸ í›„ ì›ê±°ë¦¬ ê³µê²© ì—¬ë¶€
 
 protected:
 	virtual void BeginPlay() override;
 
 private:
-	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* BossHitSound; // ÇÇ°İ »ç¿îµå
+	UPROPERTY()
+	AEnemyBossKatana* EquippedBossKatana; // ì¹´íƒ€ë‚˜ ì°¸ì¡°
 
-	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* BossDieSound; // »ç¸Á »ç¿îµå
+	UPROPERTY()
+	class ABossEnemyAIController* AICon; // AI ì»¨íŠ¸ë¡¤ëŸ¬ ìºì‹±ì„ ìœ„í•œ ì°¸ì¡°
+	UPROPERTY()
+	class UBossEnemyAnimInstance* AnimInstance; // ì• ë‹ˆë©”ì´ì…˜ ì¸ìŠ¤í„´ìŠ¤ ìºì‹±ì„ ìœ„í•œ ì°¸ì¡°
+	UPROPERTY()
+	class UCharacterMovementComponent* MoveComp; // ë¬´ë¸Œ ì»´í¬ë„ŒíŠ¸ ìºì‹±ì„ ìœ„í•œ ì°¸ì¡°
 
-	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* BossNormalAttackSound; // ÀÏ¹İ°ø°İ »ç¿îµå
+	UPROPERTY(VisibleAnywhere, Category = "Boss|State")
+	EBossState CurrentState = EBossState::Idle; // í˜„ì¬ ë³´ìŠ¤ ìƒíƒœ
 
-	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* BossStrongAttackSound; // °­°ø°İ »ç¿îµå
+	UPROPERTY(VisibleAnywhere, Category = "Boss|State")
+	EStealthPhase CurrentStealthPhase = EStealthPhase::None; // í˜„ì¬ ìŠ¤í…”ìŠ¤ ë‹¨ê³„
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
-	UBossEnemyAnimInstance* BossEnemyAnimInstance; // ¾Ö´Ï¸ŞÀÌ¼Ç ÀÎ½ºÅÏ½º Ãß°¡
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bCanTeleport = true; // í…”ë ˆí¬íŠ¸ ê°€ëŠ¥ ì—¬ë¶€
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bCanUseStealthAttack = true; // ìŠ¤í…”ìŠ¤ ê³µê²© ê°€ëŠ¥ ì—¬ë¶€
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bCanBossAttack = false; // ê³µê²© ê°€ëŠ¥ ì—¬ë¶€
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bIsInvincible = false; // ë¬´ì  ìƒíƒœ ì—¬ë¶€
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bHasExecutedKickRaycast = false; // í‚¥ ë ˆì´ìºìŠ¤íŠ¸ ì‹¤í–‰ ì—¬ë¶€
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossNormalAttackMontages; // ÀÏ¹İ °ø°İ ¸ùÅ¸ÁÖ ¹è¿­
+	UPROPERTY()
+	USoundBase* BossHitSound; // í”¼ê²© ì‚¬ìš´ë“œ
+	UPROPERTY()
+	USoundBase* BossDieSound; // ì‚¬ë§ ì‚¬ìš´ë“œ
+	UPROPERTY()
+	USoundBase* BossNormalAttackSound; // ê·¼ì ‘ ê³µê²© ì‚¬ìš´ë“œ
+	UPROPERTY()
+	USoundBase* BossStrongAttackSound; // ê°•ë ¥í•œ ê³µê²© ì‚¬ìš´ë“œ
+	UPROPERTY()
+	USoundBase* BossWeaponHitSound; // ë¬´ê¸° íˆíŠ¸ ì‚¬ìš´ë“œ
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossUpperBodyMontages; // »óÃ¼ Àü¿ë ¸ùÅ¸ÁÖ ¹è¿­
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	TArray<UAnimMontage*> BossNormalAttackMontages; // ê·¼ì ‘ ê³µê²© ëª½íƒ€ì£¼ ë°°ì—´
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	TArray<UAnimMontage*> BossUpperBodyMontages; // ìƒì²´ ê³µê²© ëª½íƒ€ì£¼ ë°°ì—´
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	TArray<UAnimMontage*> BossDeadMontages; // ì‚¬ë§ ëª½íƒ€ì£¼ ë°°ì—´
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	UAnimMontage* StealthStartMontage; // ìŠ¤í…”ìŠ¤ ì‹œì‘ ëª½íƒ€ì£¼
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	UAnimMontage* StealthDiveMontage; // ìŠ¤í…”ìŠ¤ ë‹¤ì´ë¹™ ëª½íƒ€ì£¼
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	UAnimMontage* StealthKickMontage; // ìŠ¤í…”ìŠ¤ í‚¥ ëª½íƒ€ì£¼
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	UAnimMontage* StealthFinishMontage; //	ìŠ¤í…”ìŠ¤ í”¼ë‹ˆì‹œ ëª½íƒ€ì£¼
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	TArray<UAnimMontage*> BossTeleportMontages; // í…”ë ˆí¬íŠ¸ ëª½íƒ€ì£¼ ë°°ì—´
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	TArray<UAnimMontage*> BossSpawnIntroMontages; // ë“±ì¥ ëª½íƒ€ì£¼ ë°°ì—´
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	TArray<UAnimMontage*> BossAttackTeleportMontages; // ê³µê²© í…”ë ˆí¬íŠ¸ ëª½íƒ€ì£¼ ë°°ì—´
+	UPROPERTY(EditDefaultsOnly, Category = "Animation", meta = (AllowPrivateAccess = "true"))
+	TArray<UAnimMontage*> BossRangedAttackMontages; // ì›ê±°ë¦¬ ê³µê²© ëª½íƒ€ì£¼ ë°°ì—´
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossDeadMontages; // »ç¸Á ¸ùÅ¸ÁÖ ¹è¿­
+	UPROPERTY(EditDefaultsOnly, Category = "AI", meta = (AllowPrivateAccess = "true"))
+	float TeleportDistance = 500.0f; // í…”ë ˆí¬íŠ¸ ê±°ë¦¬
+	UPROPERTY(EditDefaultsOnly, Category = "AI", meta = (AllowPrivateAccess = "true"))
+	float TeleportCooldown = 10.0f; // í…”ë ˆí¬íŠ¸ ì¿¨ë‹¤ìš´
+	UPROPERTY(EditDefaultsOnly, Category = "AI", meta = (AllowPrivateAccess = "true"))
+	float AttackTeleportRange = 150.0f; // ê³µê²© í…”ë ˆí¬íŠ¸ ë²”ìœ„
+	UPROPERTY(EditDefaultsOnly, Category = "AI", meta = (AllowPrivateAccess = "true"))
+	float PostTeleportPauseTime = 0.5f; // í…”ë ˆí¬íŠ¸ í›„ ì¼ì‹œì •ì§€ ì‹œê°„
+	UPROPERTY(EditDefaultsOnly, Category = "AI", meta = (AllowPrivateAccess = "true"))
+	float StealthCooldown = 30.0f; // ìŠ¤í…”ìŠ¤ ê³µê²© ì¿¨ë‹¤ìš´
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	UAnimMontage* StealthStartMontage; // 1´Ü°è: ½ºÅÚ½º ½ÃÀÛ ¸ùÅ¸ÁÖ
+	FTimerHandle TeleportExecutionTimer; // í…”ë ˆí¬íŠ¸ ì‹¤í–‰ íƒ€ì´ë¨¸
+	FTimerHandle AttackTeleportExecutionTimer; // ê³µê²© í…”ë ˆí¬íŠ¸ ì‹¤í–‰ íƒ€ì´ë¨¸
+	FTimerHandle TeleportCooldownTimer; // í…”ë ˆí¬íŠ¸ ì¿¨ë‹¤ìš´ íƒ€ì´ë¨¸
+	FTimerHandle BossDeathHideTimerHandle; // ë³´ìŠ¤ ì‚¬ë§ ìˆ¨ê¹€ íƒ€ì´ë¨¸
+	FTimerHandle PostTeleportPauseTimer; // í…”ë ˆí¬íŠ¸ í›„ ì¼ì‹œì •ì§€ íƒ€ì´ë¨¸
+	FTimerHandle StealthWaitTimer; // ìŠ¤í…”ìŠ¤ ëŒ€ê¸° íƒ€ì´ë¨¸
+	FTimerHandle PlayerAirborneTimer; // í”Œë ˆì´ì–´ ê³µì¤‘ ì²´ë¥˜ íƒ€ì´ë¨¸
+	FTimerHandle StealthCooldownTimer; // ìŠ¤í…”ìŠ¤ ì¿¨ë‹¤ìš´ íƒ€ì´ë¨¸
+	FTimerHandle StealthDiveTransitionTimer; // ìŠ¤í…”ìŠ¤ ë‹¤ì´ë¹™ ì „í™˜ íƒ€ì´ë¨¸
+	FTimerHandle StealthKickExecutionTimer; // ìŠ¤í…”ìŠ¤ í‚¥ ì‹¤í–‰ íƒ€ì´ë¨¸
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	UAnimMontage* StealthDiveMontage; // 2´Ü°è: ¶Ù¾îµå´Â ¸ùÅ¸ÁÖ
+	FVector CalculatedTeleportLocation; // ê³„ì‚°ëœ í…”ë ˆí¬íŠ¸ ìœ„ì¹˜
 
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	UAnimMontage* StealthKickMontage; // 5´Ü°è: ½ºÅÚ½º Å± ¸ùÅ¸ÁÖ
-
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	UAnimMontage* StealthFinishMontage; // 6´Ü°è: ½ºÅÚ½º ÇÇ´Ï½¬ ¸ùÅ¸ÁÖ
-
-	void SetUpBossAI(); // AI°¡ ³×ºê¸Å½¬¿¡¼­ ÀÌµ¿ÇÒ¼öÀÖ°Ô ¼³Á¤ÇÏ´Â ÇÔ¼ö
-	void StopBossActions(); // ¸ğµç µ¿ÀÛ Á¤Áö ÇÔ¼ö
-	void HideBossEnemy(); // »ç¸Á½Ã º¸½º¸¦ ¼û±â´Â ÇÔ¼ö
-	FTimerHandle BossDeathHideTimerHandle; // »ç¸Á ¸ùÅ¸ÁÖ Å¸ÀÌ¸Ó
-	void DisableBossMovement();
-	void EnableBossMovement();
-
-	UFUNCTION()
-	void OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ÀÏ¹İ°ø°İ ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-
-	UFUNCTION()
-	void OnUpperBodyAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // »óÃ¼°ø°İ ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-
-	UFUNCTION()
-	void OnHitReactionMontageEnded(UAnimMontage* Montage, bool bInterrupted); // È÷Æ® ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-
-	UFUNCTION()
-	void OnDeathMontageEnded(UAnimMontage* Montage, bool bInterrupted); // »ç¸Á ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float TeleportDistance = 500.0f; // ÅÚ·¹Æ÷Æ® °Å¸®
-
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float TeleportCooldown = 10.0f; // ÅÚ·¹Æ÷Æ® ÄğÅ¸ÀÓ
-
-	FTimerHandle TeleportExecutionTimer; // ÅÚ·¹Æ÷Æ® ÀÌµ¿ Å¸ÀÌ¸Ó
-	FTimerHandle AttackTeleportExecutionTimer; // °ø°İ ÅÚ·¹Æ÷Æ® ÀÌµ¿ Å¸ÀÌ¸Ó
-	FTimerHandle TeleportCooldownTimer; // ÅÚ·¹Æ÷Æ® ÄğÅ¸ÀÓ Å¸ÀÌ¸Ó
-
-	void OnTeleportCooldownEnd(); // ÅÚ·¹Æ÷Æ® ÄğÅ¸ÀÓ Á¾·á ÇÔ¼ö
-
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossTeleportMontages; // ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ ¹è¿­
-
-	UFUNCTION()
-	void OnTeleportMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-
-	void ExecuteTeleport(); // ½ÇÁ¦ ÅÚ·¹Æ÷Æ® ½ÇÇà ÇÔ¼ö (¸ùÅ¸ÁÖ Áß°£¿¡ È£Ãâ)
-	FVector CalculateTeleportLocation(); // ÅÚ·¹Æ÷Æ® À§Ä¡ °è»ê ÇÔ¼ö
-	FVector AdjustHeightForCharacter(const FVector& TargetLocation); // Ä³¸¯ÅÍ ³ôÀÌ º¸Á¤ ÇÔ¼ö
-
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossSpawnIntroMontages; // º¸½º µîÀå ¸ùÅ¸ÁÖ ¹è¿­
-
-	UFUNCTION()
-	void OnBossIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted); // º¸½º µîÀå ¸ùÅ¸ÁÖ Á¾·á µ¨¸®°ÔÀÌÆ®
-
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossAttackTeleportMontages; // °ø°İ¿ë ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ ¹è¿­
-
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
-	TArray<UAnimMontage*> BossRangedAttackMontages; // ¿ø°Å¸® °ø°İ ¸ùÅ¸ÁÖ ¹è¿­
-
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float AttackTeleportRange = 150.0f; // °ø°İ¿ë ÅÚ·¹Æ÷Æ® °Å¸® (ÇÃ·¹ÀÌ¾î ±ÙÃ³·Î)
-
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float PostTeleportPauseTime = 0.5f; // ÅÚ·¹Æ÷Æ® ÈÄ Á¤Áö ½Ã°£
-
-	UFUNCTION()
-	void OnAttackTeleportMontageEnded(UAnimMontage* Montage, bool bInterrupted); // °ø°İ¿ë ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-
-	UFUNCTION()
-	void OnRangedAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ¿ø°Å¸® °ø°İ ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-
-	void ExecuteAttackTeleport(); // ½ÇÁ¦ °ø°İ¿ë ÅÚ·¹Æ÷Æ® ½ÇÇà ÇÔ¼ö
-	FVector CalculateAttackTeleportLocation(); // °ø°İ¿ë ÅÚ·¹Æ÷Æ® À§Ä¡ °è»ê ÇÔ¼ö
-	void OnPostTeleportPauseEnd(); // ÅÚ·¹Æ÷Æ® ÈÄ Á¤Áö Á¾·á ÇÔ¼ö
-
-	FTimerHandle PostTeleportPauseTimer; // ÅÚ·¹Æ÷Æ® ÈÄ Á¤Áö Å¸ÀÌ¸Ó
-
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile")
-	TSubclassOf<class ABossProjectile> BossProjectileClass;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile")
-	FVector MuzzleOffset = FVector(100.f, 0.f, 80.f); // º¸½º ¹ß»ç À§Ä¡ ¿ÀÇÁ¼Â
-
-	UFUNCTION()
-	void OnStealthStartMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ½ºÅÚ½º 1´Ü°è ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-	UFUNCTION()
-	void OnStealthDiveMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ½ºÅÚ½º 2´Ü°è ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-	UFUNCTION()
-	void OnStealthFinishMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ½ºÅÚ½º 6´Ü°è ¸ùÅ¸ÁÖ µ¨¸®°ÔÀÌÆ®
-
-	// ½ºÅÚ½º ´Ü°è °ü¸®
-	UPROPERTY(VisibleAnywhere, Category = "Stealth")
-	int32 CurrentStealthPhase = 0;  // ÇöÀç ½ºÅÚ½º ´Ü°è
-
-	// Å¸ÀÌ¸Óµé
-	FTimerHandle StealthWaitTimer;  // ½ºÅÚ½º ´ë±â Å¸ÀÌ¸Ó
-	FTimerHandle PlayerAirborneTimer; // ÇÃ·¹ÀÌ¾î °øÁß Ã¼·ù Å¸ÀÌ¸Ó
-
-	// °è»êµÈ ÅÚ·¹Æ÷Æ® À§Ä¡
-	FVector CalculatedTeleportLocation;
-
-	// ½ºÅÚ½º °ü·Ã Ãß°¡ º¯¼öµé
-	UPROPERTY(EditDefaultsOnly, Category = "AI")
-	float StealthCooldown = 30.0f; // ½ºÅÚ½º ÄğÅ¸ÀÓ
-
-	FTimerHandle StealthCooldownTimer; // ½ºÅÚ½º ÄğÅ¸ÀÓ Å¸ÀÌ¸Ó
-	FTimerHandle StealthDiveTransitionTimer;// ½ºÅÚ½º ´ÙÀÌºê ÆÛ¼¾Æ® ÀüÈ¯ Å¸ÀÌ¸Ó
-
-	//BP¿¡¼­ Katana Blueprint ÁöÁ¤
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
-	TSubclassOf<AEnemyBossKatana> BossKatanaClass;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Effects")
-	UNiagaraSystem* StealthFinishEffect;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Effects")
-	USoundBase* StealthFinishSound;
-
-	UPROPERTY(EditAnywhere, Category = "Effects")
-	USoundBase* BossWeaponHitSound;
-
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon", meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<AEnemyBossKatana> BossKatanaClass; // ë³´ìŠ¤ ì¹´íƒ€ë‚˜ í´ë˜ìŠ¤
+	UPROPERTY(EditDefaultsOnly, Category = "Projectile", meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<class ABossProjectile> BossProjectileClass; // ë³´ìŠ¤ íˆ¬ì‚¬ì²´ í´ë˜ìŠ¤
+	UPROPERTY(EditDefaultsOnly, Category = "Projectile", meta = (AllowPrivateAccess = "true"))
+	FVector MuzzleOffset = FVector(100.f, 0.f, 80.f); // íˆ¬ì‚¬ì²´ ë°œì‚¬ ìœ„ì¹˜ ì˜¤í”„ì…‹
+	UPROPERTY(EditDefaultsOnly, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+	UNiagaraSystem* StealthFinishEffect; // ìŠ¤í…”ìŠ¤ í”¼ë‹ˆì‹œ ì´í™íŠ¸
+	UPROPERTY(EditDefaultsOnly, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+	USoundBase* StealthFinishSound; // ìŠ¤í…”ìŠ¤ í”¼ë‹ˆì‹œ ì‚¬ìš´ë“œ
 	UPROPERTY(EditDefaultsOnly, Category = "FX")
-	class UNiagaraSystem* WeaponHitNiagaraEffect = nullptr;
+	class UNiagaraSystem* WeaponHitNiagaraEffect = nullptr; // ë¬´ê¸° íˆíŠ¸ ì´í™íŠ¸
+
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Movement", meta = (AllowPrivateAccess = "true"))
+	float BaseMaxWalkSpeed = 300.0f; // ê¸°ë³¸ ì´ë™ ì†ë„
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Movement", meta = (AllowPrivateAccess = "true"))
+	float BaseMaxAcceleration = 5000.0f; // ìµœëŒ€ ê°€ì†ë„
+	UPROPERTY(EditDefaultsOnly, Category = "Stats | Movement", meta = (AllowPrivateAccess = "true"))
+	float BaseBrakingFrictionFactor = 10.0f; // ì œë™ ë§ˆì°°ë ¥
+
+	// ìƒíƒœ ì „í™˜ í•¨ìˆ˜
+	void SetState(EBossState NewState); // ë³´ìŠ¤ ìƒíƒœ ì„¤ì •
+	void SetStealthPhase(EStealthPhase NewPhase); // ìŠ¤í…”ìŠ¤ ë‹¨ê³„ ì„¤ì •
+
+	// ëª½íƒ€ì£¼ ì¬ìƒ í—¬í¼ (ë°°ì—´ì—ì„œ ëœë¤ ì„ íƒ)
+	bool PlayRandomMontage(
+		const TArray<UAnimMontage*>& Montages,
+		void(ABossEnemy::* EndCallback)(UAnimMontage*, bool),
+		bool bUseUpperBodyBlend = false,
+		bool bLookAtPlayer = false,
+		float LookAtSpeed = 8.0f);
+
+	// ë‹¨ì¼ ëª½íƒ€ì£¼ ì¬ìƒ í—¬í¼
+	bool PlaySingleMontage(
+		UAnimMontage* Montage,
+		void(ABossEnemy::* EndCallback)(UAnimMontage*, bool),
+		bool bUseUpperBodyBlend = false,
+		bool bLookAtPlayer = false,
+		float LookAtSpeed = 8.0f);
+	// í…”ë ˆí¬íŠ¸ ëª½íƒ€ì£¼ ì¬ìƒ í—¬í¼
+	bool PlayTeleportMontage(
+		const TArray<UAnimMontage*>& Montages,
+		float TeleportTimingRatio,
+		FTimerHandle& ExecutionTimer,
+		void(ABossEnemy::* EndCallback)(UAnimMontage*, bool),
+		TFunction<void()> TeleportAction);
+
+	// ì´ë™ ì œì–´
+	void ApplyBaseWalkSpeed(); // ê¸°ë³¸ ê±·ê¸° ì†ë„ ì ìš©
+	void DisableBossMovement(); // ì´ë™ ë¹„í™œì„±í™”
+	void EnableBossMovement(); // ì´ë™ í™œì„±í™”
+    void StopAIMovementAndDisable(); // AI ì´ë™ ì •ì§€ + ì´ë™ ë¹„í™œì„±í™”
+    void ResetUpperBodyBlend(); // ìƒì²´ ë¸”ë Œë“œ í•´ì œ
+    void ResetLookAt(float LookAtSpeed = 5.0f); // ë°”ë¼ë³´ê¸° í•´ì œ
+
+	// AI ì…‹ì—…
+	void SetUpBossAI(); // ë³´ìŠ¤ AI ì„¤ì •
+	void StopBossActions(); // ë³´ìŠ¤ ì•¡ì…˜ ì¤‘ì§€
+	void HideBossEnemy(); // ë³´ìŠ¤ ìˆ¨ê¸°ê¸°
+
+	// ì•ˆì „í•œ íƒ€ì´ë¨¸ ì„¤ì • í—¬í¼
+	void SetSafeTimer(FTimerHandle& Handle, float Time, TFunction<void()> Callback, bool bLoop = false); // íƒ€ì´ë¨¸ ì„¤ì •
+	void SetSafeTimerForNextTick(TFunction<void()> Callback); // ë‹¤ìŒ í‹±ì— íƒ€ì´ë¨¸ ì„¤ì •
+
+	// í…”ë ˆí¬íŠ¸
+	void ExecuteTeleport(); // í…”ë ˆí¬íŠ¸ ì‹¤í–‰
+	FVector CalculateTeleportLocation(); // í…”ë ˆí¬íŠ¸ ìœ„ì¹˜ ê³„ì‚°
+	FVector AdjustHeightForCharacter(const FVector& TargetLocation); // ìºë¦­í„° ë†’ì´ ì¡°ì •
+	void OnTeleportCooldownEnd(); // í…”ë ˆí¬íŠ¸ ì¿¨ë‹¤ìš´ ì¢…ë£Œ
+	void ExecuteAttackTeleport(); // ê³µê²© í…”ë ˆí¬íŠ¸ ì‹¤í–‰
+	FVector CalculateAttackTeleportLocation(); // ê³µê²© í…”ë ˆí¬íŠ¸ ìœ„ì¹˜ ê³„ì‚°
+	void OnPostTeleportPauseEnd(); // í…”ë ˆí¬íŠ¸ í›„ ì¼ì‹œì •ì§€ ì¢…ë£Œ
+
+	UFUNCTION()
+	void OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ê·¼ì ‘ ê³µê²© ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnUpperBodyAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ìƒì²´ ê³µê²© ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnHitReactionMontageEnded(UAnimMontage* Montage, bool bInterrupted); // íˆíŠ¸ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnDeathMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ì‚¬ë§ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnTeleportMontageEnded(UAnimMontage* Montage, bool bInterrupted); // í…”ë ˆí¬íŠ¸ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnBossIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ë“±ì¥ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnAttackTeleportMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ê³µê²© í…”ë ˆí¬íŠ¸ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnRangedAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ì›ê±°ë¦¬ ê³µê²© ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnStealthStartMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ìŠ¤í…”ìŠ¤ ì‹œì‘ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnStealthDiveMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ìŠ¤í…”ìŠ¤ ë‹¤ì´ë¹™ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnStealthFinishMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ìŠ¤í…”ìŠ¤ í”¼ë‹ˆì‹œ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
+	UFUNCTION()
+	void OnStealthKickMontageEnded(UAnimMontage* Montage, bool bInterrupted); // ìŠ¤í…”ìŠ¤ í‚¥ ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°±
 };

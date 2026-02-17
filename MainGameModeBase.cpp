@@ -3,20 +3,24 @@
 #include "NavigationSystem.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
-#include "GameFramework/Character.h"
-#include "GameFramework/Pawn.h"
-#include "Engine/Engine.h"
+#include "MainCharacter.h"
+#include "Enemy.h"
+#include "BossEnemy.h"
+#include "EnemyDog.h"
+#include "EnemyDrone.h"
+#include "EnemyGuardian.h"
+#include "EnemyShooter.h"
 #include "Async/Async.h"
 #include "WaveRecordSaveGame.h"
 
 AMainGameModeBase::AMainGameModeBase()
 {
-    PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = false; // Tick 비활성화
 
-    // 웨이브 시스템 기본값
+    // 웨이브 시스템 기본값 초기화
     bWaveSystemEnabled = true;
-    DefaultWaveClearDelay = 3.0f;
-    CurrentWaveIndex = 0;
+    DefaultWaveClearDelay = 5.0f; 
+    CurrentWaveIndex = 0; 
     bWaveInProgress = false;
     bWaveSystemActive = false;
     bEnableAsyncCleanup = true;
@@ -36,6 +40,9 @@ void AMainGameModeBase::BeginPlay()
 {
     Super::BeginPlay();
 
+    UWorld* World = GetWorld(); // 월드 가져옴
+    if (!World) return; // 유효성 검사
+
     // AI 클래스 등록 상태 확인
     UE_LOG(LogTemp, Error, TEXT("=== AI CLASSES REGISTRATION CHECK ==="));
     UE_LOG(LogTemp, Error, TEXT("EnemyType: %s"), EnemyType ? *EnemyType->GetName() : TEXT("NOT SET"));
@@ -45,82 +52,85 @@ void AMainGameModeBase::BeginPlay()
     UE_LOG(LogTemp, Error, TEXT("EnemyGuardianType: %s"), EnemyGuardianType ? *EnemyGuardianType->GetName() : TEXT("NOT SET"));
     UE_LOG(LogTemp, Error, TEXT("EnemyShooterType: %s"), EnemyShooterType ? *EnemyShooterType->GetName() : TEXT("NOT SET"));
 
-    // 스폰 위치 사전 계산 및 웨이브 시스템 시작
-    GetWorldTimerManager().SetTimerForNextTick([this]()
+    // SetTimerForNextTick으로 엔진 초기화 직후가 아닌 다음 틱에 동작
+    World->GetTimerManager().SetTimerForNextTick([this]() 
         {
-            PreCalculateSpawnLocations();
+            TWeakObjectPtr<AMainGameModeBase> WeakThis(this); // 모드베이스 약참조
+            if (!WeakThis.IsValid()) return; // 유효성 검사
 
-            GetWorldTimerManager().SetTimer(
-                LocationRefreshTimer,
-                this,
-                &AMainGameModeBase::RefreshSpawnLocations,
-                300.0f,
-                true
-            );
+            WeakThis->PreCalculateSpawnLocations(); // 초기 위치 계산 함수를 미리 호출
 
-            if (bWaveSystemEnabled)
+            // 주기적 위치 갱신 타이머
+            GetWorldTimerManager().SetTimer(LocationRefreshTimer, [WeakThis]()
+                {
+                    if (WeakThis.IsValid())  // 유효성 검사
+                    {
+                        WeakThis->RefreshSpawnLocations(); // 스폰 위치 초기화
+                    }
+                }, SpawnLocationRefreshTime, true);  // 스폰 위치 초기화 주기로, 반복
+
+            if (bWaveSystemEnabled) // 웨이브 시스템이 활성화 상태라면
             {
-                UE_LOG(LogTemp, Warning, TEXT("Wave system starting in 3.0 seconds..."));
-                GetWorldTimerManager().SetTimer(
-                    WaveSystemStartDelayTimer, // 새로 사용할 TimerHandle
-                    this,
-                    &AMainGameModeBase::StartWaveSystem,
-                    3.0f, // 3초 지연
-                    false
-                );
+                // TWeakObjectPtr(약참조)를 사용하여 타이머 실행 시점의 객체 유효성 보장
+                GetWorldTimerManager().SetTimer(WaveSystemStartDelayTimer, [WeakThis]()
+                    {
+                        if (WeakThis.IsValid())  // 유효성 검사
+                        {
+                            WeakThis->StartWaveSystem(); // 웨이브 시스템 시작
+                        }
+                    }, DefaultWaveClearDelay, false); // 일정시간 지연 후 시작, 단발성
             }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("Wave system is disabled - No enemies will spawn"));
-            }
-        });
+        }
+    );
 }
 
-
-// ========================================
 // 웨이브 시스템
-// ========================================
-
 void AMainGameModeBase::StartWaveSystem()
-{
-    if (WaveConfigurations.Num() == 0)
+{ 
+    if (WaveConfigurations.Num() == 0) // 설정된 웨이브가 하나도 없다면
     {
         UE_LOG(LogTemp, Error, TEXT("No wave configurations found! Please set up waves in Blueprint."));
-        return;
+        return; // 리턴
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Wave System Started - Total Waves: %d"), WaveConfigurations.Num());
 
-    bWaveSystemActive = true;
-    CurrentWaveIndex = 0;
-    StartWave(0);
+    bWaveSystemActive = true; // 웨이브 시스템 활성화 
+    CurrentWaveIndex = 0; // 현재 웨이브 초기화
+    StartWave(0); // 첫번째 웨이브 부터 순차적으로 시작
 }
 
 void AMainGameModeBase::StartWave(int32 WaveIndex)
 {
-    if (WaveIndex >= WaveConfigurations.Num())
+    UWorld* World = GetWorld(); // 월드 가져옴
+    if (!World) return; // 유효성 검사
+    if (!WaveConfigurations.IsValidIndex(WaveIndex)) return; // 웨이브 인덱스 유효성 검사
+
+    if (WaveIndex >= WaveConfigurations.Num()) // 모든 웨이브가 끝났다면
     {
         UE_LOG(LogTemp, Warning, TEXT("All waves completed! Wave system finished."));
-        bWaveSystemActive = false;
-        return;
+        bWaveSystemActive = false; // 웨이브 시스템 비활성화
+        return; // 리턴
     }
-
+    // BP에서 설정한 전체 웨이브 배열 중 지금 시작할 순서에 해당하는 데이터를 &참조 후 가져옴
+    // 데이터를 통째로 복사하는 오버헤드를 줄이기 위해 &참조 사용
     const FWaveConfiguration& WaveConfig = WaveConfigurations[WaveIndex];
-    CurrentWaveIndex = WaveIndex;
+    CurrentWaveIndex = WaveIndex; // 현재웨이브 번호를 시작하는 번호로 갱신
 
-    UE_LOG(LogTemp, Error, TEXT("=== WAVE %d CONFIGURATION DEBUG ==="), WaveIndex + 1);
-    UE_LOG(LogTemp, Error, TEXT("Wave Name: %s"), *WaveConfig.WaveName);
-    UE_LOG(LogTemp, Error, TEXT("Spawn Entries Count: %d"), WaveConfig.SpawnEntries.Num());
+    // 웨이브 시작 디버깅
+    UE_LOG(LogTemp, Error, TEXT("=== WAVE %d CONFIGURATION DEBUG ==="), WaveIndex + 1); // 현재 웨이브
+    UE_LOG(LogTemp, Error, TEXT("Wave Name: %s"), *WaveConfig.WaveName); // 웨이브 명
+    UE_LOG(LogTemp, Error, TEXT("Spawn Entries Count: %d"), WaveConfig.SpawnEntries.Num()); // 스폰 규칙 (엔트리) 갯수
 
-    // 각 스폰 엔트리 상세 출력
+    // 웨이브에 포함된 각 스폰 엔트리의 세부정보를 순회 하여 출력
     for (int32 i = 0; i < WaveConfig.SpawnEntries.Num(); i++)
     {
-        const FWaveSpawnEntry& Entry = WaveConfig.SpawnEntries[i];
-        UE_LOG(LogTemp, Error, TEXT("Entry [%d]:"), i);
-        UE_LOG(LogTemp, Error, TEXT("  - EnemyClass: %s"), Entry.EnemyClass ? *Entry.EnemyClass->GetName() : TEXT("NULL"));
-        UE_LOG(LogTemp, Error, TEXT("  - SpawnCount: %d"), Entry.SpawnCount);
-        UE_LOG(LogTemp, Error, TEXT("  - SpawnDelay: %f"), Entry.SpawnDelay);
-        UE_LOG(LogTemp, Error, TEXT("  - SpawnInterval: %f"), Entry.SpawnInterval);
+        const FWaveSpawnEntry& Entry = WaveConfig.SpawnEntries[i]; // i 번째 스폰 항목의 참조를 가져옴
+        UE_LOG(LogTemp, Error, TEXT("Entry [%d]:"), i); // 몇 번째 스폰 규칙인지
+        UE_LOG(LogTemp, Error, TEXT("EnemyClass: %s"), Entry.EnemyClass ? *Entry.EnemyClass->GetName() : TEXT("NULL")); // 스폰할 적의 클래스가 할당되어 있는지
+        UE_LOG(LogTemp, Error, TEXT("SpawnCount: %d"), Entry.SpawnCount); // 스폰 될 적의 수
+        UE_LOG(LogTemp, Error, TEXT("SpawnDelay: %f"), Entry.SpawnDelay); // 스폰 지연 시간
+        UE_LOG(LogTemp, Error, TEXT("SpawnInterval: %f"), Entry.SpawnInterval); // 스폰 간격
     }
 
     // 웨이브 시작 전 준비
@@ -133,58 +143,55 @@ void AMainGameModeBase::StartWave(int32 WaveIndex)
     // 총 스폰될 적 수 계산
     for (const FWaveSpawnEntry& Entry : WaveConfig.SpawnEntries)
     {
-        if (Entry.EnemyClass)
+        if (Entry.EnemyClass) // 엔트리에 적 클래스가 있다면
         {
-            TotalEnemiesInWave += Entry.SpawnCount;
+            TotalEnemiesInWave += Entry.SpawnCount; // 총 스폰량을 계산
         }
     }
-
     UE_LOG(LogTemp, Error, TEXT("Total enemies to spawn in wave: %d"), TotalEnemiesInWave);
     UE_LOG(LogTemp, Error, TEXT("Prepare time: %f seconds"), WaveConfig.PrepareTime);
 
-    // 메인 캐릭터를 가져와서 사운드 재생 준비
-    ACharacter * PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
-    AMainCharacter* MainCharacter = Cast<AMainCharacter>(PlayerCharacter);
-
-    // 준비 시간 후 스폰 시작
-    if (WaveConfig.PrepareTime > 0.0f)
+    // 메인캐릭터 선언 후 캐스팅
+    if (AMainCharacter* MainChar = Cast<AMainCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0)))
     {
-        if (MainCharacter)
-        {
-            MainCharacter->PlayWavePrepareSound();
-        }
-
-        UE_LOG(LogTemp, Error, TEXT("Starting spawn timer with %f seconds delay"), WaveConfig.PrepareTime);
-        GetWorldTimerManager().SetTimer(
-            WaveStartTimer,
-            this,
-            &AMainGameModeBase::ProcessWaveSpawn,
-            WaveConfig.PrepareTime,
-            false
-        );
+        MainChar->PlayWavePrepareSound(); // 웨이브 준비 사운드 재생
     }
-    else
+
+    TWeakObjectPtr<AMainGameModeBase> WeakThis(this); // 약참조 선언
+    if (WaveConfig.PrepareTime > 0.0f) // 준비 시간 후
     {
-        UE_LOG(LogTemp, Error, TEXT("Starting spawn immediately"));
-        ProcessWaveSpawn();
+        World->GetTimerManager().SetTimer(WaveStartTimer, [WeakThis]()
+            { 
+                if (WeakThis.IsValid()) // 유효성 검사
+                {
+                    WeakThis->ProcessWaveSpawn(); // 스폰 시작
+                }
+            }, WaveConfig.PrepareTime, false);
+    }
+    else // 준비시간이 없다면
+    {
+        ProcessWaveSpawn(); // 스폰 시작
     }
 }
 
-
 void AMainGameModeBase::ProcessWaveSpawn()
 {
+    UWorld* World = GetWorld();
+    if (!World) return;
+
     UE_LOG(LogTemp, Error, TEXT("=== ProcessWaveSpawn DEBUG ==="));
     UE_LOG(LogTemp, Error, TEXT("CurrentSpawnEntryIndex: %d / %d"), CurrentSpawnEntryIndex, WaveConfigurations[CurrentWaveIndex].SpawnEntries.Num());
     UE_LOG(LogTemp, Error, TEXT("CurrentSpawnCount: %d"), CurrentSpawnCount);
 
-    if (!bWaveSystemActive || CurrentWaveIndex >= WaveConfigurations.Num())
+    if (!bWaveSystemActive || CurrentWaveIndex >= WaveConfigurations.Num()) // 시스템이 비활성화거나 인덱스가 비정상적이라면 
     {
         UE_LOG(LogTemp, Error, TEXT("Wave system inactive or invalid wave index"));
-        return;
+        return; // 중단
     }
 
     const FWaveConfiguration& WaveConfig = WaveConfigurations[CurrentWaveIndex];
 
+    // 현재 웨이브의 모든 엔트리를 순회했는지 확인
     if (CurrentSpawnEntryIndex < WaveConfig.SpawnEntries.Num())
     {
         const FWaveSpawnEntry& CurrentEntry = WaveConfig.SpawnEntries[CurrentSpawnEntryIndex];
@@ -195,59 +202,53 @@ void AMainGameModeBase::ProcessWaveSpawn()
             CurrentSpawnCount,
             CurrentEntry.SpawnCount);
 
+        // 현재 항목의 스폰 개수가 남았는지 확인
         if (CurrentEntry.EnemyClass && CurrentSpawnCount < CurrentEntry.SpawnCount)
         {
-            // 현재 엔트리의 적 스폰
-            SpawnEnemyFromEntry(CurrentEntry);
-            CurrentSpawnCount++;
+            SpawnEnemyFromEntry(CurrentEntry); // 현재 엔트리의 적 스폰
+            CurrentSpawnCount++; // 스폰 카운트 증가
 
             UE_LOG(LogTemp, Error, TEXT("Spawned %d/%d of current entry"), CurrentSpawnCount, CurrentEntry.SpawnCount);
 
-            // 같은 타입을 더 스폰해야 하는지 확인
+            // 약참조 선언: 타이머 실행 시점에 GameMode가 유효한지 체크하기 위함
+            TWeakObjectPtr<AMainGameModeBase> WeakThis(this);
+
+            // 같은 종류의 적을 더 스폰해야 하는 경우
             if (CurrentSpawnCount < CurrentEntry.SpawnCount)
             {
-                UE_LOG(LogTemp, Error, TEXT("Scheduling next spawn of same type in %f seconds"), CurrentEntry.SpawnInterval);
-                GetWorldTimerManager().SetTimer(
-                    SpawnTimer,
-                    this,
-                    &AMainGameModeBase::ProcessWaveSpawn,
-                    CurrentEntry.SpawnInterval,
-                    false
-                );
+                GetWorldTimerManager().SetTimer(SpawnTimer, [WeakThis]()
+                    {
+                        if (WeakThis.IsValid()) // 타이머 실행 시점에 유효성 검사
+                        {
+                            WeakThis->ProcessWaveSpawn(); // 스폰
+                        }
+                    }, CurrentEntry.SpawnInterval, false); // 엔트리에 설정된 스폰 간격만큼, 단발성
                 return;
             }
+            // 현재 항목 스폰이 끝나고 다음 항목으로 넘어가는 경우
             else
             {
-                // 현재 엔트리 완료, 다음 엔트리로 이동
-                UE_LOG(LogTemp, Error, TEXT("Current entry completed, moving to next entry"));
-                CurrentSpawnEntryIndex++;
-                CurrentSpawnCount = 0;
+                CurrentSpawnEntryIndex++; // 스폰 엔트리 증가
+                CurrentSpawnCount = 0; // 현재 스폰 수 초기화
 
-                // 다음 엔트리가 있는지 확인
-                if (CurrentSpawnEntryIndex < WaveConfig.SpawnEntries.Num())
+                if (CurrentSpawnEntryIndex < WaveConfig.SpawnEntries.Num()) 
                 {
                     const FWaveSpawnEntry& NextEntry = WaveConfig.SpawnEntries[CurrentSpawnEntryIndex];
-                    UE_LOG(LogTemp, Error, TEXT("Starting next entry %d: %s after %f seconds delay"),
-                        CurrentSpawnEntryIndex,
-                        NextEntry.EnemyClass ? *NextEntry.EnemyClass->GetName() : TEXT("NULL"),
-                        NextEntry.SpawnDelay);
 
-                    // ⭐ 핵심 수정: 지연시간이 0이면 즉시 처리, 아니면 타이머 설정
                     if (NextEntry.SpawnDelay <= 0.0f)
                     {
-                        UE_LOG(LogTemp, Error, TEXT("No delay, processing next entry immediately"));
-                        ProcessWaveSpawn(); // 즉시 재귀 호출
+                        ProcessWaveSpawn(); // 지연 시간이 없으면 즉시 다음 항목 처리
                     }
                     else
                     {
-                        UE_LOG(LogTemp, Error, TEXT("Setting timer for next entry"));
-                        GetWorldTimerManager().SetTimer(
-                            SpawnTimer,
-                            this,
-                            &AMainGameModeBase::ProcessWaveSpawn,
-                            NextEntry.SpawnDelay,
-                            false
-                        );
+                        // 다음 항목 시작 전 대기 시간을 타이머로 처리 (약참조 적용)
+                        World->GetTimerManager().SetTimer(SpawnTimer, [WeakThis]()
+                            {
+                                if (WeakThis.IsValid())
+                                {
+                                    WeakThis->ProcessWaveSpawn();
+                                }
+                            }, NextEntry.SpawnDelay, false);
                     }
                     return;
                 }
@@ -255,24 +256,19 @@ void AMainGameModeBase::ProcessWaveSpawn()
         }
         else
         {
-            // 유효하지 않은 엔트리이거나 스폰 완료됨, 다음 엔트리로
-            UE_LOG(LogTemp, Error, TEXT("Invalid entry or completed, moving to next"));
-            CurrentSpawnEntryIndex++;
-            CurrentSpawnCount = 0;
-
-            // 즉시 다음 엔트리 처리
-            ProcessWaveSpawn();
+            CurrentSpawnEntryIndex++; // 다음 엔트리
+            CurrentSpawnCount = 0; // 현재 스폰 수 초기화
+            ProcessWaveSpawn(); // 스폰
             return;
         }
     }
-
-    // 모든 엔트리 완료
-    UE_LOG(LogTemp, Error, TEXT("All spawn entries completed! Starting wave completion check."));
-    CheckWaveCompletion();
+    CheckWaveCompletion(); // 모든 스폰이 끝나면 웨이브 클리어 체크 함수 호출
 }
 
 void AMainGameModeBase::SpawnEnemyFromEntry(const FWaveSpawnEntry& Entry)
 {
+    if (!Entry.EnemyClass) return;
+
     UE_LOG(LogTemp, Error, TEXT("=== SpawnEnemyFromEntry DEBUG START ==="));
     UE_LOG(LogTemp, Error, TEXT("Entry.EnemyClass is valid: %s"), Entry.EnemyClass ? TEXT("TRUE") : TEXT("FALSE"));
 
@@ -318,18 +314,13 @@ void AMainGameModeBase::SpawnEnemyFromEntry(const FWaveSpawnEntry& Entry)
         return;
     }
 
-    FVector SpawnLocation = GetNextSpawnLocation();
-    UE_LOG(LogTemp, Error, TEXT("Spawn Location: %s"), *SpawnLocation.ToString());
-
-    SpawnEnemyAtLocation(Entry.EnemyClass, SpawnLocation);
-    UE_LOG(LogTemp, Error, TEXT("=== SpawnEnemyFromEntry DEBUG END ==="));
+    FVector SpawnLocation = GetNextSpawnLocation(); // 사전계산된 좌표목록을 불러오고
+    SpawnEnemyAtLocation(Entry.EnemyClass, SpawnLocation); // 불러온 위치에 스폰 함수 호출
 }
-
 
 void AMainGameModeBase::OnWaveCompleted()
 {
     if (!bWaveInProgress) return;
-
     bWaveInProgress = false;
 
     UE_LOG(LogTemp, Warning, TEXT("Wave %d completed! Enemies killed: %d/%d"),
@@ -338,57 +329,59 @@ void AMainGameModeBase::OnWaveCompleted()
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
     AMainCharacter* MainCharacter = Cast<AMainCharacter>(PlayerCharacter);
 
-    if (MainCharacter)
+    if (MainCharacter) // 메인캐릭터가 존재한다면
     {
-        MainCharacter->GiveReward(HealthRewardOnClear, AmmoRewardOnClear);
-        UE_LOG(LogTemp, Warning, TEXT("Giving wave clear reward: Health=%f, Ammo=%d"),
-            HealthRewardOnClear, AmmoRewardOnClear);
+        MainCharacter->GiveReward(HealthRewardOnClear, AmmoRewardOnClear); // 메인 캐릭터의 보상지급 함수 호출
+        UE_LOG(LogTemp, Warning, TEXT("Giving wave clear reward: Health=%f, Ammo=%d"), HealthRewardOnClear, AmmoRewardOnClear);
     }
 
-    // 비동기 메모리 정리 시작
-    if (bEnableAsyncCleanup)
+    if (bEnableAsyncCleanup) // 비동기 메모리 정리 가능 상태라면
     {
-        PerformAsyncCleanup();
+        PerformAsyncCleanup(); // 비동기 메모리 정리함수 호출
     }
 
-    PrepareNextWave();
+    PrepareNextWave(); // 다음 웨이브 준비 함수 호출
 }
 
 void AMainGameModeBase::PrepareNextWave()
 {
-    // 다음 웨이브 준비
-    GetWorldTimerManager().SetTimer(
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    TWeakObjectPtr<AMainGameModeBase> WeakThis(this); // 약참조 선언
+
+    World->GetTimerManager().SetTimer(
         WaveStartTimer,
-        this,
-        &AMainGameModeBase::StartNextWave,
-        DefaultWaveClearDelay,
-        false
+        [WeakThis]()
+        {
+            if (WeakThis.IsValid()) // 유효성검사
+            {
+                WeakThis->StartNextWave(); // 다음 웨이브 시작
+            }
+        },
+        DefaultWaveClearDelay, false // 웨이브 클리어 딜레이 시간 후에, 단발성
     );
 }
 
 void AMainGameModeBase::StartNextWave()
 {
-    int32 NextWaveIndex = CurrentWaveIndex + 1;
+    int32 NextWaveIndex = CurrentWaveIndex + 1; // 현재 웨이브 인덱스 에 1 추가
 
-    if (NextWaveIndex < WaveConfigurations.Num())
+    if (NextWaveIndex < WaveConfigurations.Num()) // 다음 웨이브가 총 설정된 웨이브 수 보다 적다면
     {
-        StartWave(NextWaveIndex);
+        StartWave(NextWaveIndex); // 다음 웨이브 실행
     }
-    else
+    else // 아니라면
     {
         UE_LOG(LogTemp, Warning, TEXT("All waves completed! Game finished."));
-        bWaveSystemActive = false;
+        bWaveSystemActive = false; // 웨이브 비활성화
     }
 }
 
-// ========================================
-// 스폰 함수들
-// ========================================
-
 void AMainGameModeBase::SpawnEnemyAtLocation(TSubclassOf<class APawn> EnemyClass, const FVector& Location)
 {
-    UE_LOG(LogTemp, Error, TEXT("=== SpawnEnemyAtLocation DEBUG START ==="));
-    UE_LOG(LogTemp, Error, TEXT("EnemyClass is valid: %s"), EnemyClass ? TEXT("TRUE") : TEXT("FALSE"));
+    UWorld* World = GetWorld();
+    if (!World) return;
 
     if (!EnemyClass)
     {
@@ -396,110 +389,75 @@ void AMainGameModeBase::SpawnEnemyAtLocation(TSubclassOf<class APawn> EnemyClass
         return;
     }
 
-    UE_LOG(LogTemp, Error, TEXT("Attempting to spawn: %s"), *EnemyClass->GetName());
-
     // 드론의 경우 스폰 위치 높이 조정
-    FVector AdjustedLocation = Location;
-    if (EnemyClass->IsChildOf<AEnemyDrone>())
+    FVector AdjustedLocation = Location; // 조정될 위치
+    if (EnemyClass->IsChildOf<AEnemyDrone>()) // 드론 타입 클래스 일 경우
     {
-        AdjustedLocation.Z += DroneSpawnHeightOffset;
+        AdjustedLocation.Z += DroneSpawnHeightOffset; // 드론스폰오프셋값 만큼 높게 소환
         UE_LOG(LogTemp, Error, TEXT("Drone detected - Adjusted spawn height by +%f"), DroneSpawnHeightOffset);
     }
 
-    UE_LOG(LogTemp, Error, TEXT("At location: %s"), *Location.ToString());
-
     FActorSpawnParameters SpawnParams;
+    // 스폰위치에 장애물이 있어도 AdjustIfPossibleButAlwaysSpawn 으로 최대한 위치 조정해서 스폰 보장
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
     SpawnParams.Name = NAME_None; // 언리얼이 자동으로 고유한 이름 생성
 
-    UE_LOG(LogTemp, Error, TEXT("World is valid: %s"), GetWorld() ? TEXT("TRUE") : TEXT("FALSE"));
-
-    // 스폰 시도 전
-    UE_LOG(LogTemp, Error, TEXT("About to call SpawnActor..."));
-
-    APawn* SpawnedEnemy = GetWorld()->SpawnActor<APawn>(
-        EnemyClass,
-        AdjustedLocation,
-        FRotator::ZeroRotator,
-        SpawnParams
-    );
-
-    // 스폰 결과 확인
-    if (SpawnedEnemy)
+    if (APawn* SpawnedEnemy = World->SpawnActor<APawn>(EnemyClass, AdjustedLocation, FRotator::ZeroRotator, SpawnParams))
     {
-        UE_LOG(LogTemp, Error, TEXT("SUCCESS: Spawned % s"), *SpawnedEnemy->GetClass()->GetName());
-        UE_LOG(LogTemp, Error, TEXT("Spawned Actor Name: %s"), *SpawnedEnemy->GetName());
-        UE_LOG(LogTemp, Error, TEXT("Spawned Actor Location: %s"), *SpawnedEnemy->GetActorLocation().ToString());
-
-        SpawnedEnemies.Add(SpawnedEnemy);
-        UE_LOG(LogTemp, Error, TEXT("Added to SpawnedEnemies array. Total count: %d"), SpawnedEnemies.Num());
+        SpawnedEnemies.Add(SpawnedEnemy); // 생성된 적의 참조를 배열에 추가
     }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("FAILED: Could not spawn %s"), *EnemyClass->GetName());
-        UE_LOG(LogTemp, Error, TEXT("Possible reasons:"));
-        UE_LOG(LogTemp, Error, TEXT("- Invalid spawn location"));
-        UE_LOG(LogTemp, Error, TEXT("- Blueprint compilation issues"));
-        UE_LOG(LogTemp, Error, TEXT("- Missing default constructor"));
-        UE_LOG(LogTemp, Error, TEXT("- Class registration issues"));
-    }
-
-    UE_LOG(LogTemp, Error, TEXT("=== SpawnEnemyAtLocation DEBUG END ==="));
 }
-
-
-
-// ========================================
-// 적 관리
-// ========================================
 
 void AMainGameModeBase::OnEnemyDestroyed(APawn* DestroyedEnemy)
 {
     if (!DestroyedEnemy) return;
 
+    // 사망한 적의 참조를 배열에서 찾아
     SpawnedEnemies.RemoveAll([DestroyedEnemy](const TWeakObjectPtr<APawn>& EnemyPtr)
         {
-            return EnemyPtr.Get() == DestroyedEnemy;
+            return EnemyPtr.Get() == DestroyedEnemy; // 즉시 제거
         });
 
-    if (bWaveSystemEnabled && bWaveInProgress)
+    if (bWaveSystemEnabled && bWaveInProgress) // 웨이브가 진행중이라면
     {
-        EnemiesKilledInWave++;
-        UE_LOG(LogTemp, Log, TEXT("Enemy killed. Progress: %d/%d"),
-            EnemiesKilledInWave, TotalEnemiesInWave);
-
-        CheckWaveCompletion();
+        EnemiesKilledInWave++; // 처치 수 갱신
+        CheckWaveCompletion(); // 웨이브 검사 함수 호출
     }
 }
-
-// ========================================
-// 성능 최적화
-// ========================================
 
 void AMainGameModeBase::PerformAsyncCleanup()
 {
     UE_LOG(LogTemp, Log, TEXT("Starting async cleanup for Wave %d"), CurrentWaveIndex + 1);
 
-    AsyncTask(ENamedThreads::BackgroundThreadPriority, [this]()
+    // 람다 캡처 시점부터 약참조를 사용하여 안정성 확보
+    AsyncTask(ENamedThreads::BackgroundThreadPriority, [WeakThis = TWeakObjectPtr<AMainGameModeBase>(this)]()
         {
-            FPlatformProcess::Sleep(0.1f);
+            FPlatformProcess::Sleep(0.1f); // 다른 프로세스들과의 충돌을 피하기 위해 약간의 지연시간동안 대기
 
-            AsyncTask(ENamedThreads::GameThread, [this]()
+            // 액터나 배열 조작은 반드시 GameThread(메인스레드) 에서 이루어져야함
+            AsyncTask(ENamedThreads::GameThread, [WeakThis]() 
                 {
-                    // 무효한 참조 정리
-                    SpawnedEnemies.RemoveAll([](const TWeakObjectPtr<APawn>& EnemyPtr)  // AEnemy → APawn
-                        {
-                            return !EnemyPtr.IsValid();
-                        });
+                    // 약참조를 강참조로 일시적으로 변환
+                    // WeakThis.Get()은 객체가 살아있으면 진짜 주소인 StrongThis를 주고 이미 파괴되었다면 NULL을 줌
+                    // StrongThis라는 변수에 이 값을 담아 이 블록이 끝날 떄까지는 객체가 메모리에서 사라지지 않도록 붙잡음
+                    if (AMainGameModeBase* StrongThis = WeakThis.Get()) // GC에 주소가 유효한지 확인
+                    {
+                        // StrongThis는 유효성이 보장되므로 내부 변수인 SpawnedEnemies에 접근 가능
+                        // 더이상 유효하지 않은 적(이미 파괴된 적)의 참조를 배열에서 모두 제거
+                        StrongThis->SpawnedEnemies.RemoveAll([](const TWeakObjectPtr<APawn>& EnemyPtr)
+                            {
+                                return !EnemyPtr.IsValid(); // 약참조가 유효하지 않다면 true를 반환하여 제거
+                            });
 
-                    SpawnedEnemies.Shrink();
-
-                    UE_LOG(LogTemp, Log, TEXT("Async cleanup completed. Active enemies: %d"),
-                        SpawnedEnemies.Num());
+                        // 배열의 실제 메모리 할당 크리를 현재 데이터 개수에 딱 맞게 줄여 메모리 누수를 방지
+                        // Shrink함수는 현재 요소를 보유하는데 필요한 최소 크기로 할당 크기를 조정해줌
+                        StrongThis->SpawnedEnemies.Shrink();
+                        // 정리가 끝난 후 현재 살아있는 적의 숫자를 출력
+                        UE_LOG(LogTemp, Warning, TEXT("Async cleanup completed. Active enemies: %d"), StrongThis->SpawnedEnemies.Num());
+                    }
                 });
         });
 }
-
 
 void AMainGameModeBase::ForceCompleteMemoryCleanup()
 {
@@ -508,7 +466,7 @@ void AMainGameModeBase::ForceCompleteMemoryCleanup()
     // 모든 적 강제 제거
     KillAllEnemies();
 
-    // 배열 완전 초기화
+    // 배열 초기화
     SpawnedEnemies.Empty();
     SpawnedEnemies.Shrink();
 
@@ -516,31 +474,27 @@ void AMainGameModeBase::ForceCompleteMemoryCleanup()
     GetWorldTimerManager().ClearTimer(WaveStartTimer);
     GetWorldTimerManager().ClearTimer(SpawnTimer);
     GetWorldTimerManager().ClearTimer(CleanupTimer);
-
-    // 강제 가비지 컬렉션
+    
+    // 잔여 메모리 정리
     if (GEngine)
     {
-        GEngine->ForceGarbageCollection(true);
+        GEngine->ForceGarbageCollection(true); // 강제 GC 수행
         UE_LOG(LogTemp, Warning, TEXT("Forced garbage collection completed"));
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Complete memory cleanup finished"));
 }
 
-// ========================================
-// 공개 인터페이스
-// ========================================
-
 void AMainGameModeBase::SetWaveSystemEnabled(bool bEnabled)
 {
     if (bWaveSystemEnabled == bEnabled) return;
 
     bWaveSystemEnabled = bEnabled;
-    StopAllSystems();
+    StopAllSystems(); // 상태 변경 시 기존 타이머 초기화
 
     if (bWaveSystemEnabled)
     {
-        StartWaveSystem();
+        StartWaveSystem(); // 웨이브 시작
     }
     else
     {
@@ -550,6 +504,7 @@ void AMainGameModeBase::SetWaveSystemEnabled(bool bEnabled)
 
 FString AMainGameModeBase::GetCurrentWaveName() const
 {
+    //UI 표시를 위한 현재 진행중인 웨이브 고유 이름 반환
     if (CurrentWaveIndex < WaveConfigurations.Num())
     {
         return WaveConfigurations[CurrentWaveIndex].WaveName;
@@ -560,11 +515,11 @@ FString AMainGameModeBase::GetCurrentWaveName() const
 int32 AMainGameModeBase::GetActiveEnemyCount() const
 {
     int32 Count = 0;
-    for (const TWeakObjectPtr<APawn>& EnemyPtr : SpawnedEnemies)  // AEnemy → APawn
+    for (const TWeakObjectPtr<APawn>& EnemyPtr : SpawnedEnemies)  // 월드에 살아있는 적들
     {
-        if (EnemyPtr.IsValid())
+        if (EnemyPtr.IsValid()) // 유효하다면
         {
-            Count++;
+            Count++; // 카운트
         }
     }
 
@@ -573,18 +528,19 @@ int32 AMainGameModeBase::GetActiveEnemyCount() const
 
 void AMainGameModeBase::CheckAndSaveBestWaveRecord(int32 LastClearedWaveIndex)
 {
+    // 클리어한 웨이브가 기존 최고 기록보다 높을 경우 세이브 파일에 기록을 갱신
     // 1. 저장 객체 로드 또는 생성
     UWaveRecordSaveGame* SaveGameInstance = nullptr;
 
+    // 기존 데이터 로드
     if (UGameplayStatics::DoesSaveGameExist(UWaveRecordSaveGame::SaveSlotName, UWaveRecordSaveGame::UserIndex))
     {
         SaveGameInstance = Cast<UWaveRecordSaveGame>(UGameplayStatics::LoadGameFromSlot(UWaveRecordSaveGame::SaveSlotName, UWaveRecordSaveGame::UserIndex));
     }
 
-    if (!SaveGameInstance)
+    if (!SaveGameInstance) // 없다면
     {
-        // 기록이 없다면 새로 생성
-        SaveGameInstance = Cast<UWaveRecordSaveGame>(UGameplayStatics::CreateSaveGameObject(UWaveRecordSaveGame::StaticClass()));
+        SaveGameInstance = Cast<UWaveRecordSaveGame>(UGameplayStatics::CreateSaveGameObject(UWaveRecordSaveGame::StaticClass())); // 생성
         if (!SaveGameInstance) return;
     }
 
@@ -611,23 +567,25 @@ void AMainGameModeBase::CheckAndSaveBestWaveRecord(int32 LastClearedWaveIndex)
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("Current score (Wave %d) is not a new best record (Best is Wave %d)."),
+        UE_LOG(LogTemp, Warning, TEXT("Current score (Wave %d) is not a new best record (Best is Wave %d)."),
             LastClearedWaveIndex + 1, SaveGameInstance->BestClearedWaveIndex + 1);
     }
 }
 
 void AMainGameModeBase::RestartWaveSystem()
 {
-    StopAllSystems();
+    StopAllSystems(); // 시스템 정지
 
-    if (bWaveSystemEnabled)
+    if (bWaveSystemEnabled) // 웨이브가 활성화 되어있다면
     {
-        StartWaveSystem();
+        StartWaveSystem(); // 다시 0번 웨이브 부터 시작
     }
 }
 
 void AMainGameModeBase::SkipToWave(int32 WaveIndex)
 {
+    // 테스트용 함수
+    // 특정 웨이브로 점프하기 위해 현재 상태를 강제 종료하고 지정된 웨이브 시작
     if (WaveIndex >= 0 && WaveIndex < WaveConfigurations.Num())
     {
         StopAllSystems();
@@ -646,19 +604,13 @@ void AMainGameModeBase::StopAllSystems()
     GetWorldTimerManager().ClearTimer(CleanupTimer);
 }
 
-// ========================================
-// 유틸리티 함수들
-// ========================================
-
 void AMainGameModeBase::PreCalculateSpawnLocations()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Pre-calculating %d spawn locations..."), PreCalculatedLocationCount);
-
+    // NavMesh의 랜덤 좌표 탐색은 무겁기에 게임 시작 시 대량으로 수행해서 런타임 중에는 연산 없이 배열에서 꺼내 쓰도록 함
     PreCalculatedSpawnLocations.Empty();
     PreCalculatedSpawnLocations.Reserve(PreCalculatedLocationCount);
 
     FVector SpawnCenter = bSpawnAroundPlayer ? GetPlayerLocation() : SpawnCenterLocation;
-
     TArray<float> RadiusValues = { 500.0f, 750.0f, 1000.0f, 1250.0f, 1500.0f };
     int32 LocationsPerRadius = PreCalculatedLocationCount / RadiusValues.Num();
 
@@ -671,19 +623,6 @@ void AMainGameModeBase::PreCalculateSpawnLocations()
             {
                 PreCalculatedSpawnLocations.Add(SpawnLocation);
             }
-        }
-    }
-
-    while (PreCalculatedSpawnLocations.Num() < PreCalculatedLocationCount)
-    {
-        FVector SpawnLocation;
-        if (FindRandomLocationOnNavMesh(SpawnCenter, DefaultSpawnRadius, SpawnLocation))
-        {
-            PreCalculatedSpawnLocations.Add(SpawnLocation);
-        }
-        else
-        {
-            break;
         }
     }
 
@@ -700,32 +639,42 @@ void AMainGameModeBase::RefreshSpawnLocations()
 void AMainGameModeBase::RefillSpawnLocationsAsync()
 {
     if (!bLocationCalculationComplete) return;
+    
+    // 비동기 데이터 캡처
+    // 배경 스레드에서 안전하게 사용하기 위해 멤버 변수의 값을 지역 변수로 미리 복사
+  
+    // 메인 스레드에서 안전하게 값을 먼저 확보
+    const FVector CachedCenter = bSpawnAroundPlayer ? GetPlayerLocation() : SpawnCenterLocation;
+    const float Radius = DefaultSpawnRadius;
 
-    AsyncTask(ENamedThreads::BackgroundThreadPriority, [this]()
+    // 배경 스레드에서 안전하게 사용하기 위해 값을 미리 복사
+    AsyncTask(ENamedThreads::BackgroundThreadPriority, [this, CachedCenter, Radius]()
         {
             TArray<FVector> NewLocations;
-            FVector SpawnCenter = bSpawnAroundPlayer ? GetPlayerLocation() : SpawnCenterLocation;
 
             for (int32 i = 0; i < 50; i++)
             {
                 FVector SpawnLocation;
-                if (FindRandomLocationOnNavMesh(SpawnCenter, DefaultSpawnRadius, SpawnLocation))
+                // 복사된 안전한 값을 사용하여 navmesh 연산을 배경에서 수행
+                if (FindRandomLocationOnNavMesh(CachedCenter, Radius, SpawnLocation))
                 {
                     NewLocations.Add(SpawnLocation);
                 }
             }
-
-            AsyncTask(ENamedThreads::GameThread, [this, NewLocations]()
+            // 계산된 결과물을 적용할 때는 다시 GameThread로 돌아옴
+            AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<AMainGameModeBase>(this), NewLocations]()
                 {
-                    if (NewLocations.Num() > 0)
+                    if (AMainGameModeBase* StrongThis = WeakThis.Get())
                     {
-                        int32 StartIndex = FMath::RandRange(0, FMath::Max(0, PreCalculatedSpawnLocations.Num() - NewLocations.Num()));
-                        for (int32 i = 0; i < NewLocations.Num() && StartIndex + i < PreCalculatedSpawnLocations.Num(); i++)
+                        if (NewLocations.Num() > 0)
                         {
-                            PreCalculatedSpawnLocations[StartIndex + i] = NewLocations[i];
+                            // 캐싱된 배열의 일부 구간을 무작위로 덮어씌워 스폰 포인트를 순환
+                            int32 StartIndex = FMath::RandRange(0, FMath::Max(0, StrongThis->PreCalculatedSpawnLocations.Num() - NewLocations.Num()));
+                            for (int32 i = 0; i < NewLocations.Num() && StartIndex + i < StrongThis->PreCalculatedSpawnLocations.Num(); i++)
+                            {
+                                StrongThis->PreCalculatedSpawnLocations[StartIndex + i] = NewLocations[i];
+                            }
                         }
-
-                        UE_LOG(LogTemp, Warning, TEXT("Refreshed %d spawn locations"), NewLocations.Num());
                     }
                 });
         });
@@ -733,10 +682,11 @@ void AMainGameModeBase::RefillSpawnLocationsAsync()
 
 FVector AMainGameModeBase::GetNextSpawnLocation()
 {
+    // 미리 계산된 배열에서 인덱스를 순환하며
     if (PreCalculatedSpawnLocations.Num() == 0)
     {
         UE_LOG(LogTemp, Error, TEXT("No pre-calculated spawn locations available!"));
-        return GetPlayerLocation();
+        return GetPlayerLocation(); // 좌표를 가져옴
     }
 
     FVector SpawnLocation = PreCalculatedSpawnLocations[CurrentLocationIndex];
@@ -749,7 +699,7 @@ void AMainGameModeBase::KillAllEnemies()
 {
     int32 KilledCount = 0;
 
-    // 배열 복사 후 순회 (안전한 실행을 위해)
+    // 순회 중 배열 변형 방지를 위해 약참조로 복사본 생성
     TArray<TWeakObjectPtr<APawn>> EnemiesToKill = SpawnedEnemies;
 
     for (const auto& EnemyPtr : EnemiesToKill)
@@ -807,6 +757,7 @@ void AMainGameModeBase::KillAllEnemies()
             }
         }
     }
+    SpawnedEnemies.Empty(); // 배열을 비워 GC를 도움
     UE_LOG(LogTemp, Warning, TEXT("Called Die() on %d enemies"), KilledCount);
 }
 
@@ -830,7 +781,7 @@ bool AMainGameModeBase::FindRandomLocationOnNavMesh(FVector CenterLocation, floa
 FVector AMainGameModeBase::GetPlayerLocation()
 {
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
-    if (PlayerCharacter)
+    if (IsValid(PlayerCharacter))
     {
         return PlayerCharacter->GetActorLocation();
     }
@@ -851,6 +802,6 @@ void AMainGameModeBase::CheckWaveCompletion()
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("Wave still in progress - %d enemies remaining"), ActiveEnemyCount);
+        UE_LOG(LogTemp, Warning, TEXT("Wave still in progress - %d enemies remaining"), ActiveEnemyCount);
     }
 }

@@ -2,12 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "NiagaraComponent.h"
-#include "NiagaraSystem.h"
-#include "Components/StaticMeshComponent.h"
 #include "MachineGun.generated.h"
 
 class USoundBase;
+class UNiagaraSystem;
+class UNiagaraComponent;
+class UStaticMeshComponent;
 
 UCLASS()
 class LOCOMOTION_API AMachineGun : public AActor
@@ -17,92 +17,71 @@ class LOCOMOTION_API AMachineGun : public AActor
 public:
     AMachineGun();
 
-    void StartFire(); // 발사 시작
-    void StopFire();  // 발사 종료
-    void SetFireParams(float InFireRate, float InDamage, float InSpreadAngle);
+    void StartFire(); // 발사 시작 함수
+    void StopFire();  // 발사 종료 함수
+	void SetFireParams(float InFireRate, float InDamage, float InSpreadAngle); // 총알 발사 관련 파라미터 설정 함수
 
 protected:
-    virtual void BeginPlay() override;
 
-    // 총알에 맞은 적에게 가할 넉백 강도
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config")
-    float KnockbackStrength = 300.0f;
+	float KnockbackStrength = 300.0f; // 넉백 강도
 
     UPROPERTY(EditAnywhere, Category = "Audio")
-    USoundBase* FireSound;
+	USoundBase* FireSound; // 발사 사운드
 
-    /** [신규] 발사 시작 시 재생할 사운드 (예: 준비, 촤르륵) */
     UPROPERTY(EditAnywhere, Category = "Audio")
-    USoundBase* StartFireSound;
+	USoundBase* StartFireSound; // 발사 시작 사운드
 
-    /** [신규] 발사 종료 시 재생할 사운드 (예: 약실 냉각, 딸칵) */
     UPROPERTY(EditAnywhere, Category = "Audio")
-    USoundBase* StopFireSound;
+	USoundBase* StopFireSound; // 발사 종료 사운드
 
 private:
-    void Fire(); // 1발 발사
-    FVector GetFireDirectionWithSpread(); // 탄퍼짐 적용 방향
+    void Fire(); // 발사 함수
+	FVector GetFireDirectionWithSpread(FVector BaseDirection); // 퍼짐이 적용된 발사 방향 계산 함수
 
     // 총기 설정값
-    float FireRate = 0.05f;    // 초당 발사 간격 (ex. 0.1f = 초당 10발)
+	UPROPERTY(EditAnywhere, Category = "Config", meta = (AllowPrivateAccess = "true"))
+    float FireRate = 0.05f; // 초당 발사 간격 (0.1f = 초당 10발 0.05 = 초당 20발)
+    UPROPERTY(EditAnywhere, Category = "Config", meta = (AllowPrivateAccess = "true"))
     float BulletDamage = 10.0f; // 데미지
-    float SpreadAngle = 2.0f; // 퍼짐 정도 (degree)
+    UPROPERTY(EditAnywhere, Category = "Config", meta = (AllowPrivateAccess = "true"))
+	float SpreadAngle = 2.0f; // 퍼짐 정도 (도 단위)
+    UPROPERTY(EditAnywhere, Category = "Config", meta = (AllowPrivateAccess = "true"))
+    float MaxRange = 10000.0f; // 최대 사거리
 
-    FTimerHandle FireTimerHandle;
+	FTimerHandle FireTimerHandle; // 발사 타이머 핸들
 
-    UPROPERTY(VisibleAnywhere, Category = "Components")
-    UStaticMeshComponent* GunMesh;
+    UPROPERTY(VisibleAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UStaticMeshComponent* GunMesh; // 총기 메쉬
+    UPROPERTY(VisibleAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UStaticMeshComponent* MuzzleSocket; // 총구 소켓 메쉬
 
-    /** [신규 추가] 총구 위치를 나타내는 소켓용 메쉬 (BP에서 위치 조절 가능) */
-    UPROPERTY(VisibleAnywhere, Category = "Components")
-    UStaticMeshComponent* MuzzleSocket;
+    UPROPERTY(EditAnywhere, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+	class UNiagaraSystem* MuzzleFlash; // 머즐 플래시
+    UPROPERTY(EditAnywhere, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+	float MuzzleFlashDuration = 0.15f; // 머즐 플래시 지속시간
+    UPROPERTY(EditAnywhere, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+    float MuzzleFlashScale = 1.0f; // 머즐 플래시 크기
+    UPROPERTY(EditAnywhere, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+	float MuzzleFlashPlayRate = 2.0f; // 머즐 플래시 재생 속도
 
-    /** [신규 추가] 총구 섬광 이펙트 (나이아가라) */
-    UPROPERTY(EditAnywhere, Category = "Effects")
-    class UNiagaraSystem* MuzzleFlash;
-
-    /** 총구 섬광 지속 시간 */
-    UPROPERTY(EditAnywhere, Category = "Effects")
-    float MuzzleFlashDuration = 0.15f;
-
-    /** 총구 섬광 크기 */
-    UPROPERTY(EditAnywhere, Category = "Effects")
-    float MuzzleFlashScale = 1.0f;
-
-    /** 총구 섬광 재생 속도 */
-    UPROPERTY(EditAnywhere, Category = "Effects")
-    float MuzzleFlashPlayRate = 2.0f;
-
-    /** 머즐 플래시 정지용 타이머 핸들 */
-    FTimerHandle MuzzleFlashTimerHandle;
-
-    /** 현재 재생 중인 이펙트 컴포넌트 참조 */
+	FTimerHandle MuzzleFlashTimerHandle; // 머즐 플래시 정지용 타이머 핸들
     UPROPERTY()
-    class UNiagaraComponent* CurrentMuzzleFlashComponent;
+	class UNiagaraComponent* CurrentMuzzleFlashComponent; // 머즐 플래시 컴포넌트 참조
 
-    /** 총구 섬광 재생 */
-    void PlayMuzzleFlash(FVector Location);
-    /** 총구 섬광 정지 */
-    void StopMuzzleFlash();
+	void PlayMuzzleFlash(FVector Location); // 총구 섬광 재생 함수
+    void StopMuzzleFlash(); // 총구 섬광 정지 함수
 
-    /** [신규 추가] 피격 시 재생할 사운드 */
-    UPROPERTY(EditAnywhere, Category = "Effects")
-    class USoundBase* HitSound;
+    UPROPERTY(EditAnywhere, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+	class USoundBase* HitSound; // 피격 사운드
+    UPROPERTY(EditAnywhere, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+    class UNiagaraSystem* ImpactEffect; // 피격 이펙트
+    UPROPERTY(EditAnywhere, Category = "Effects", meta = (AllowPrivateAccess = "true"))
+    float ImpactEffectDuration = 0.2f; // 피격 이펙트 지속시간
 
-    /** [신규 추가] 피격 시 재생할 이펙트 */
-    UPROPERTY(EditAnywhere, Category = "Effects")
-    class UNiagaraSystem* ImpactEffect;
+	FTimerHandle ImpactEffectTimerHandle; // 피격 이펙트 정지용 타이머 핸들
 
-    /** 히트 임팩트 재생 시간 */
-    UPROPERTY(EditAnywhere, Category = "Effects")
-    float ImpactEffectDuration = 0.2f; // ARifle과 동일하게 설정
-
-    /** 히트 이펙트 정지용 타이머 핸들 */
-    FTimerHandle ImpactEffectTimerHandle;
-
-    /** 현재 재생 중인 히트 이펙트 컴포넌트 참조 */
     UPROPERTY()
-    class UNiagaraComponent* CurrentImpactEffectComponent;
-
-    void StopImpactEffect();
+	class UNiagaraComponent* CurrentImpactEffectComponent; // 피격 이펙트 컴포넌트 참조
+	void StopImpactEffect(); // 피격 이펙트 정지 함수
 };

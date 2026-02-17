@@ -4,14 +4,14 @@
 #include "GameFrameWork/Character.h" // ACharacter 클래스 참조
 #include "EnemyDog.h" // 제어할 EnemyDog 클래스 참조
 #include "EnemyDogAnimInstance.h" // 애님 인스턴스 클래스 참조
-#include "TimerManager.h" // FTimerManager 사용
 #include "GameFramework/CharacterMovementComponent.h" // 캐릭터 무브먼트 컴포넌트 참조
 #include "DrawDebugHelpers.h" // 디버그 시각화 기능 사용
+#include "MainGameModeBase.h"
 
 AEnemyDogAIController::AEnemyDogAIController()
 {
 	PrimaryActorTick.bCanEverTick = true; // 매 프레임 Tick 함수 호출 설정
-	SetActorTickInterval(0.05f); // Tick 주기 0.05초로 최적화
+	SetActorTickInterval(AIUpdateInterval); // Tick 주기 최적화
 
 	RotationUpdateTimer = 0.0f; // 변수 초기화
 	StaticAngleOffset = 0; // 변수 초기화
@@ -19,12 +19,18 @@ AEnemyDogAIController::AEnemyDogAIController()
 
 void AEnemyDogAIController::BeginPlay()
 {
+	UWorld* World = GetWorld();
+	if (!World) return; // 월드가 유효하지 않으면 리턴
+
 	Super::BeginPlay(); // 부모 클래스 BeginPlay 호출
-	PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0); // 게임 시작 시 플레이어 폰을 찾아 저장
+	PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0); // 게임 시작 시 플레이어 폰을 찾아 저장
 }
 
 void AEnemyDogAIController::Tick(float DeltaTime)
 {
+	UWorld* World = GetWorld();
+	if (!World) return; // 월드가 유효하지 않으면 리턴
+
 	Super::Tick(DeltaTime); // 부모 클래스 Tick 호출
 
 	AEnemyDog* EnemyDogCharacter = Cast<AEnemyDog>(GetPawn()); // 현재 컨트롤러가 빙의한 폰을 EnemyDog으로 캐스팅
@@ -54,7 +60,7 @@ void AEnemyDogAIController::Tick(float DeltaTime)
 
 	if (!PlayerPawn) // 플레이어 폰 참조가 없다면
 	{
-		PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0); // 다시 찾아봄
+		PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0); // 다시 찾아봄
 		if (!PlayerPawn) return; // 그래도 없으면 Tick 함수 종료
 	}
 
@@ -77,7 +83,7 @@ void AEnemyDogAIController::Tick(float DeltaTime)
 	if (!ToTarget.IsNearlyZero())
 	{
 		FRotator TargetRot = ToTarget.Rotation(); // 방향 벡터를 회전값(Rotator)으로 변환
-		GetPawn()->SetActorRotation(FMath::RInterpTo(GetPawn()->GetActorRotation(), TargetRot, DeltaTime, 10.0f)); // 부드럽게 회전
+		GetPawn()->SetActorRotation(FMath::RInterpTo(GetPawn()->GetActorRotation(), TargetRot, DeltaTime, RotationInterpSpeed)); // 부드럽게 보간 회전
 	}
 
 	float DistanceToPlayer = FVector::Dist(GetPawn()->GetActorLocation(), PlayerPawn->GetActorLocation()); // 플레이어와의 거리 계산
@@ -123,45 +129,99 @@ void AEnemyDogAIController::SetAIState(EEnemyDogAIState NewState)
 	CurrentState = NewState; // 상태 변경
 }
 
+//void AEnemyDogAIController::ChasePlayer()
+//{
+//	UWorld* World = GetWorld();
+//	if (!World) return; // 월드가 유효하지 않으면 리턴
+//	if (!PlayerPawn || !GetPawn()) return; // 플레이어나 자신이 없다면 함수 종료
+//
+//	// 현재 월드에 있는 모든 EnemyDog 액터를 배열로 가져옴
+//	TArray<AActor*> AllEnemies;
+//	UGameplayStatics::GetAllActorsOfClass(World, AEnemyDog::StaticClass(), AllEnemies);
+//
+//	if (AllEnemies.Num() <= 1) // 맵에 자신 혼자 있다면
+//	{
+//		MoveToActor(PlayerPawn, 10.0f); // 단순하게 플레이어를 향해 직진
+//		return;
+//	}
+//
+//	int32 MyIndex = AllEnemies.IndexOfByKey(GetPawn()); // 전체 적 목록에서 자신의 인덱스(순번)를 찾음
+//	if (MyIndex == INDEX_NONE) // 만약 자신을 찾지 못했다면 (방어 코드)
+//	{
+//		MoveToActor(PlayerPawn, 10.0f); // 단순 직진
+//		return;
+//	}
+//
+//	// 포위 대형을 만들기 위한 각도 계산
+//	float AngleDeg = 360.0f / AllEnemies.Num(); // 적 전체 수로 360도를 나눔 (적 하나당 차지할 각도)
+//	float MyAngleDeg = AngleDeg * MyIndex; // 자신의 인덱스를 곱해 고유한 목표 각도를 설정
+//	float MyAngleRad = FMath::DegreesToRadians(MyAngleDeg); // 각도를 라디안으로 변환
+//
+//	// 플레이어 위치를 기준으로 포위 목표 지점 계산
+//	FVector PlayerLocation = PlayerPawn->GetActorLocation(); // 플레이어 위치
+//	FVector Offset = FVector(FMath::Cos(MyAngleRad), FMath::Sin(MyAngleRad), 0) * SurroundRadius; // 플레이어로부터 SurroundRadius만큼 떨어진 원형 좌표 계산
+//	FVector TargetLocation = PlayerLocation + Offset; // 플레이어 위치에 오프셋을 더해 최종 목표 지점 설정
+//
+//	MoveToLocation(TargetLocation, 10.0f); // 계산된 목표 지점으로 이동
+//
+//	// 디버그용: 목표 지점을 작은 구체로 시각화
+//	/*DrawDebugSphere(GetWorld(), TargetLocation, 25.0f, 8, FColor::Red, false, 0.05f);*/
+//}
+
 void AEnemyDogAIController::ChasePlayer()
 {
-	if (!PlayerPawn || !GetPawn()) return; // 플레이어나 자신이 없다면 함수 종료
+	UWorld* World = GetWorld();
+	if (!World || !PlayerPawn || !GetPawn()) return;
 
-	// 현재 월드에 있는 모든 EnemyDog 액터를 배열로 가져옴
-	TArray<AActor*> AllEnemies;
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyDog::StaticClass(), AllEnemies);
+	// 1. 게임 모드 가져오기
+	AMainGameModeBase* GM = Cast<AMainGameModeBase>(World->GetAuthGameMode());
+	if (!GM) return;
 
-	if (AllEnemies.Num() <= 1) // 맵에 자신 혼자 있다면
+	// 2. 월드를 뒤지는 대신, 이미 정리된 명단을 참조 (핵심 최적화!)
+	const TArray<TWeakObjectPtr<APawn>>& AllEnemies = GM->GetSpawnedEnemies();
+
+	// 3. 자신을 제외한 유효한 EnemyDog만 필터링해서 내 순번(Index) 계산
+	// (EnemyDrone 등 다른 타입이 섞여 있을 수 있으므로 내 클래스 타입만 카운트)
+	int32 MyIndex = 0;
+	int32 TotalDogCount = 0;
+	APawn* MyPawn = GetPawn();
+
+	for (const TWeakObjectPtr<APawn>& EnemyPtr : AllEnemies)
 	{
-		MoveToActor(PlayerPawn, 10.0f); // 단순하게 플레이어를 향해 직진
+		APawn* Enemy = EnemyPtr.Get();
+		// 유효하고, 같은 Dog 클래스인 경우에만 카운트
+		if (Enemy && Enemy->IsA<AEnemyDog>())
+		{
+			if (Enemy == MyPawn)
+			{
+				MyIndex = TotalDogCount;
+			}
+			TotalDogCount++;
+		}
+	}
+
+	if (TotalDogCount <= 1)
+	{
+		MoveToActor(PlayerPawn, MoveAcceptanceRadius); // 단순하게 플레이어를 향해 직진
 		return;
 	}
 
-	int32 MyIndex = AllEnemies.IndexOfByKey(GetPawn()); // 전체 적 목록에서 자신의 인덱스(순번)를 찾음
-	if (MyIndex == INDEX_NONE) // 만약 자신을 찾지 못했다면 (방어 코드)
-	{
-		MoveToActor(PlayerPawn, 10.0f); // 단순 직진
-		return;
-	}
+	// 4. 포위 대형 각도 계산 (기존 로직 유지)
+	float AngleDeg = 360.0f / TotalDogCount;
+	float MyAngleRad = FMath::DegreesToRadians(AngleDeg * MyIndex);
 
-	// 포위 대형을 만들기 위한 각도 계산
-	float AngleDeg = 360.0f / AllEnemies.Num(); // 적 전체 수로 360도를 나눔 (적 하나당 차지할 각도)
-	float MyAngleDeg = AngleDeg * MyIndex; // 자신의 인덱스를 곱해 고유한 목표 각도를 설정
-	float MyAngleRad = FMath::DegreesToRadians(MyAngleDeg); // 각도를 라디안으로 변환
+	FVector PlayerLocation = PlayerPawn->GetActorLocation();
+	FVector Offset = FVector(FMath::Cos(MyAngleRad), FMath::Sin(MyAngleRad), 0) * SurroundRadius;
+	FVector TargetLocation = PlayerLocation + Offset;
 
-	// 플레이어 위치를 기준으로 포위 목표 지점 계산
-	FVector PlayerLocation = PlayerPawn->GetActorLocation(); // 플레이어 위치
-	FVector Offset = FVector(FMath::Cos(MyAngleRad), FMath::Sin(MyAngleRad), 0) * SurroundRadius; // 플레이어로부터 SurroundRadius만큼 떨어진 원형 좌표 계산
-	FVector TargetLocation = PlayerLocation + Offset; // 플레이어 위치에 오프셋을 더해 최종 목표 지점 설정
-
-	MoveToLocation(TargetLocation, 10.0f); // 계산된 목표 지점으로 이동
-
-	// 디버그용: 목표 지점을 작은 구체로 시각화
-	/*DrawDebugSphere(GetWorld(), TargetLocation, 25.0f, 8, FColor::Red, false, 0.05f);*/
+	MoveToLocation(TargetLocation, 10.0f);
 }
 
 void AEnemyDogAIController::NormalAttack()
 {
+	UWorld* World = GetWorld();
+	if (!World) return; // 월드가 유효하지 않으면 리턴
+
 	AEnemyDog* EnemyDog = Cast<AEnemyDog>(GetPawn()); // 제어 중인 폰 가져오기
 	if (!EnemyDog || EnemyDog->bIsInAirStun) return; // 폰이 없거나 스턴 상태면 공격 불가
 	if (bIsAttacking) return; // 이미 공격 중이면 중복 실행 방지
@@ -176,26 +236,41 @@ void AEnemyDogAIController::NormalAttack()
 		TargetRotation.Pitch = 0.0f;
 		TargetRotation.Roll = 0.0f;
 
-		FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, GetWorld()->GetDeltaSeconds(), 10.0f);
-		GetPawn()->SetActorRotation(NewRotation);
+		//FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, World->GetDeltaSeconds(), 10.0f);
+		//GetPawn()->SetActorRotation(NewRotation);
+		PlayerPawn->SetActorRotation(TargetRotation);
 	}
 
 	bIsAttacking = true; // 공격 중 상태로 설정
 	bCanAttack = false; // 공격 쿨타임 시작
 
-	FTimerHandle AttackDelayTimer;
-	GetWorld()->GetTimerManager().SetTimer( // 0.1초 지연 후 공격 애니메이션 재생 (회전할 시간 확보)
+	TWeakObjectPtr<AEnemyDog> WeakDog(EnemyDog); // 람다 캡처용 약한 포인터
+	World->GetTimerManager().SetTimer(
 		AttackDelayTimer,
-		[this, EnemyDog]()
+		[WeakDog]()
 		{
-			EnemyDog->PlayNormalAttackAnimation(); // EnemyDog의 공격 애니메이션 재생 함수 호출
-		},
-		0.1f,
-		false
+			if (WeakDog.IsValid())
+			{
+				WeakDog->PlayNormalAttackAnimation(); // 공격 애니메이션 재생
+			}
+		}, AttackStartDelay, false
+	);
+
+	TWeakObjectPtr<AEnemyDogAIController> WeakThis(this); // 람다 캡처용 약한 포인터
+	World->GetTimerManager().SetTimer(
+		NormalAttackTimerHandle,
+		[WeakThis]()
+		{
+			if (WeakThis.IsValid())
+			{
+				WeakThis->ResetAttack(); // 공격 쿨타임이 끝나면 공격 가능 상태로 복귀
+			}
+
+		}, AttackCooldown, false
 	);
 
 	// 설정된 쿨타임 이후에 ResetAttack 함수를 호출하여 다시 공격 가능 상태로 만듦
-	GetWorld()->GetTimerManager().SetTimer(NormalAttackTimerHandle, this, &AEnemyDogAIController::ResetAttack, AttackCooldown, false);
+	//GetWorld()->GetTimerManager().SetTimer(NormalAttackTimerHandle, this, &AEnemyDogAIController::ResetAttack, AttackCooldown, false);
 }
 
 void AEnemyDogAIController::ResetAttack()

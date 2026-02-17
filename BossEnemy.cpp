@@ -1,62 +1,59 @@
 #include "BossEnemy.h"
 #include "BossEnemyAnimInstance.h"
-#include "GameFramework/Actor.h"
 #include "Kismet/GameplayStatics.h"
 #include "BossEnemyAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Animation/AnimInstance.h"
 #include "MainGameModeBase.h"
 #include "BossProjectile.h"
 #include "EnemyBossKatana.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "NiagaraFunctionLibrary.h"
 #include "MainCharacter.h"
+#include "Components/CapsuleComponent.h"
+#include "NavigationSystem.h"
+#include "NiagaraFunctionLibrary.h"
 
 ABossEnemy::ABossEnemy()
 {
-	PrimaryActorTick.bCanEverTick = true; // tick È°¼ºÈ­
-	bCanBossAttack = true; // °ø°İ °¡´É ¿©ºÎ true
-	AIControllerClass = ABossEnemyAIController::StaticClass(); // AI ÄÁÆ®·Ñ·¯ ¼³Á¤
+	PrimaryActorTick.bCanEverTick = true; // Tick í™œì„±í™”
+	AICon = nullptr;
+	AnimInstance = nullptr;
+	MoveComp = GetCharacterMovement();
+	EquippedBossKatana = nullptr;
 
-	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned; //½ºÆù ½Ã¿¡µµ AI ÄÁÆ®·Ñ·¯ ÀÚµ¿ ÇÒ´ç
+	ApplyBaseWalkSpeed(); // ê¸°ë³¸ ì´ë™ ì†ë„ ì ìš© í•¨ìˆ˜ í˜¸ì¶œ
 
-	GetMesh()->SetAnimInstanceClass(UBossEnemyAnimInstance::StaticClass()); // ¾Ö´Ô ÀÎ½ºÅÏ½º ¼³Á¤
-	if (!AIControllerClass) // ÄÁÆ®·Ñ·¯°¡ ¾ø´Ù¸é
-	{
-		UE_LOG(LogTemp, Error, TEXT("Boss AI Controller NULL"));
-	}
+	AIControllerClass = ABossEnemyAIController::StaticClass(); // AI ì»¨íŠ¸ë¡¤ëŸ¬ í´ë˜ìŠ¤ ì„¤ì •
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned; // AI ìë™ ì†Œìœ  ì„¤ì •
 }
 
 void ABossEnemy::BeginPlay()
 {
 	Super::BeginPlay();
-	SetCanBeDamaged(true); // ÇÇÇØ¸¦ ÀÔÀ» ¼ö ÀÖ´ÂÁö ¿©ºÎ true
-	BossHealth = MaxBossHealth; // ÃÖ´ë Ã¼·ÂÀ¸·Î ÇöÀç Ã¼·Â ÃÊ±âÈ­
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	// AI ÄÁÆ®·Ñ·¯ °­Á¦ ÇÒ´ç
-	if (!GetController())
+	SetCanBeDamaged(true); // ë°ë¯¸ì§€ í—ˆìš©
+	BossHealth = MaxBossHealth; // ë³´ìŠ¤ ì²´ë ¥ ì´ˆê¸°í™”
+
+	AICon = Cast<ABossEnemyAIController>(GetController()); // AI ì»¨íŠ¸ë¡¤ëŸ¬ ê°€ì ¸ì˜´
+	if (!AICon) // AI ì»¨íŠ¸ë¡¤ëŸ¬ê°€ ì—†ë‹¤ë©´
 	{
-		SpawnDefaultController();
-		UE_LOG(LogTemp, Warning, TEXT("Boss AI Controller manually spawned"));
+		SpawnDefaultController(); // AI ì»¨íŠ¸ë¡¤ëŸ¬ ìŠ¤í°
+		AICon = Cast<ABossEnemyAIController>(GetController());  // AI ì»¨íŠ¸ë¡¤ëŸ¬ ë‹¤ì‹œ ê°€ì ¸ì˜´
 	}
 
-	AAIController* AICon = Cast<AAIController>(GetController()); // AI ÄÁÆ®·Ñ·¯¸¦ ºÒ·¯¿Í Ä³½ºÆ®
-	if (AICon) // ÄÁÆ®·Ñ·¯°¡ Á¸ÀçÇÑ´Ù¸é
+	if (GetMesh())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Boss AI Controller Assigend")); // ÄÁÆ®·Ñ·¯ ÇÒ´çµÊ
+		AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
 	}
-	else // ¾Æ´Ñ°æ¿ì
-	{
-		UE_LOG(LogTemp, Error, TEXT("Boss AI Controller NULL")); // ÄÁÆ®·Ñ·¯ NULL
-	}
-	SetUpBossAI(); // AI ¼³Á¤ÇÔ¼ö È£Ãâ
 
-	PlayBossSpawnIntroAnimation(); // º¸½º µîÀå ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı
+	MoveComp = GetCharacterMovement();
 
-	// KatanaClass°¡ BP¿¡¼­ ¼³Á¤µÇ¾î ÀÖ´Ù¸é Ä«Å¸³ª »ı¼º ¹× ºÎÂø
-	if (BossKatanaClass)
+	SetUpBossAI(); // AI ì„¤ì • í•¨ìˆ˜ í˜¸ì¶œ
+
+	// ì¹´íƒ€ë‚˜ ìŠ¤í° ë° ì¥ì°©
+	if (IsValid(BossKatanaClass))
 	{
-		EquippedBossKatana = GetWorld()->SpawnActor<AEnemyBossKatana>(BossKatanaClass);
+		EquippedBossKatana = World->SpawnActor<AEnemyBossKatana>(BossKatanaClass);
 		if (EquippedBossKatana)
 		{
 			EquippedBossKatana->SetOwner(this);
@@ -72,6 +69,293 @@ void ABossEnemy::BeginPlay()
 			}
 		}
 	}
+
+	PlayBossSpawnIntroAnimation();
+}
+
+// ========== í—¬í¼ í•¨ìˆ˜ êµ¬í˜„ ==========
+
+//UBossEnemyAnimInstance* ABossEnemy::GetBossAnimInstance() const
+//{
+//	USkeletalMeshComponent* MeshComp = GetMesh();
+//	if (!IsValid(MeshComp)) return nullptr;
+//	return Cast<UBossEnemyAnimInstance>(MeshComp->GetAnimInstance());
+//}
+
+//ABossEnemyAIController* ABossEnemy::GetBossAIController() const
+//{
+//	return Cast<ABossEnemyAIController>(GetController());
+//}
+
+//APawn* ABossEnemy::GetPlayerPawn() const
+//{
+//	UWorld* World = GetWorld();
+//	if (!IsValid(World)) return nullptr;
+//	return UGameplayStatics::GetPlayerPawn(World, 0);
+//}
+
+void ABossEnemy::SetState(EBossState NewState)
+{
+	if (CurrentState == NewState) return;
+	CurrentState = NewState;
+}
+
+void ABossEnemy::SetStealthPhase(EStealthPhase NewPhase)
+{
+	CurrentStealthPhase = NewPhase;
+
+	// AI ì»¨íŠ¸ë¡¤ëŸ¬ì— ìŠ¤í…”ìŠ¤ ë‹¨ê³„ ë³€ê²½ ì•Œë¦¼
+	if (AICon)
+	{
+		AICon->HandleStealthPhaseTransition(static_cast<int32>(NewPhase));
+	}
+}
+
+void ABossEnemy::SetSafeTimer(FTimerHandle& Handle, float Time, TFunction<void()> Callback, bool bLoop)
+{
+	UWorld* World = GetWorld();
+	if (!IsValid(World)) return;
+
+	TWeakObjectPtr<ABossEnemy> WeakThis(this);
+	World->GetTimerManager().SetTimer(
+		Handle,
+		FTimerDelegate::CreateLambda([WeakThis, Callback]()
+			{
+				if (WeakThis.IsValid())
+				{
+					Callback();
+				}
+			}),
+		Time,
+		bLoop
+	);
+}
+
+void ABossEnemy::SetSafeTimerForNextTick(TFunction<void()> Callback)
+{
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	TWeakObjectPtr<ABossEnemy> WeakThis(this);
+	World->GetTimerManager().SetTimerForNextTick(
+		FTimerDelegate::CreateLambda([WeakThis, Callback]()
+			{
+				if (WeakThis.IsValid())
+				{
+					Callback();
+				}
+			})
+	);
+}
+
+bool ABossEnemy::PlayRandomMontage(
+	const TArray<UAnimMontage*>& Montages,
+	void(ABossEnemy::* EndCallback)(UAnimMontage*, bool),
+	bool bUseUpperBodyBlend,
+	bool bLookAtPlayer,
+	float LookAtSpeed)
+{
+	if (Montages.Num() == 0) return false;
+
+	//UBossEnemyAnimInstance* AnimInstance = GetBossAnimInstance();
+	if (AnimInstance)
+	{
+		// ë‹¤ë¥¸ ëª½íƒ€ì£¼ ì •ì§€
+		AnimInstance->bUseUpperBodyBlend = bUseUpperBodyBlend;
+		AnimInstance->Montage_Stop(0.1f, nullptr);
+	}
+
+	// í”Œë ˆì´ì–´ ë°”ë¼ë³´ê¸° ì„¤ì •
+	if (bLookAtPlayer)
+	{
+		AnimInstance->bShouldLookAtPlayer = true;
+		AnimInstance->LookAtSpeed = LookAtSpeed;
+	}
+
+	// ëœë¤ ëª½íƒ€ì£¼ ì„ íƒ ë° ì¬ìƒ
+	int32 RandomIndex = FMath::RandRange(0, Montages.Num() - 1);
+	UAnimMontage* SelectedMontage = Montages[RandomIndex];
+
+	if (!SelectedMontage) return false;
+
+	float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+	if (PlayResult <= 0.0f)
+	{
+		// ì¬ìƒ ì‹¤íŒ¨ ì‹œ ìƒíƒœ ë³µì›
+		if (bLookAtPlayer)
+		{
+			AnimInstance->bShouldLookAtPlayer = false;
+		}
+		return false;
+	}
+
+	// ì¢…ë£Œ ë¸ë¦¬ê²Œì´íŠ¸ ë°”ì¸ë”©
+	if (EndCallback)
+	{
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, EndCallback);
+		AnimInstance->Montage_SetEndDelegate(EndDelegate, SelectedMontage);
+	}
+
+	return true;
+}
+
+bool ABossEnemy::PlaySingleMontage(
+	UAnimMontage* Montage,
+	void(ABossEnemy::* EndCallback)(UAnimMontage*, bool),
+	bool bUseUpperBodyBlend,
+	bool bLookAtPlayer,
+	float LookAtSpeed)
+{
+	if (!Montage) return false;
+
+	//UBossEnemyAnimInstance* AnimInstance = GetBossAnimInstance();
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = bUseUpperBodyBlend;
+		AnimInstance->Montage_Stop(0.1f, nullptr);
+	}
+
+	if (bLookAtPlayer)
+	{
+		AnimInstance->bShouldLookAtPlayer = true;
+		AnimInstance->LookAtSpeed = LookAtSpeed;
+	}
+
+	float PlayResult = AnimInstance->Montage_Play(Montage, 1.0f);
+	if (PlayResult <= 0.0f)
+	{
+		if (bLookAtPlayer)
+		{
+			AnimInstance->bShouldLookAtPlayer = false;
+		}
+		return false;
+	}
+
+	if (EndCallback)
+	{
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, EndCallback);
+		AnimInstance->Montage_SetEndDelegate(EndDelegate, Montage);
+	}
+
+	return true;
+}
+
+bool ABossEnemy::PlayTeleportMontage(
+	const TArray<UAnimMontage*>& Montages,
+	float TeleportTimingRatio,
+	FTimerHandle& ExecutionTimer,
+	void(ABossEnemy::* EndCallback)(UAnimMontage*, bool),
+	TFunction<void()> TeleportAction)
+{
+	if (Montages.Num() == 0) return false;
+
+	//UBossEnemyAnimInstance* AnimInstance = GetBossAnimInstance();
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false;
+		AnimInstance->Montage_Stop(0.1f, nullptr);
+		AnimInstance->bShouldLookAtPlayer = true;
+		AnimInstance->LookAtSpeed = 8.0f;
+	}
+
+	int32 RandomIndex = FMath::RandRange(0, Montages.Num() - 1);
+	UAnimMontage* SelectedMontage = Montages[RandomIndex];
+	if (!SelectedMontage) return false;
+
+	float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+	if (PlayResult <= 0.0f) return false;
+
+	if (EndCallback)
+	{
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, EndCallback);
+		AnimInstance->Montage_SetEndDelegate(EndDelegate, SelectedMontage);
+	}
+
+	float MontageLength = SelectedMontage->GetPlayLength();
+	float TeleportTiming = MontageLength * TeleportTimingRatio;
+
+	SetSafeTimer(ExecutionTimer, TeleportTiming, TeleportAction);
+
+	return true;
+}
+
+bool ABossEnemy::IsPerformingAction() const
+{
+	return CurrentState != EBossState::Idle &&
+		CurrentState != EBossState::Combat &&
+		CurrentState != EBossState::Dead;
+}
+
+bool ABossEnemy::IsExecutingStealthAttack() const
+{
+	return CurrentState == EBossState::StealthAttack &&
+		CurrentStealthPhase != EStealthPhase::None;
+}
+
+void ABossEnemy::ApplyBaseWalkSpeed()
+{
+	if (MoveComp)
+	{
+		MoveComp->MaxWalkSpeed = BaseMaxWalkSpeed; // ê¸°ë³¸ ì´ë™ ì†ë„ë¡œ ì„¤ì •
+		MoveComp->MaxAcceleration = BaseMaxAcceleration; // ê°€ì†ë„ë¥¼ ë†’ì—¬ ì¦‰ì‹œ ìµœëŒ€ ì†ë„ì— ë„ë‹¬í•˜ê²Œ ì„¤ì •
+		MoveComp->BrakingFrictionFactor = BaseBrakingFrictionFactor; // ì œë™ ë§ˆì°°ë ¥ì„ ë†’ì—¬ ì¦‰ì‹œ ë©ˆì¶”ë„ë¡ ì„¤ì •
+	}
+}
+
+void ABossEnemy::DisableBossMovement()
+{
+	if (MoveComp)
+	{
+		MoveComp->DisableMovement();
+		MoveComp->StopMovementImmediately();
+	}
+}
+
+void ABossEnemy::EnableBossMovement()
+{
+	if (IsDead()) return;
+
+	if (MoveComp)
+	{
+		MoveComp->SetMovementMode(EMovementMode::MOVE_NavWalking);
+	}
+}
+
+void ABossEnemy::StopAIMovementAndDisable()
+{
+	if (AICon)
+	{
+		AICon->StopMovement();
+	}
+	DisableBossMovement();
+}
+
+void ABossEnemy::ResetUpperBodyBlend()
+{
+	if (AnimInstance)
+	{
+		AnimInstance->bUseUpperBodyBlend = false;
+	}
+}
+
+void ABossEnemy::ResetLookAt(float LookAtSpeed) 
+{
+	if(AnimInstance)
+	{
+		AnimInstance->bShouldLookAtPlayer = false;
+		AnimInstance->LookAtSpeed = LookAtSpeed;
+	}
+}
+
+void ABossEnemy::SetUpBossAI()
+{
+	if (MoveComp)
+	{
+		MoveComp->SetMovementMode(EMovementMode::MOVE_NavWalking);
+	}
 }
 
 void ABossEnemy::PlayBossSpawnIntroAnimation()
@@ -79,400 +363,183 @@ void ABossEnemy::PlayBossSpawnIntroAnimation()
 	if (BossSpawnIntroMontages.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No boss intro montages found - skipping intro animation"));
+		SetState(EBossState::Combat);
+		bCanBossAttack = true;
 		return;
 	}
 
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (!AnimInstance)
+	SetState(EBossState::Intro);
+	bCanBossAttack = false;
+	bIsInvincible = true;
+
+	StopAIMovementAndDisable();
+
+	if (!PlayRandomMontage(BossSpawnIntroMontages, &ABossEnemy::OnBossIntroMontageEnded, false, false))
 	{
-		UE_LOG(LogTemp, Error, TEXT("Boss AnimInstance not found"));
-		return;
-	}
-
-	bIsPlayingBossIntro = true;
-	bCanBossAttack = false; // µîÀå Áß¿¡´Â °ø°İ ºÒ°¡
-	bIsFullBodyAttacking = true; // Àü½Å ¾Ö´Ï¸ŞÀÌ¼ÇÀ¸·Î Ã³¸®
-
-	// AI ÀÌµ¿ ÁßÁö
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
-	if (AICon)
-	{
-		AICon->StopMovement();
-	}
-
-	// ÀÌµ¿ Â÷´Ü
-	DisableBossMovement();
-
-	// µîÀå ¸ùÅ¸ÁÖ Àç»ı
-	AnimInstance->bUseUpperBodyBlend = false; // Àü½Å ¾Ö´Ï¸ŞÀÌ¼Ç
-	AnimInstance->Montage_Stop(0.1f, nullptr); // ´Ù¸¥ ¸ùÅ¸ÁÖ ÁßÁö
-
-	int32 RandomIndex = FMath::RandRange(0, BossSpawnIntroMontages.Num() - 1);
-	UAnimMontage* SelectedMontage = BossSpawnIntroMontages[RandomIndex];
-
-	if (SelectedMontage)
-	{
-		float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
-
-		if (PlayResult > 0.0f)
-		{
-			// µîÀå ¸ùÅ¸ÁÖ Á¾·á µ¨¸®°ÔÀÌÆ® ¹ÙÀÎµù
-			FOnMontageEnded IntroEndDelegate;
-			IntroEndDelegate.BindUObject(this, &ABossEnemy::OnBossIntroMontageEnded);
-			AnimInstance->Montage_SetEndDelegate(IntroEndDelegate, SelectedMontage);
-
-			UE_LOG(LogTemp, Warning, TEXT("Boss intro montage playing: %s"), *SelectedMontage->GetName());
-		}
-		else
-		{
-			// ¸ùÅ¸ÁÖ Àç»ı ½ÇÆĞ ½Ã Áï½Ã È°¼ºÈ­
-			UE_LOG(LogTemp, Error, TEXT("Boss intro montage failed to play"));
-			bIsPlayingBossIntro = false;
-			bCanBossAttack = true;
-			bIsFullBodyAttacking = false;
-			EnableBossMovement();
-		}
+		UE_LOG(LogTemp, Error, TEXT("Boss intro montage failed to play"));
+		SetState(EBossState::Combat);
+		bCanBossAttack = true;
+		bIsInvincible = false;
+		EnableBossMovement();
 	}
 }
 
 void ABossEnemy::OnBossIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Boss Intro Montage Ended"));
+	ResetUpperBodyBlend();
 
-	// ¾Ö´Ï¸ŞÀÌ¼Ç »óÅÂ º¹¿ø
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false;
-	}
-
-	// Àü½Å°ø°İ Á¾·á ¹× ÀÌµ¿ Çã¿ë
-	bIsFullBodyAttacking = false;
-	bIsPlayingBossIntro = false;
+	SetState(EBossState::Combat);
+	bIsInvincible = false;
 	EnableBossMovement();
 
-	// AI ÄÁÆ®·Ñ·¯¿¡ µîÀå Á¾·á ¾Ë¸²
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
 	if (AICon)
 	{
 		AICon->OnBossNormalAttackMontageEnded();
 	}
 
 	bCanBossAttack = true;
-	UE_LOG(LogTemp, Warning, TEXT("Boss ready for combat after intro"));
-}
-
-void ABossEnemy::SetUpBossAI()
-{
-	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_NavWalking); // Ä³¸¯ÅÍ ¹«ºê¸ÕÆ®¸¦ °¡Á®¿Í ¹«ºê¸ğµå¿¡ ÀÖ´Â ³×ºê ¿öÅ·¸ğµå·Î ¼³Á¤
-}
-
-void ABossEnemy::PostInitializeComponents()
-{
-	Super::PostInitializeComponents(); // ÄÄÆ÷³ÍÆ® ÃÊ±âÈ­ ÀÌÈÄ Ãß°¡ ÀÛ¾÷À» À§ÇØ ºÎ¸ğÇÔ¼ö È£Ãâ
-
-	GetWorld()->GetTimerManager().SetTimerForNextTick([this]() // ´ÙÀ½ Tick¿¡¼­ AI ÄÁÆ®·Ñ·¯ ÇÒ´ç ¿©ºÎ¸¦ È®ÀÎÇÏ´Â ¶÷´Ù µî·Ï
-		{
-			AAIController* AICon = Cast<AAIController>(GetController()); // ÇÑ¹ø´õ AIÄÁÆ®·Ñ·¯¸¦ Ä³½ºÆÃÇØ¼­ ¹Ş¾Æ¿È
-			if (AICon) // ÄÁÆ®·Ñ·¯°¡ Á¸ÀçÇÑ´Ù¸é
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Boss AICon Assigned Later")); // ÄÁÆ®·Ñ·¯ ÇÒ´çµÊ
-			}
-			else // ¾Æ´Ñ°æ¿ì
-			{
-				UE_LOG(LogTemp, Error, TEXT("Boss AICon Still NULL")); // ÄÁÆ®·Ñ·¯ NULL
-			}
-		});
 }
 
 void ABossEnemy::PlayBossNormalAttackAnimation()
 {
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance()); // ÃÖ½Å ¾Ö´ÔÀÎ½ºÅÏ½º¸¦ Ä³½ºÆÃÇØ¼­ ¹Ş¾Æ¿È
-	if (!AnimInstance || BossNormalAttackMontages.Num() == 0) return; // ¾Ö´ÔÀÎ½ºÅÏ½º°¡ ¾ø°Å³ª ÀÏ¹İ°ø°İ ¸ùÅ¸ÁÖ°¡ ¾ø´Ù¸é ¸®ÅÏ 
+	if (IsDead()) return;
 
-	AnimInstance->bUseUpperBodyBlend = false; // »óÇÏÃ¼ ºĞ¸® ¿©ºÎ false
-	AnimInstance->Montage_Stop(0.1f, nullptr); // ´Ù¸¥½½·Ô ¸ùÅ¸ÁÖ ÁßÁö
-	if (AnimInstance && AnimInstance->IsAnyMontagePlaying()) return; // ¾Ö´ÔÀÎ½ºÅÏ½º°¡ ÀÖ°í ¾Ö´ÔÀÎ½ºÅÏ½ºÀÇ ¸ùÅ¸ÁÖ°¡ ½ÇÇàÁßÀÌ¶ó¸é ¸®ÅÏ
+	if (!AnimInstance || BossNormalAttackMontages.Num() == 0) return;
+	if (AnimInstance->IsAnyMontagePlaying()) return;
 
-	// ABP¿¡¼­ ÇÃ·¹ÀÌ¾î ¹Ù¶óº¸±â È°¼ºÈ­
-	AnimInstance->bShouldLookAtPlayer = true;
-	AnimInstance->LookAtSpeed = 8.0f; // °ø°İ ½Ã¿¡´Â ´õ ºü¸¥ È¸Àü
+	SetState(EBossState::NormalAttack);
+	bCanBossAttack = false;
 
-	int32 RandomIndex = FMath::RandRange(0, BossNormalAttackMontages.Num() - 1); // ÀÏ¹İ°ø°İ ¸ùÅ¸ÁÖ¹è¿­Áß¿¡ ·£´ıÀ¸·Î ¼±ÅÃÇÏ´Â ·£´ıÀÎµ¦½º ¼±¾ğ
-	UAnimMontage* SelectedMontage = BossNormalAttackMontages[RandomIndex]; // ·£´ıÀÎÅØ½º¿¡¼­ ¼±ÅÃÇÑ ¸ùÅ¸ÁÖ¸¦ °¡Á®¿È
-	if (SelectedMontage) // ¸ùÅ¸ÁÖ°¡ ¼±ÅÃ µÇ¾ú´Ù¸é
+	StopAIMovementAndDisable();
+
+	if (!PlayRandomMontage(BossNormalAttackMontages, &ABossEnemy::OnNormalAttackMontageEnded, false, true, 8.0f))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("SelectedMontage: %s is playing"), *SelectedMontage->GetName());
-		float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f); // ÇÃ·¹ÀÌ°á°ú´Â ¾Ö´ÔÀÎ½ºÅÍÀÇ ¸ùÅ¸ÁÖ ÇÃ·¹ÀÌ¸¦ 1.0¹è¼ÓÀ¸·Î Àç»ı
-		if (PlayResult == 0.0f) // ÇÃ·¹ÀÌ °á°ú°¡ 0ÀÌ¶ó¸é
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Montage Play Failed")); // ¸ùÅ¸ÁÖ Àç»ı ½ÇÆĞ
-			// ¸ùÅ¸ÁÖ Àç»ı ½ÇÆĞ ½Ã Áï½Ã °ø°İ °¡´É »óÅÂ·Î º¹¿ø
-			AnimInstance->bShouldLookAtPlayer = false; // ½ÇÆĞ½Ã ¹Ù¶óº¸±â ºñÈ°¼ºÈ­
-			bCanBossAttack = true;
-			bIsFullBodyAttacking = false;
-		}
-		else
-		{
-			// ¸ùÅ¸ÁÖ Á¾·á µ¨¸®°ÔÀÌÆ® ¹ÙÀÎµù
-			FOnMontageEnded EndDelegate;
-			EndDelegate.BindUObject(this, &ABossEnemy::OnNormalAttackMontageEnded);
-			AnimInstance->Montage_SetEndDelegate(EndDelegate, SelectedMontage);
-			UE_LOG(LogTemp, Warning, TEXT("Montage Succesfully Playing")); // ¸ùÅ¸ÁÖ Àç»ıÁß
-		}
-
-		ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController()); // ÄÁÆ®·Ñ·¯¸¦ Ä³½ºÆ®ÇØ¼­ °¡Á®¿È
-		if (AICon) // ÄÁÆ®·Ñ·¯°¡ Á¸ÀçÇÒ °æ¿ì
-		{
-			AICon->StopMovement(); // ÄÁÆ®·Ñ·¯ÀÇ ÀÌµ¿ÁßÁö ÇÔ¼ö¸¦ È£Ãâ
-			UE_LOG(LogTemp, Warning, TEXT("Enemy Stopped Moving to Attack"));
-		}
-
-		bCanBossAttack = false; // °ø°İ ÁßÀÌ¹Ç·Î °ø°İ ºÒ°¡ false
-		bIsFullBodyAttacking = true; 
-		DisableBossMovement();
+		SetState(EBossState::Combat);
+		bCanBossAttack = true;
+		EnableBossMovement();
+		return;
 	}
-	if (BossNormalAttackSound) // »ç¿îµå°¡ ÀÖ´Ù¸é
+
+	if (BossNormalAttackSound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, BossNormalAttackSound, GetActorLocation()); // ÇØ´ç ¾×ÅÍÀÇ À§Ä¡¿¡¼­ ¼Ò¸® Àç»ı
+		UGameplayStatics::PlaySoundAtLocation(this, BossNormalAttackSound, GetActorLocation());
 	}
 }
 
 void ABossEnemy::OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Normal Attack Montage Ended"));
+	if (IsDead()) return;
+	ResetUpperBodyBlend();
+	ResetLookAt(5.0f);
 
-	// °ø°İ Á¾·á½Ã
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false; // ±âº»°ªÀ¸·Î º¹¿ø
-		// ÇÃ·¹ÀÌ¾î ¹Ù¶óº¸±â ºñÈ°¼ºÈ­
-		AnimInstance->bShouldLookAtPlayer = false;
-		AnimInstance->LookAtSpeed = 5.0f; // ±âº» ¼Óµµ·Î º¹¿ø
-	}
+	SetState(EBossState::Combat);
+	EnableBossMovement();
 
-	// Àü½Å°ø°İ Á¾·á ¹× ÀÌµ¿ Çã¿ë
-	bIsFullBodyAttacking = false;
-	EnableBossMovement(); // ÀÌµ¿ Çã¿ë
-
-	// AI ÄÁÆ®·Ñ·¯¿¡ °ø°İ Á¾·á ¾Ë¸²
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
 	if (AICon)
 	{
 		AICon->OnBossNormalAttackMontageEnded();
 	}
 
-	bCanBossAttack = true; // °ø°İ °¡´É »óÅÂ·Î º¹¿ø
+	bCanBossAttack = true;
 }
 
-// ÀÌµ¿ Â÷´Ü ÇÔ¼ö
-void ABossEnemy::DisableBossMovement()
-{
-	UCharacterMovementComponent* MovementComp = GetCharacterMovement();
-	if (MovementComp)
-	{
-		MovementComp->DisableMovement(); // ÀÌµ¿ ¿ÏÀü Â÷´Ü
-		MovementComp->StopMovementImmediately(); // ÇöÀç ÀÌµ¿ Áï½Ã ÁßÁö
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Boss Movement Disabled"));
-}
-
-// ÀÌµ¿ Çã¿ë ÇÔ¼ö
-void ABossEnemy::EnableBossMovement()
-{
-	if (bIsBossDead) return; // »ç¸ÁÇÑ °æ¿ì ÀÌµ¿ Çã¿ëÇÏÁö ¾ÊÀ½
-
-	UCharacterMovementComponent* MovementComp = GetCharacterMovement();
-	if (MovementComp)
-	{
-		MovementComp->SetMovementMode(EMovementMode::MOVE_NavWalking); // ³×ºñ°ÔÀÌ¼Ç ¿öÅ· ¸ğµå·Î º¹¿ø
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Boss Movement Enabled"));
-}
-
+// ========== ìƒì²´ ê³µê²© ==========
 void ABossEnemy::PlayBossUpperBodyAttackAnimation()
 {
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
+	if (IsDead()) return;
 	if (!AnimInstance || BossUpperBodyMontages.Num() == 0) return;
 
-	// ÇÃ·¹ÀÌ¾î ¹Ù¶óº¸±â È°¼ºÈ­
-	AnimInstance->bShouldLookAtPlayer = true;
-	AnimInstance->LookAtSpeed = 6.0f; // »óÃ¼ °ø°İ½Ã ¼Óµµ
-	AnimInstance->bUseUpperBodyBlend = true; // »óÇÏÃ¼ºĞ¸® ¿©ºÎ true
+	SetState(EBossState::UpperBodyAttack);
+	bCanBossAttack = false;
 
-	int32 RandomIndex = FMath::RandRange(0, BossUpperBodyMontages.Num() - 1);
-	UAnimMontage* SelectedMontage = BossUpperBodyMontages[RandomIndex];
-
-	if (SelectedMontage)
+	if (!PlayRandomMontage(BossUpperBodyMontages, &ABossEnemy::OnUpperBodyAttackMontageEnded, true, true, 6.0f))
 	{
-		float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
-
-		if (PlayResult > 0.0f)
-		{
-			// »óÃ¼ °ø°İ Á¾·á µ¨¸®°ÔÀÌÆ® ¹ÙÀÎµù
-			FOnMontageEnded EndDelegate;
-			EndDelegate.BindUObject(this, &ABossEnemy::OnUpperBodyAttackMontageEnded);
-			AnimInstance->Montage_SetEndDelegate(EndDelegate, SelectedMontage);
-
-			UE_LOG(LogTemp, Warning, TEXT("Upper Body Attack Playing"));
-		}
-		else
-		{
-			AnimInstance->bShouldLookAtPlayer = false; // ½ÇÆĞ½Ã ºñÈ°¼ºÈ­
-			bCanBossAttack = true; // Àç»ı ½ÇÆĞ ½Ã Áï½Ã º¹¿ø
-		}
-
-		bCanBossAttack = false; // °ø°İ ÁßÀÌ¹Ç·Î °ø°İ ºÒ°¡
+		SetState(EBossState::Combat);
+		bCanBossAttack = true;
 	}
 }
 
 void ABossEnemy::OnUpperBodyAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Upper Body Attack Montage Ended"));
+	if (IsDead()) return;
+	ResetUpperBodyBlend();
+	ResetLookAt(5.0f);
 
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false; // ±âº»°ªÀ¸·Î º¹¿ø
-		// ÇÃ·¹ÀÌ¾î ¹Ù¶óº¸±â ºñÈ°¼ºÈ­
-		AnimInstance->bShouldLookAtPlayer = false;
-		AnimInstance->LookAtSpeed = 5.0f;
-	}
+	SetState(EBossState::Combat);
 
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
 	if (AICon)
 	{
 		AICon->OnBossNormalAttackMontageEnded();
 	}
 
-	bCanBossAttack = true; // °ø°İ °¡´É »óÅÂ·Î º¹¿ø
+	bCanBossAttack = true;
 }
+
+// ========== í›„í‡´ í…”ë ˆí¬íŠ¸ ==========
 
 void ABossEnemy::PlayBossTeleportAnimation()
 {
-	if (!bCanTeleport || bIsBossTeleporting || bIsBossDead) return;
+	if (!bCanTeleport || IsDead()) return;
+	if (CurrentState == EBossState::Teleporting) return;
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return;
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!IsValid(PlayerPawn)) return;
 
-	// ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ°¡ ¾ø´Ù¸é ÅÚ·¹Æ÷Æ® Ãë¼Ò
 	if (BossTeleportMontages.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No teleport montages available - teleport cancelled"));
 		return;
 	}
 
-	bIsBossTeleporting = true;
+	SetState(EBossState::Teleporting);
 	bCanBossAttack = false;
-	bIsFullBodyAttacking = true; // Àü½Å ¾Ö´Ï¸ŞÀÌ¼ÇÀ¸·Î Ã³¸®
-	bIsInvincible = true; // ¹«Àû »óÅÂ È°¼ºÈ­
+	bIsInvincible = true;
 
-	// AI ÀÌµ¿ ÁßÁö
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
-	if (AICon)
-	{
-		AICon->StopMovement();
-	}
+	StopAIMovementAndDisable();
 
-	// ÀÌµ¿ Â÷´Ü
-	DisableBossMovement();
-
-	// ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ Àç»ı
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false; // Àü½Å ¾Ö´Ï¸ŞÀÌ¼Ç
-		AnimInstance->Montage_Stop(0.1f, nullptr); // ´Ù¸¥ ¸ùÅ¸ÁÖ ÁßÁö
-		// ABP¿¡¼­ ÇÃ·¹ÀÌ¾î ¹Ù¶óº¸±â È°¼ºÈ­
-		AnimInstance->bShouldLookAtPlayer = true;
-		AnimInstance->LookAtSpeed = 8.0f; // °ø°İ ½Ã¿¡´Â ´õ ºü¸¥ È¸Àü
-
-		int32 RandomIndex = FMath::RandRange(0, BossTeleportMontages.Num() - 1);
-		UAnimMontage* SelectedMontage = BossTeleportMontages[RandomIndex];
-
-		if (SelectedMontage)
+	if (!PlayTeleportMontage(
+		BossTeleportMontages,
+		0.5f,
+		TeleportExecutionTimer,
+		&ABossEnemy::OnTeleportMontageEnded,
+		[this]()
 		{
-			float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
-
-			if (PlayResult > 0.0f)
-			{
-				// ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ Á¾·á µ¨¸®°ÔÀÌÆ® ¹ÙÀÎµù
-				FOnMontageEnded TeleportEndDelegate;
-				TeleportEndDelegate.BindUObject(this, &ABossEnemy::OnTeleportMontageEnded);
-				AnimInstance->Montage_SetEndDelegate(TeleportEndDelegate, SelectedMontage);
-
-				// ¸ùÅ¸ÁÖ Áß°£ Å¸ÀÌ¹Ö(50%)¿¡¼­ ½ÇÁ¦ ÅÚ·¹Æ÷Æ® ½ÇÇà
-				float MontageLength = SelectedMontage->GetPlayLength();
-				float TeleportTiming = MontageLength * 0.5f; // 50% ÁöÁ¡¿¡¼­ ÅÚ·¹Æ÷Æ®
-
-				GetWorld()->GetTimerManager().SetTimer(
-					TeleportExecutionTimer, // ÅÚ·¹Æ÷Æ® ÀÌµ¿ Å¸ÀÌ¸Ó
-					this,
-					&ABossEnemy::ExecuteTeleport,
-					TeleportTiming,
-					false
-				);
-
-				UE_LOG(LogTemp, Warning, TEXT("Teleport montage playing - will teleport at 50%% (%.2f seconds)"), TeleportTiming);
-			}
-			else
-			{
-				// ¸ùÅ¸ÁÖ Àç»ı ½ÇÆĞ½Ã ÅÚ·¹Æ÷Æ® Ãë¼Ò
-				UE_LOG(LogTemp, Error, TEXT("Teleport montage failed to play"));
-				bIsBossTeleporting = false;
-				bCanBossAttack = true;
-				bIsFullBodyAttacking = false;
-				bIsInvincible = false;
-				EnableBossMovement();
-			}
-		}
-		else
-		{
-			// ¼±ÅÃµÈ ¸ùÅ¸ÁÖ°¡ ¾øÀ¸¸é ÅÚ·¹Æ÷Æ® Ãë¼Ò
-			UE_LOG(LogTemp, Error, TEXT("Selected teleport montage is null"));
-			bIsBossTeleporting = false;
-			bCanBossAttack = true;
-			bIsFullBodyAttacking = false;
-			EnableBossMovement();
-		}
-	}
-	else
+			ExecuteTeleport();
+		}))
 	{
-		// ¾Ö´Ï¸ŞÀÌ¼Ç ÀÎ½ºÅÏ½º°¡ ¾øÀ¸¸é ÅÚ·¹Æ÷Æ® Ãë¼Ò
-		UE_LOG(LogTemp, Error, TEXT("Animation instance not found - teleport cancelled"));
-		bIsBossTeleporting = false;
+		UE_LOG(LogTemp, Error, TEXT("Teleport montage failed to play"));
+		SetState(EBossState::Combat);
 		bCanBossAttack = true;
-		bIsFullBodyAttacking = false;
+		bIsInvincible = false;
 		EnableBossMovement();
 	}
 }
 
 FVector ABossEnemy::CalculateTeleportLocation()
 {
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return GetActorLocation();
+	UWorld* World = GetWorld();
+	if (!World) return GetActorLocation();
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!IsValid(PlayerPawn)) return GetActorLocation();
 
 	FVector BossLocation = GetActorLocation();
 	FVector PlayerLocation = PlayerPawn->GetActorLocation();
 	FVector DirectionAwayFromPlayer = (BossLocation - PlayerLocation).GetSafeNormal();
 	FVector TeleportLocation = BossLocation + (DirectionAwayFromPlayer * TeleportDistance);
 
-	// ³×ºñ°ÔÀÌ¼Ç ½Ã½ºÅÛÀ» »ç¿ëÇØ À¯È¿ÇÑ À§Ä¡ Ã£±â
-	UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+	UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(World);
 	if (NavSystem)
 	{
 		FNavLocation ValidLocation;
 		if (NavSystem->ProjectPointToNavigation(TeleportLocation, ValidLocation, FVector(200.0f, 200.0f, 500.0f)))
 		{
-			// Ä³¸¯ÅÍ ³ôÀÌ º¸Á¤ Ãß°¡
 			return AdjustHeightForCharacter(ValidLocation.Location);
 		}
 		else
 		{
-			// À¯È¿ÇÑ À§Ä¡¸¦ Ã£Áö ¸øÇÑ °æ¿ì ´Ù¸¥ ¹æÇâµé ½Ãµµ
 			TArray<FVector> AlternativeDirections = {
 				FVector(1, 0, 0), FVector(-1, 0, 0), FVector(0, 1, 0), FVector(0, -1, 0),
 				FVector(0.707f, 0.707f, 0), FVector(-0.707f, 0.707f, 0),
@@ -484,236 +551,182 @@ FVector ABossEnemy::CalculateTeleportLocation()
 				FVector TestLocation = BossLocation + (Direction * TeleportDistance);
 				if (NavSystem->ProjectPointToNavigation(TestLocation, ValidLocation, FVector(200.0f, 200.0f, 500.0f)))
 				{
-					// Ä³¸¯ÅÍ ³ôÀÌ º¸Á¤ Ãß°¡
 					return AdjustHeightForCharacter(ValidLocation.Location);
 				}
 			}
 
 			UE_LOG(LogTemp, Warning, TEXT("Could not find valid teleport location - staying in place"));
-			return BossLocation; // À¯È¿ÇÑ À§Ä¡¸¦ Ã£Áö ¸øÇÑ °æ¿ì ÇöÀç À§Ä¡ ¹İÈ¯
+			return BossLocation;
 		}
 	}
 
-	// ³×ºñ°ÔÀÌ¼Ç ½Ã½ºÅÛÀÌ ¾ø´Â °æ¿ì¿¡µµ ³ôÀÌ º¸Á¤ Àû¿ë
 	return AdjustHeightForCharacter(TeleportLocation);
 }
 
 FVector ABossEnemy::AdjustHeightForCharacter(const FVector& TargetLocation)
 {
-	// Ä³¸¯ÅÍÀÇ Ä¸½¶ ÄÄÆ÷³ÍÆ®¿¡¼­ ¹İÂÊ ³ôÀÌ °¡Á®¿À±â
 	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
 	if (!CapsuleComp)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No capsule component found - using default height adjustment"));
-		return TargetLocation + FVector(0, 0, 90.0f); // ±âº»°ªÀ¸·Î 90 ´ÜÀ§ À§·Î
+		return TargetLocation + FVector(0, 0, 90.0f);
 	}
 
 	float CapsuleHalfHeight = CapsuleComp->GetScaledCapsuleHalfHeight();
 
-	// ¶óÀÎ Æ®·¹ÀÌ½º·Î Á¤È®ÇÑ Áö¸é ³ôÀÌ Ã£±â
-	FVector StartLocation = TargetLocation + FVector(0, 0, 500.0f); // À§¿¡¼­ºÎÅÍ ½ÃÀÛ
-	FVector EndLocation = TargetLocation + FVector(0, 0, -500.0f);  // ¾Æ·¡±îÁö °Ë»ç
+	UWorld* World = GetWorld();
+	if (!World) return TargetLocation + FVector(0, 0, CapsuleHalfHeight + 5.0f);
+	FVector StartLocation = TargetLocation + FVector(0, 0, 500.0f);
+	FVector EndLocation = TargetLocation + FVector(0, 0, -500.0f);
 
 	FHitResult HitResult;
 	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this); // ÀÚ±â ÀÚ½ÅÀº ¹«½Ã
+	QueryParams.AddIgnoredActor(this);
 
-	bool bHit = GetWorld()->LineTraceSingleByChannel(
+	bool bHit = World->LineTraceSingleByChannel(
 		HitResult,
 		StartLocation,
 		EndLocation,
-		ECollisionChannel::ECC_WorldStatic, // ÁöÇü°úÀÇ Ãæµ¹¸¸ °Ë»ç
+		ECollisionChannel::ECC_WorldStatic,
 		QueryParams
 	);
 
 	if (bHit)
 	{
-		// Áö¸é¿¡¼­ Ä³¸¯ÅÍ ¹İÂÊ ³ôÀÌ¸¸Å­ À§·Î ¹èÄ¡
-		FVector AdjustedLocation = HitResult.Location + FVector(0, 0, CapsuleHalfHeight + 5.0f); // 5.0f´Â ¿©À¯ °ø°£
-
-		UE_LOG(LogTemp, Warning, TEXT("Height adjusted teleport - Ground: %s, Final: %s"),
-			*HitResult.Location.ToString(), *AdjustedLocation.ToString());
-
+		FVector AdjustedLocation = HitResult.Location + FVector(0, 0, CapsuleHalfHeight + 5.0f);
 		return AdjustedLocation;
 	}
 	else
 	{
-		// ¶óÀÎ Æ®·¹ÀÌ½º ½ÇÆĞ½Ã ±âº» ³ôÀÌ º¸Á¤
-		FVector AdjustedLocation = TargetLocation + FVector(0, 0, CapsuleHalfHeight + 5.0f);
-
-		UE_LOG(LogTemp, Warning, TEXT("Line trace failed - using default height adjustment: %s"),
-			*AdjustedLocation.ToString());
-
-		return AdjustedLocation;
+		return TargetLocation + FVector(0, 0, CapsuleHalfHeight + 5.0f);
 	}
 }
 
 void ABossEnemy::ExecuteTeleport()
 {
-	FVector TeleportLocation = CalculateTeleportLocation();
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	// ½ÇÁ¦ ÅÚ·¹Æ÷Æ® ½ÇÇà
+	FVector TeleportLocation = CalculateTeleportLocation();
 	SetActorLocation(TeleportLocation);
-	UE_LOG(LogTemp, Warning, TEXT("Boss teleported during montage to: %s"), *TeleportLocation.ToString());
 }
 
 void ABossEnemy::OnTeleportMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Retreat Teleport Montage Ended - Starting pause before next action"));
-
-	// ¾Ö´Ï¸ŞÀÌ¼Ç »óÅÂ º¹¿ø
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false;
-	}
+	UWorld* World = GetWorld();
+	if (!World) return;
+	ResetUpperBodyBlend();
 
 	bIsInvincible = false;
 
-	// ÅÚ·¹Æ÷Æ® ÈÄ Àá½Ã Á¤Áö (PostTeleportPauseTime¸¸Å­)
-	// Á¤Áö Áß¿¡´Â ¾ÆÁ÷ ÀÌµ¿À» Çã¿ëÇÏÁö ¾ÊÀ½
-	GetWorld()->GetTimerManager().SetTimer(
-		PostTeleportPauseTimer,
-		this,
-		&ABossEnemy::OnPostTeleportPauseEnd,
-		PostTeleportPauseTime,
-		false
-	);
+	// í…”ë ˆí¬íŠ¸ í›„ ì ì‹œ ëŒ€ê¸°
+	SetSafeTimer(PostTeleportPauseTimer, PostTeleportPauseTime, [this]()
+		{
+			OnPostTeleportPauseEnd();
+		});
 
-	// ÅÚ·¹Æ÷Æ® ÄğÅ¸ÀÓ ½ÃÀÛ
+	// í…”ë ˆí¬íŠ¸ ì¿¨ë‹¤ìš´ ì‹œì‘
 	bCanTeleport = false;
-	GetWorld()->GetTimerManager().SetTimer(
-		TeleportCooldownTimer,
-		this,
-		&ABossEnemy::OnTeleportCooldownEnd,
-		TeleportCooldown,
-		false
-	);
-
-	// ¾ÆÁ÷ bCanBossAttackÀº false·Î À¯Áö (Á¤Áö ÈÄ ¼±ÅÃÀÌ ³¡³¯ ¶§±îÁö)
+	SetSafeTimer(TeleportCooldownTimer, TeleportCooldown, [this]()
+		{
+			OnTeleportCooldownEnd();
+		});
 }
-
 
 void ABossEnemy::OnTeleportCooldownEnd()
 {
 	bCanTeleport = true;
-	UE_LOG(LogTemp, Warning, TEXT("Boss can teleport again"));
 }
+
+void ABossEnemy::OnPostTeleportPauseEnd()
+{
+	if (IsDead()) return;
+
+	bool bActionStarted = false;
+	if (AICon)
+	{
+		bActionStarted = AICon->HandlePostTeleportPause();
+	}
+
+	if (bActionStarted)
+	{
+		return;
+	}
+
+	SetState(EBossState::Combat);
+	bIsInvincible = false;
+	EnableBossMovement();
+	bCanBossAttack = true;
+}
+
+// ========== ê³µê²© í…”ë ˆí¬íŠ¸ ==========
 
 void ABossEnemy::PlayBossAttackTeleportAnimation()
 {
-	if (bIsBossAttackTeleporting || bIsBossDead) return;
+	if (IsDead()) return;
+	if (CurrentState == EBossState::AttackTeleport) return;
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return;
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!IsValid(PlayerPawn)) return;
 
-	// °ø°İ¿ë ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ°¡ ¾ø´Ù¸é Ãë¼Ò
 	if (BossAttackTeleportMontages.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No attack teleport montages available - teleport cancelled"));
 		return;
 	}
 
-	bIsBossAttackTeleporting = true;
+	SetState(EBossState::AttackTeleport);
 	bCanBossAttack = false;
-	bIsFullBodyAttacking = true; // Àü½Å ¾Ö´Ï¸ŞÀÌ¼ÇÀ¸·Î Ã³¸®
 	bIsInvincible = true;
 
-	// AI ÀÌµ¿ ÁßÁö
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
-	if (AICon)
-	{
-		AICon->StopMovement();
-	}
+	StopAIMovementAndDisable();
 
-	// ÀÌµ¿ Â÷´Ü
-	DisableBossMovement();
-
-	// °ø°İ¿ë ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ Àç»ı
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false; // Àü½Å ¾Ö´Ï¸ŞÀÌ¼Ç
-		AnimInstance->Montage_Stop(0.1f, nullptr); // ´Ù¸¥ ¸ùÅ¸ÁÖ ÁßÁö
-		// ABP¿¡¼­ ÇÃ·¹ÀÌ¾î ¹Ù¶óº¸±â È°¼ºÈ­
-		AnimInstance->bShouldLookAtPlayer = true;
-		AnimInstance->LookAtSpeed = 8.0f; // °ø°İ ½Ã¿¡´Â ´õ ºü¸¥ È¸Àü
-
-		int32 RandomIndex = FMath::RandRange(0, BossAttackTeleportMontages.Num() - 1);
-		UAnimMontage* SelectedMontage = BossAttackTeleportMontages[RandomIndex];
-
-		if (SelectedMontage)
+	if (!PlayTeleportMontage(
+		BossAttackTeleportMontages,
+		0.4f,
+		AttackTeleportExecutionTimer,
+		&ABossEnemy::OnAttackTeleportMontageEnded,
+		[this]()
 		{
-			float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
-
-			if (PlayResult > 0.0f)
-			{
-				// °ø°İ¿ë ÅÚ·¹Æ÷Æ® ¸ùÅ¸ÁÖ Á¾·á µ¨¸®°ÔÀÌÆ® ¹ÙÀÎµù
-				FOnMontageEnded AttackTeleportEndDelegate;
-				AttackTeleportEndDelegate.BindUObject(this, &ABossEnemy::OnAttackTeleportMontageEnded);
-				AnimInstance->Montage_SetEndDelegate(AttackTeleportEndDelegate, SelectedMontage);
-
-				// ¸ùÅ¸ÁÖ Áß°£ Å¸ÀÌ¹Ö(40%)¿¡¼­ ½ÇÁ¦ ÅÚ·¹Æ÷Æ® ½ÇÇà (°ø°İ¿ëÀÌ¹Ç·Î Á¶±İ ºü¸£°Ô)
-				float MontageLength = SelectedMontage->GetPlayLength();
-				float TeleportTiming = MontageLength * 0.4f; // 40% ÁöÁ¡¿¡¼­ ÅÚ·¹Æ÷Æ®
-
-				GetWorld()->GetTimerManager().SetTimer(
-					AttackTeleportExecutionTimer, // °ø°İ ÅÚ·¹Æ÷Æ® ÀÌµ¿ Å¸ÀÌ¸Ó
-					this,
-					&ABossEnemy::ExecuteAttackTeleport,
-					TeleportTiming,
-					false
-				);
-
-				UE_LOG(LogTemp, Warning, TEXT("Attack teleport montage playing - will teleport at 40%% (%.2f seconds)"), TeleportTiming);
-			}
-			else
-			{
-				// ¸ùÅ¸ÁÖ Àç»ı ½ÇÆĞ½Ã Ãë¼Ò
-				UE_LOG(LogTemp, Error, TEXT("Attack teleport montage failed to play"));
-				bIsBossAttackTeleporting = false;
-				bCanBossAttack = true;
-				bIsFullBodyAttacking = false;
-				bIsInvincible = false;
-				EnableBossMovement();
-			}
-		}
+			ExecuteAttackTeleport();
+		}))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Attack teleport montage failed to play"));
+		SetState(EBossState::Combat);
+		bCanBossAttack = true;
+		bIsInvincible = false;
+		EnableBossMovement();
 	}
 }
 
 FVector ABossEnemy::CalculateAttackTeleportLocation()
 {
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return GetActorLocation();
+	UWorld* World = GetWorld();
+	if (!World) return GetActorLocation();
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!IsValid(PlayerPawn)) return GetActorLocation();
 
 	FVector PlayerLocation = PlayerPawn->GetActorLocation();
 	FVector BossLocation = GetActorLocation();
-
-	// ÇÃ·¹ÀÌ¾î°¡ ¹Ù¶óº¸´Â ¹æÇâ (Forward Vector)
 	FVector PlayerForward = PlayerPawn->GetActorForwardVector();
+	FVector BehindPlayerDirection = -PlayerForward;
 
-	// ÇÃ·¹ÀÌ¾îÀÇ µÚÂÊ ¹æÇâ °è»ê
-	FVector BehindPlayerDirection = -PlayerForward; // ¹İ´ë ¹æÇâ
-
-	// µÚÂÊ ¹æÇâ¿¡ ¾à°£ÀÇ ·£´ı¼º Ãß°¡ (ÁÂ¿ì·Î ¾à°£ º¯È­)
-	float RandomOffset = FMath::RandRange(-45.0f, 45.0f); // -45µµ ~ +45µµ
+	float RandomOffset = FMath::RandRange(-45.0f, 45.0f);
 	FVector RotatedDirection = BehindPlayerDirection.RotateAngleAxis(RandomOffset, FVector(0, 0, 1));
-
-	// ¿ì¼±ÀûÀ¸·Î µÚÂÊÀ¸·Î ÅÚ·¹Æ÷Æ® ½Ãµµ
 	FVector TeleportLocation = PlayerLocation + (RotatedDirection * AttackTeleportRange);
 
-	// ³×ºñ°ÔÀÌ¼Ç ½Ã½ºÅÛÀ¸·Î À¯È¿ÇÑ À§Ä¡ È®ÀÎ
-	UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+	UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(World);
 	if (NavSystem)
 	{
 		FNavLocation ValidLocation;
 		if (NavSystem->ProjectPointToNavigation(TeleportLocation, ValidLocation, FVector(200.0f, 200.0f, 500.0f)))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Attack teleport to behind player successful"));
 			return AdjustHeightForCharacter(ValidLocation.Location);
 		}
 
-		// µÚÂÊÀÌ ¾ÈµÇ¸é ±âÁ¸ ·£´ı ¹æÇâµé ½Ãµµ
 		TArray<FVector> AlternativeDirections = {
 			FVector(1, 0, 0), FVector(-1, 0, 0), FVector(0, 1, 0), FVector(0, -1, 0),
 			FVector(0.707f, 0.707f, 0), FVector(-0.707f, 0.707f, 0),
@@ -725,7 +738,6 @@ FVector ABossEnemy::CalculateAttackTeleportLocation()
 			FVector TestLocation = PlayerLocation + (Direction * AttackTeleportRange);
 			if (NavSystem->ProjectPointToNavigation(TestLocation, ValidLocation, FVector(200.0f, 200.0f, 500.0f)))
 			{
-				UE_LOG(LogTemp, Warning, TEXT("Attack teleport to alternative direction"));
 				return AdjustHeightForCharacter(ValidLocation.Location);
 			}
 		}
@@ -739,144 +751,68 @@ FVector ABossEnemy::CalculateAttackTeleportLocation()
 
 void ABossEnemy::ExecuteAttackTeleport()
 {
-	FVector TeleportLocation = CalculateAttackTeleportLocation();
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	// ½ÇÁ¦ ÅÚ·¹Æ÷Æ® ½ÇÇà
+	if (!IsValid(this)) return;
+
+	FVector TeleportLocation = CalculateAttackTeleportLocation();
 	SetActorLocation(TeleportLocation);
-	UE_LOG(LogTemp, Warning, TEXT("Boss attack teleported to: %s"), *TeleportLocation.ToString());
 }
 
 void ABossEnemy::OnAttackTeleportMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Attack Teleport Montage Ended - Resuming combat immediately"));
+	ResetUpperBodyBlend();
 
-	// ¾Ö´Ï¸ŞÀÌ¼Ç »óÅÂ º¹¿ø
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false;
-	}
-
-	// °ø°İ¿ë ÅÚ·¹Æ÷Æ® ÈÄ¿¡´Â Á¤Áö ¾øÀÌ Áï½Ã ÀüÅõ Àç°³
-	bIsFullBodyAttacking = false;
-	bIsBossAttackTeleporting = false;
+	SetState(EBossState::Combat);
 	bIsInvincible = false;
 	EnableBossMovement();
 
-	// AI ÄÁÆ®·Ñ·¯¿¡ °ø°İ¿ë ÅÚ·¹Æ÷Æ® Á¾·á ¾Ë¸²
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
 	if (AICon)
 	{
-		AICon->OnBossAttackTeleportEnded(); // Áï½Ã ÀüÅõ Àç°³
+		AICon->OnBossAttackTeleportEnded();
 	}
 
 	bCanBossAttack = true;
 }
 
-void ABossEnemy::OnPostTeleportPauseEnd()
-{
-	UE_LOG(LogTemp, Warning, TEXT("Post teleport pause ended - choosing next action"));
-
-	// Á¤Áö ÈÄ 2°¡Áö ¼±ÅÃÁö: Áï½Ã Ä³¸¯ÅÍ¿¡°Ô ÅÚ·¹Æ÷Æ® OR ¿ø°Å¸® °ø°İ
-	bool bShouldUseAttackTeleport = FMath::RandBool(); // 50% È®·ü
-
-	if (bShouldUseAttackTeleport)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Chose attack teleport after retreat pause"));
-		// Áï½Ã Ä³¸¯ÅÍ¿¡°Ô ÅÚ·¹Æ÷Æ® (°ø°İ ¾Ö´Ï¸ŞÀÌ¼Ç Æ÷ÇÔ)
-		PlayBossAttackTeleportAnimation();
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Chose ranged attack after retreat pause"));
-		// ¿ø°Å¸® °ø°İ ½ÃÀü
-		PlayBossRangedAttackAnimation();
-	}
-
-	// Àü½Å°ø°İ Á¾·á ¹× ÀÌµ¿ Çã¿ëÀº °¢ ¼±ÅÃµÈ Çàµ¿ÀÌ ³¡³¯ ¶§ Ã³¸®µÊ
-	bIsFullBodyAttacking = false;
-	bIsBossTeleporting = false;
-	bIsInvincible = false;
-	EnableBossMovement();
-}
-
+// ========== ì›ê±°ë¦¬ ê³µê²© ==========
 void ABossEnemy::PlayBossRangedAttackAnimation()
 {
-	if (bIsBossRangedAttacking || bIsBossDead) return;
+	if (IsDead()) return;
+	if (CurrentState == EBossState::RangedAttack) return;
 
-	// ¿ø°Å¸® °ø°İ ¸ùÅ¸ÁÖ°¡ ¾ø´Ù¸é Ãë¼Ò
 	if (BossRangedAttackMontages.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No ranged attack montages available - attack cancelled"));
 		return;
 	}
 
-	bIsBossRangedAttacking = true;
+	SetState(EBossState::RangedAttack);
 	bCanBossAttack = false;
-	bIsFullBodyAttacking = true; // Àü½Å ¾Ö´Ï¸ŞÀÌ¼ÇÀ¸·Î Ã³¸®
 
-	// AI ÀÌµ¿ ÁßÁö
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
-	if (AICon)
+	StopAIMovementAndDisable();
+
+	if (!PlayRandomMontage(BossRangedAttackMontages, &ABossEnemy::OnRangedAttackMontageEnded, false, true, 8.0f))
 	{
-		AICon->StopMovement();
-	}
-
-	// ÀÌµ¿ Â÷´Ü
-	DisableBossMovement();
-
-	// ¿ø°Å¸® °ø°İ ¸ùÅ¸ÁÖ Àç»ı
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false; // Àü½Å ¾Ö´Ï¸ŞÀÌ¼Ç
-		AnimInstance->Montage_Stop(0.1f, nullptr); // ´Ù¸¥ ¸ùÅ¸ÁÖ ÁßÁö
-		// ABP¿¡¼­ ÇÃ·¹ÀÌ¾î ¹Ù¶óº¸±â È°¼ºÈ­
-		AnimInstance->bShouldLookAtPlayer = true;
-		AnimInstance->LookAtSpeed = 8.0f; // °ø°İ ½Ã¿¡´Â ´õ ºü¸¥ È¸Àü
-
-		int32 RandomIndex = FMath::RandRange(0, BossRangedAttackMontages.Num() - 1);
-		UAnimMontage* SelectedMontage = BossRangedAttackMontages[RandomIndex];
-
-		if (SelectedMontage)
-		{
-			float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
-
-			if (PlayResult > 0.0f)
-			{
-				// ¿ø°Å¸® °ø°İ ¸ùÅ¸ÁÖ Á¾·á µ¨¸®°ÔÀÌÆ® ¹ÙÀÎµù
-				FOnMontageEnded RangedAttackEndDelegate;
-				RangedAttackEndDelegate.BindUObject(this, &ABossEnemy::OnRangedAttackMontageEnded);
-				AnimInstance->Montage_SetEndDelegate(RangedAttackEndDelegate, SelectedMontage);
-
-				UE_LOG(LogTemp, Warning, TEXT("Ranged attack montage playing (DUMMY IMPLEMENTATION)"));
-
-				// TODO: ¸ùÅ¸ÁÖ Áß°£¿¡ Åõ»çÃ¼ ¹ß»ç ·ÎÁ÷ Ãß°¡ ¿¹Á¤
-				// ¸ùÅ¸ÁÖ ÀÏÁ¤ ÆÛ¼¾Æ® ÁöÁ¡¿¡¼­ Åõ»çÃ¼ ½ºÆù
-			}
-			else
-			{
-				// ¸ùÅ¸ÁÖ Àç»ı ½ÇÆĞ½Ã Ãë¼Ò
-				UE_LOG(LogTemp, Error, TEXT("Ranged attack montage failed to play"));
-				bIsBossRangedAttacking = false;
-				bCanBossAttack = true;
-				bIsFullBodyAttacking = false;
-				EnableBossMovement();
-			}
-		}
+		UE_LOG(LogTemp, Error, TEXT("Ranged attack montage failed to play"));
+		SetState(EBossState::Combat);
+		bCanBossAttack = true;
+		EnableBossMovement();
+		return;
 	}
 }
-
-#include "BossProjectile.h"   // Å¬·¡½º Á¤ÀÇ Æ÷ÇÔ
 
 void ABossEnemy::SpawnBossProjectile()
 {
 	if (!BossProjectileClass) return;
 
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return;
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	// ¹ß»ç À§Ä¡¿Í ¹æÇâ
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!IsValid(PlayerPawn)) return;
+
 	const FVector SpawnLocation = GetActorLocation()
 		+ GetActorForwardVector() * MuzzleOffset.X
 		+ GetActorRightVector() * MuzzleOffset.Y
@@ -887,12 +823,11 @@ void ABossEnemy::SpawnBossProjectile()
 
 	FTransform SpawnTM(ShootDirection.Rotation(), SpawnLocation);
 
-	// ÅÛÇÃ¸´ ÆÄ¶ó¹ÌÅÍ¿Í ÀÎÀÚ Å¸ÀÔ ÀÏÄ¡
-	ABossProjectile* Projectile = GetWorld()->SpawnActorDeferred<ABossProjectile>(
-		BossProjectileClass,   // TSubclassOf<ABossProjectile>
-		SpawnTM,               // FTransform
-		this,                  // Owner
-		this,                  // Instigator (APawn*)
+	ABossProjectile* Projectile = World->SpawnActorDeferred<ABossProjectile>(
+		BossProjectileClass,
+		SpawnTM,
+		this,
+		this,
 		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
 
 	if (Projectile)
@@ -905,22 +840,11 @@ void ABossEnemy::SpawnBossProjectile()
 
 void ABossEnemy::OnRangedAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Ranged Attack Montage Ended - Resuming chase logic"));
+	ResetUpperBodyBlend();
 
-	// ¾Ö´Ï¸ŞÀÌ¼Ç »óÅÂ º¹¿ø
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false;
-	}
-
-	// Àü½Å°ø°İ Á¾·á ¹× ÀÌµ¿ Çã¿ë
-	bIsFullBodyAttacking = false;
-	bIsBossRangedAttacking = false;
+	SetState(EBossState::Combat);
 	EnableBossMovement();
 
-	// AI ÄÁÆ®·Ñ·¯¿¡ ¿ø°Å¸® °ø°İ Á¾·á ¾Ë¸²
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
 	if (AICon)
 	{
 		AICon->OnBossRangedAttackEnded();
@@ -929,160 +853,128 @@ void ABossEnemy::OnRangedAttackMontageEnded(UAnimMontage* Montage, bool bInterru
 	bCanBossAttack = true;
 }
 
+// ========== ìŠ¤í…”ìŠ¤ ê³µê²© ==========
 void ABossEnemy::PlayBossStealthAttackAnimation()
 {
-    if (!StealthStartMontage) return;
-	// ÄğÅ¸ÀÓ Ã¼Å©¸¸ ÇÏ°í bCanUseStealthAttackÀº false·Î ¼³Á¤ÇÏÁö ¾ÊÀ½
+	if (!StealthStartMontage) return;
 	if (!bCanUseStealthAttack)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Stealth Attack is on cooldown"));
 		return;
 	}
+	if (IsDead()) return;
 
-    CurrentStealthPhase = 1;
-    bIsStealthStarting = true;
-	bIsInvincible = true; // ¹«Àû
-    
-    PlayAnimMontage(StealthStartMontage);
-    
-    // ¸ùÅ¸ÁÖ Á¾·á µ¨¸®°ÔÀÌÆ® ¹ÙÀÎµù
-    FOnMontageEnded EndDelegate;
-    EndDelegate.BindUObject(this, &ABossEnemy::OnStealthStartMontageEnded);
-    GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthStartMontage);
-    
-    UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 1: Start Animation"));
+	SetState(EBossState::StealthAttack);
+	SetStealthPhase(EStealthPhase::Starting);
+	bIsInvincible = true;
+	bCanBossAttack = false;
 
-	// AI ÄÁÆ®·Ñ·¯¿¡ ½ºÅÚ½º ½ÃÀÛ ¾Ë¸²
-	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
-	if (BossAI)
-	{
-		BossAI->HandleStealthPhaseTransition(1);
-	}
+	PlayAnimMontage(StealthStartMontage);
+
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(this, &ABossEnemy::OnStealthStartMontageEnded);
+	GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthStartMontage);
 }
 
 void ABossEnemy::OnStealthStartMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-    if (bInterrupted) return;
-    StartStealthDivePhase();
+	if (bInterrupted) return;
+
+	StartStealthDivePhase();
 }
 
 void ABossEnemy::StartStealthDivePhase()
 {
 	if (!StealthDiveMontage) return;
 
-	CurrentStealthPhase = 2;
-	bIsStealthStarting = false;
-	bIsStealthDiving = true;
-	bIsInvincible = true; // ¹«Àû À¯Áö
+	SetStealthPhase(EStealthPhase::Diving);
+	bIsInvincible = true;
 
-	PlayAnimMontage(StealthDiveMontage); // ¶Ù¾îµå´Â ¸ùÅ¸ÁÖ Àç»ı
+	PlayAnimMontage(StealthDiveMontage);
 
-	// ¸ôÅ¸ÁÖ ¿Ï·á ½Ã ¾ÈÀüÀåÄ¡ µ¨¸®°ÔÀÌÆ®
 	FOnMontageEnded EndDelegate;
 	EndDelegate.BindUObject(this, &ABossEnemy::OnStealthDiveMontageEnded);
 	GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthDiveMontage);
 
-	// Æ¯Á¤ ÁöÁ¡¿¡¼­ ´ÙÀ½ ´Ü°è·Î ³Ñ¾î°¡´Â Å¸ÀÌ¸Ó
-	float MontageLength = StealthDiveMontage->GetPlayLength(); // ¸ùÅ¸ÁÖ ÀüÃ¼ ±æÀÌ °¡Á®¿À±â
-	float TransitionTiming = MontageLength * 0.8f; // ÁöÁ¡ °è»ê
+	float MontageLength = StealthDiveMontage->GetPlayLength();
+	float TransitionTiming = MontageLength * 0.8f;
 
-	GetWorld()->GetTimerManager().SetTimer(
-		StealthDiveTransitionTimer, // Å¬·¡½º ¸â¹ö Å¸ÀÌ¸Ó ÇÚµé »ç¿ë
-		this, // È£ÃâÇÒ °´Ã¼
-		&ABossEnemy::StartStealthInvisiblePhase, // 90% ÁöÁ¡¿¡¼­ È£ÃâÇÒ ÇÔ¼ö
-		TransitionTiming, // 90% Å¸ÀÌ¹Ö¿¡ ½ÇÇà
-		false // ¹İº¹ ¾ÈÇÔ
-	);
+	SetSafeTimer(StealthDiveTransitionTimer, TransitionTiming, [this]()
+		{
+			StartStealthInvisiblePhase();
+		});
 
 	if (EquippedBossKatana)
 	{
-		EquippedBossKatana->SetActorHiddenInGame(true); // ¾×ÅÍ ´ÜÀ§ ¼û±è
+		EquippedBossKatana->SetActorHiddenInGame(true);
 	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 2: Dive Animation - will transition at 90%% (%.2f seconds)"), TransitionTiming);
 }
 
 void ABossEnemy::OnStealthDiveMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	if (bInterrupted) return;
-	StartStealthInvisiblePhase();
+
+	// ì´ë¯¸ StartStealthInvisiblePhaseê°€ íƒ€ì´ë¨¸ë¡œ í˜¸ì¶œë˜ì—ˆì„ ìˆ˜ ìˆìŒ
+	if (CurrentStealthPhase != EStealthPhase::Invisible)
+	{
+		StartStealthInvisiblePhase();
+	}
 }
 
 void ABossEnemy::StartStealthInvisiblePhase()
 {
-	CurrentStealthPhase = 3;
-	bIsStealthDiving = false;
-	bIsStealthInvisible = true;
+	SetStealthPhase(EStealthPhase::Invisible);
 	bIsInvincible = true;
 
-	// ¿ÏÀü Åõ¸í Ã³¸®
 	SetActorHiddenInGame(true);
 
-	// Áö¼ÓÀûÀÎ À§Ä¡ ÃßÀû ½ÃÀÛ
-	GetWorld()->GetTimerManager().SetTimer(
-		StealthWaitTimer,
-		this,
-		&ABossEnemy::UpdateStealthTeleportLocation, // »õ·Î¿î ÇÔ¼ö
-		0.01f, // ÃÊ¸¶´Ù ½ÇÇà
-		true  // ¹İº¹ ½ÇÇà
-	);
+	// ì‹¤ì‹œê°„ ìœ„ì¹˜ ì¶”ì  íƒ€ì´ë¨¸
+	SetSafeTimer(StealthWaitTimer, 0.01f, [this]()
+		{
+			UpdateStealthTeleportLocation();
+		}, true);
 
-	// ÃÊ ÈÄ Å± ½ÇÇà Å¸ÀÌ¸Ó (º°µµ)
-	FTimerHandle StealthKickExecutionTimer;
-	GetWorld()->GetTimerManager().SetTimer(
-		StealthKickExecutionTimer,
-		this,
-		&ABossEnemy::ExecuteStealthKick,
-		2.0f, // 5ÃÊ ÈÄ ½ÇÇà
-		false // ÇÑ ¹ø¸¸ ½ÇÇà
-	);
-
-	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 3: Invisible - Tracking player for 5 seconds"));
-
-	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
-	if (BossAI)
-	{
-		BossAI->HandleStealthPhaseTransition(3);
-	}
+	// 2ì´ˆ í›„ í‚¥ ê³µê²© ì‹¤í–‰
+	SetSafeTimer(StealthKickExecutionTimer, 2.0f, [this]()
+		{
+			ExecuteStealthKick();
+		});
 }
 
 void ABossEnemy::UpdateStealthTeleportLocation()
 {
-	// ½ºÅÚ½º »óÅÂ°¡ ¾Æ´Ï¸é ÃßÀû Áß´Ü
-	if (!bIsStealthInvisible)
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	if (CurrentStealthPhase != EStealthPhase::Invisible)
 	{
-		GetWorld()->GetTimerManager().ClearTimer(StealthWaitTimer);
+		World->GetTimerManager().ClearTimer(StealthWaitTimer);
 		return;
 	}
 
-	// ½Ç½Ã°£À¸·Î ÇÃ·¹ÀÌ¾î À§Ä¡ ±âÁØ ÅÚ·¹Æ÷Æ® À§Ä¡ Àç°è»ê
 	CalculatedTeleportLocation = CalculateRandomTeleportLocation();
-
-	UE_LOG(LogTemp, Warning, TEXT("Stealth teleport location updated to: %s"),
-		*CalculatedTeleportLocation.ToString());
 }
-
 
 FVector ABossEnemy::CalculateRandomTeleportLocation()
 {
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return GetActorLocation();
+	UWorld* World = GetWorld();
+	if (!World) return GetActorLocation();
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!IsValid(PlayerPawn)) return GetActorLocation();
 
 	FVector PlayerLocation = PlayerPawn->GetActorLocation();
 	FVector PlayerForward = PlayerPawn->GetActorForwardVector();
 	FVector PlayerRight = PlayerPawn->GetActorRightVector();
 
-	// ·£´ı ¹æÇâ ¼±ÅÃ (Àü¹æ, ÈÄ¹æ, ÁÂÃø, ¿ìÃø)
 	TArray<FVector> Directions;
-	Directions.Add(PlayerForward); // Àü¹æ
-	Directions.Add(-PlayerForward); // ÈÄ¹æ
-	Directions.Add(PlayerRight); // ¿ìÃø
-	Directions.Add(-PlayerRight); // ÁÂÃø
+	Directions.Add(PlayerForward);
+	Directions.Add(-PlayerForward);
+	Directions.Add(PlayerRight);
+	Directions.Add(-PlayerRight);
 
 	int32 RandomIndex = FMath::RandRange(0, Directions.Num() - 1);
 	FVector ChosenDirection = Directions[RandomIndex];
 
-	// ÄÚ¾Õ °Å¸® (100 ´ÜÀ§)
 	float DistanceFromPlayer = 100.0f;
 	FVector TeleportLocation = PlayerLocation + (ChosenDirection * DistanceFromPlayer);
 
@@ -1091,265 +983,180 @@ FVector ABossEnemy::CalculateRandomTeleportLocation()
 
 void ABossEnemy::ExecuteStealthKick()
 {
+	UWorld* World = GetWorld();
+	if (!World) return;
+
 	if (EquippedBossKatana)
 	{
-		EquippedBossKatana->SetActorHiddenInGame(false); // ¾×ÅÍ ´ÜÀ§ ¼û±è
+		EquippedBossKatana->SetActorHiddenInGame(false);
 	}
 
-	CurrentStealthPhase = 5;
-	bIsStealthInvisible = false;
-	bIsStealthKicking = true;
+	SetStealthPhase(EStealthPhase::Kicking);
 	bIsInvincible = true;
-	// Å± ·¹ÀÌÄ³½ºÆ® ÇÃ·¡±× ÃÊ±âÈ­
 	bHasExecutedKickRaycast = false;
 
-	// ÀÌµ¿ Â÷´Ü
 	DisableBossMovement();
 	bCanBossAttack = false;
-	bIsFullBodyAttacking = true;
 
-	// À§Ä¡ ÃßÀû Å¸ÀÌ¸Ó Á¤¸®
-	GetWorld()->GetTimerManager().ClearTimer(StealthWaitTimer);
-
-	// Áï½Ã Åõ¸í ÇØÁ¦
+	World->GetTimerManager().ClearTimer(StealthWaitTimer);
 	SetActorHiddenInGame(false);
-
-	// °è»êµÈ À§Ä¡·Î ÅÚ·¹Æ÷Æ® (°¡Àå ÃÖ±ÙÀ§Ä¡)
 	SetActorLocation(CalculatedTeleportLocation);
 
-	// ÇÃ·¹ÀÌ¾î ¹æÇâÀ¸·Î È¸Àü
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (PlayerPawn)
+	// í”Œë ˆì´ì–´ ë°©í–¥ìœ¼ë¡œ íšŒì „
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (IsValid(PlayerPawn))
 	{
 		FVector Direction = PlayerPawn->GetActorLocation() - GetActorLocation();
 		Direction.Z = 0;
 		SetActorRotation(Direction.Rotation());
 	}
 
-	// Å± ¸ùÅ¸ÁÖ Àç»ı
 	if (StealthKickMontage)
 	{
-
 		float PlayResult = PlayAnimMontage(StealthKickMontage);
 		if (PlayResult > 0.f)
 		{
-			// ¸ùÅ¸ÁÖ Á¾·á ½Ã ÀÌµ¿ Çã¿ë
 			FOnMontageEnded EndDelegate;
-			EndDelegate.BindLambda([this](UAnimMontage* Montage, bool bInterrupted)
-				{
-					bIsFullBodyAttacking = false;
-					bIsStealthKicking = false;
-					EnableBossMovement();
-					bCanBossAttack = true;
-				});
+			EndDelegate.BindUObject(this, &ABossEnemy::OnStealthKickMontageEnded);
 			GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthKickMontage);
 
-			// Å± ÆÇÁ¤ ·¹ÀÌÄ³½ºÆ® Å¸ÀÌ¸Ó
 			float KickTiming = StealthKickMontage->GetPlayLength() * 0.5f;
 			FTimerHandle KickRaycastTimer;
-			GetWorld()->GetTimerManager().SetTimer(
-				KickRaycastTimer, this, &ABossEnemy::ExecuteStealthKickRaycast, KickTiming, false);
+			SetSafeTimer(KickRaycastTimer, KickTiming, [this]()
+				{
+					ExecuteStealthKickRaycast();
+				});
 		}
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 5: Kick Attack"));
-
-	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
-	if (BossAI)
-	{
-		BossAI->HandleStealthPhaseTransition(5);
 	}
 }
 
 void ABossEnemy::ExecuteStealthKickRaycast()
 {
-	// ÀÌ¹Ì ½ÇÇàÇßÀ¸¸é ½ºÅµ
 	if (bHasExecutedKickRaycast)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Kick raycast already executed - preventing duplicate"));
 		return;
 	}
 	bHasExecutedKickRaycast = true;
 
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return;
+	UWorld* World = GetWorld();
+	if (!World) return;
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!IsValid(PlayerPawn)) return;
 
 	FVector StartLocation = GetActorLocation();
 	FVector PlayerLocation = PlayerPawn->GetActorLocation();
 	FVector Direction = (PlayerLocation - StartLocation).GetSafeNormal();
-	//FVector EndLocation = StartLocation + (Direction * 100.0f); // Å± »ç°Å¸®
 
-	// Å± »ç°Å¸®¿Í ¹İ°æ ¼³Á¤ (ÀÌ °ªÀ» Á¶ÀıÇØ ÀûÁß·ü º¯°æ)
-	float KickRange = 120.0f; // Å± »ç°Å¸® (±âÁ¸ 100¿¡¼­ 120À¸·Î Áõ°¡)
-	float KickRadius = 50.0f; // Å± ÆÇÁ¤ ¹İ°æ (50.0f·Î ¼³Á¤)
+	float KickRange = 120.0f;
+	float KickRadius = 50.0f;
 	FVector EndLocation = StartLocation + (Direction * KickRange);
 
 	FHitResult HitResult;
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(this);
 
-	FCollisionShape SphereShape = FCollisionShape::MakeSphere(KickRadius); // ÆÇÁ¤ ¸ğ¾çÀ» ±¸Ã¼·Î Á¤ÀÇ
-	bool bHit = GetWorld()->SweepSingleByChannel
-	(
+	FCollisionShape SphereShape = FCollisionShape::MakeSphere(KickRadius);
+	bool bHit = World->SweepSingleByChannel(
 		HitResult,
 		StartLocation,
 		EndLocation,
-		FQuat::Identity, // ±¸Ã¼´Â È¸ÀüÀÌ ÇÊ¿ä ¾øÀ¸¹Ç·Î FQuat::Identity
+		FQuat::Identity,
 		ECollisionChannel::ECC_Pawn,
-		SphereShape, // À§¿¡¼­ Á¤ÀÇÇÑ ±¸Ã¼ ¸ğ¾ç
+		SphereShape,
 		CollisionParams
 	);
 
-	// ½Ã°¢È­ Ãß°¡ - È÷Æ® ¿©ºÎ¿¡ µû¶ó »ö»ó º¯°æ
 	if (bHit && HitResult.GetActor() == PlayerPawn)
 	{
-		//// [¼öÁ¤] È÷Æ® ½Ã »¡°£»ö Ä¸½¶ (½ºÇÇ¾î Æ®·¹ÀÌ½º °æ·Î ½Ã°¢È­)
-		//DrawDebugCapsule(
-		//	GetWorld(),
-		//	(StartLocation + EndLocation) / 2.0f, // Ä¸½¶ Áß¾Ó
-		//	(KickRange / 2.0f) + KickRadius,    // Ä¸½¶ Àı¹İ ³ôÀÌ
-		//	KickRadius,                         // Ä¸½¶ ¹İ°æ
-		//	FQuat::Identity,
-		//	FColor::Red,
-		//	false, 3.0f, 0, 5.0f
-		//	);
-
-		// [½Å±Ô] ¸ŞÀÎ Ä³¸¯ÅÍ Ä³½ºÆÃ ¹× ºò È÷Æ® È£Ãâ
-		AMainCharacter * MainCharacter = Cast<AMainCharacter>(PlayerPawn);
+		AMainCharacter* MainCharacter = Cast<AMainCharacter>(PlayerPawn);
 		if (MainCharacter)
 		{
 			MainCharacter->PlayBigHitReaction();
 		}
 
-		// Å± µ¥¹ÌÁö Àû¿ë (20 µ¥¹ÌÁö)
 		UGameplayStatics::ApplyPointDamage(
 			PlayerPawn, 20.0f, StartLocation, HitResult, nullptr, this, nullptr
 		);
 
-		// ÇÃ·¹ÀÌ¾î¸¦ °øÁßÀ¸·Î ¹ß»ç (³ôÀÌ Á¦ÇÑ)
 		LaunchPlayerIntoAir(PlayerPawn, 300.0f);
 
-		// 5ÃÊ ÈÄ ÇÇ´Ï½¬ °ø°İ ½ÇÇà
-		GetWorld()->GetTimerManager().SetTimer(
-			PlayerAirborneTimer,
-			this,
-			&ABossEnemy::ExecuteStealthFinish,
-			0.1f, // Áï½Ã ÇÇ´Ï½¬ ½ÃÀÛ
-			false
-		);
+		SetSafeTimer(PlayerAirborneTimer, 0.1f, [this]()
+			{
+				ExecuteStealthFinish();
+			});
 
-		UE_LOG(LogTemp, Warning, TEXT("Stealth Kick Hit! Launching player"));
 	}
 	else
 	{
-		//DrawDebugCapsule(
-		//	GetWorld(),
-		//	(StartLocation + EndLocation) / 2.0f,
-		//	(KickRange / 2.0f) + KickRadius,
-		//	KickRadius,
-		//	FQuat::Identity,
-		//	FColor::Green,
-		//	false, 3.0f, 0, 5.0f
-		//	);
-
-		// ºø³ª°¨ - ½ºÅÚ½º °ø°İ Á¾·á
 		EndStealthAttack();
-		UE_LOG(LogTemp, Warning, TEXT("Stealth Kick Missed - Attack End"));
 	}
 }
 
 void ABossEnemy::LaunchPlayerIntoAir(APawn* PlayerPawn, float LaunchHeight)
 {
-	if (!PlayerPawn) return;
+	if (!IsValid(PlayerPawn)) return;
 
 	ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
 	if (PlayerCharacter)
 	{
-		// Á¤È®ÇÑ ³ôÀÌ·Î Á¦ÇÑµÈ ¹ß»ç
 		FVector LaunchVelocity(0, 0, LaunchHeight);
-		// bXYOverride = false, bZOverride = true·Î ¼³Á¤ÇÏ¿© ZÃà ¼Óµµ¸¸ ÁöÁ¤
 		PlayerCharacter->LaunchCharacter(LaunchVelocity, false, true);
 
-		// Áï½Ã Áß·Â ¹«È¿È­ÇÏ¿© 200 ³ôÀÌ¿¡¼­ Á¤Áö
 		UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
 		if (Movement)
 		{
-			Movement->GravityScale = 0.0f; // Áß·Â Á¦°Å
-			// Velocity¸¦ 0À¸·Î ¼³Á¤ÇÏ¿© Á¤È®ÇÑ ³ôÀÌ¿¡¼­ Á¤Áö
+			Movement->GravityScale = 0.0f;
 			Movement->Velocity = FVector::ZeroVector;
 		}
-
-		UE_LOG(LogTemp, Warning, TEXT("Player launched to height %f with gravity disabled"), LaunchHeight);
 	}
 }
 
 void ABossEnemy::ExecuteStealthFinish()
 {
-	CurrentStealthPhase = 6;
-	bIsStealthKicking = false;
-	bIsStealthFinishing = true;
+
+	SetStealthPhase(EStealthPhase::Finishing);
 	bIsInvincible = true;
+	bCanBossAttack = false;
 
-	bCanBossAttack = false;           // ´Ù¸¥ °ø°İ ¹æÁö
-	bIsFullBodyAttacking = true;      // Àü½Å ¾Ö´Ï¸ŞÀÌ¼ÇÀ¸·Î Ã³¸®
-
-	// AI ÀÌµ¿ ÁßÁö
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
-	if (AICon)
-	{
-		AICon->StopMovement();
-	}
-
-	// ÀÌµ¿ Â÷´Ü
-	DisableBossMovement();
+	StopAIMovementAndDisable();
 
 	if (StealthFinishMontage)
 	{
 		PlayAnimMontage(StealthFinishMontage);
 
-		// ´ëÆ÷ ¹ß»ç Å¸ÀÌ¹Ö (¸ùÅ¸ÁÖ 70% ÁöÁ¡)
 		float CannonTiming = StealthFinishMontage->GetPlayLength() * 0.7f;
 
 		FTimerHandle CannonTimer;
-		GetWorld()->GetTimerManager().SetTimer(
-			CannonTimer,
-			this,
-			&ABossEnemy::ExecuteStealthFinishRaycast,
-			CannonTiming,
-			false
-		);
+		SetSafeTimer(CannonTimer, CannonTiming, [this]()
+			{
+				ExecuteStealthFinishRaycast();
+			});
 
-		// ¸ùÅ¸ÁÖ Á¾·á ½Ã ½ºÅÚ½º °ø°İ ¿ÏÀü Á¾·á
 		FOnMontageEnded EndDelegate;
 		EndDelegate.BindUObject(this, &ABossEnemy::OnStealthFinishMontageEnded);
 		GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, StealthFinishMontage);
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("Stealth Phase 6: Finish Cannon Attack"));
-
-	// AI ÄÁÆ®·Ñ·¯¿¡ ÇÇ´Ï½¬ ´Ü°è ¾Ë¸²
-	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
-	if (BossAI)
-	{
-		BossAI->HandleStealthPhaseTransition(6);
-	}
 }
 
 void ABossEnemy::ExecuteStealthFinishRaycast()
 {
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (!PlayerPawn) return;
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!IsValid(PlayerPawn)) return;
 
 	FVector StartLocation = GetActorLocation();
 	FVector PlayerLocation = PlayerPawn->GetActorLocation();
 	FVector Direction = (PlayerLocation - StartLocation).GetSafeNormal();
-	FVector EndLocation = StartLocation + (Direction * 1000.0f); // ´ëÆ÷ »ç°Å¸®
+	FVector EndLocation = StartLocation + (Direction * 1000.0f);
 
 	FHitResult HitResult;
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(this);
 
-	bool bHit = GetWorld()->LineTraceSingleByChannel(
+	bool bHit = World->LineTraceSingleByChannel(
 		HitResult,
 		StartLocation,
 		EndLocation,
@@ -1357,190 +1164,99 @@ void ABossEnemy::ExecuteStealthFinishRaycast()
 		CollisionParams
 	);
 
-	// È÷Æ® ¿©ºÎ¿¡ µû¶ó »ö»ó º¯°æ
+	ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
+	auto RestorePlayerGravity = [PlayerCharacter]()
+	{
+		if (!PlayerCharacter) return;
+		UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
+		if (Movement)
+		{
+			Movement->GravityScale = 1.0f;
+		}
+	};
+
 	if (bHit && HitResult.GetActor() == PlayerPawn)
 	{
-		//// È÷Æ® ½Ã »¡°£»ö ¶óÀÎ (´õ ±½°Ô)
-		//DrawDebugLine(
-		//	GetWorld(),
-		//	StartLocation,
-		//	HitResult.Location,
-		//	FColor::Red,
-		//	false,
-		//	5.0f, // 5ÃÊ°£ Ç¥½Ã
-		//	0,
-		//	8.0f // ´õ ±½°Ô
-		//);
-
-		//// È÷Æ® ÁöÁ¡¿¡ Å« ±¸Ã¼ Ç¥½Ã
-		//DrawDebugSphere(
-		//	GetWorld(),
-		//	HitResult.Location,
-		//	30.0f,
-		//	16,
-		//	FColor::Red,
-		//	false,
-		//	5.0f
-		//);
-
-		//// Æø¹ß È¿°ú ½Ã°¢È­
-		//DrawDebugSphere(
-		//	GetWorld(),
-		//	HitResult.Location,
-		//	100.0f,
-		//	20,
-		//	FColor::Orange,
-		//	false,
-		//	2.0f,
-		//	0,
-		//	3.0f
-		//);
-
-		// ³ªÀÌ¾Æ°¡¶ó ÆÄÆ¼Å¬ + »ç¿îµå Àç»ı
 		if (StealthFinishEffect)
 		{
 			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-				GetWorld(), StealthFinishEffect, HitResult.Location,
+				World, StealthFinishEffect, HitResult.Location,
 				FRotator::ZeroRotator, FVector(1.0f), true
 			);
 		}
 		if (StealthFinishSound)
 		{
-			UGameplayStatics::PlaySoundAtLocation(GetWorld(), StealthFinishSound, HitResult.Location);
+			UGameplayStatics::PlaySoundAtLocation(World, StealthFinishSound, HitResult.Location);
 		}
 
-		// ´ëÆ÷ µ¥¹ÌÁö Àû¿ë (30 µ¥¹ÌÁö)
 		UGameplayStatics::ApplyPointDamage(
 			PlayerPawn, 30.0f, StartLocation, HitResult, nullptr, this, nullptr
 		);
-
-		// ÇÇ´Ï½¬ °ø°İ È÷Æ® ½Ã ÇÃ·¹ÀÌ¾î Áß·Â º¹±¸
-		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
-		if (PlayerCharacter)
-		{
-			UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
-			if (Movement)
-			{
-				Movement->GravityScale = 1.0f; // Áß·Â º¹±¸
-				UE_LOG(LogTemp, Warning, TEXT("Player gravity restored after stealth finish hit"));
-			}
-		}
-
-		UE_LOG(LogTemp, Warning, TEXT("Stealth Cannon Hit! Dealing 30 damage and ending suspension"));
 	}
-	else
-	{
-		//// ¹Ì½º ½Ã ÃÊ·Ï»ö ¶óÀÎ (´õ ±½°Ô)
-		//DrawDebugLine(
-		//	GetWorld(),
-		//	StartLocation,
-		//	EndLocation,
-		//	FColor::Green,
-		//	false,
-		//	5.0f, // 5ÃÊ°£ Ç¥½Ã
-		//	0,
-		//	8.0f // ´õ ±½°Ô
-		//);
 
-		// ºø³ª°£ °æ¿ì¿¡µµ Áß·Â º¹±¸ ¾ÈÀüÀåÄ¡
-		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
-		if (PlayerCharacter)
-		{
-			UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
-			if (Movement)
-			{
-				Movement->GravityScale = 1.0f;
-				UE_LOG(LogTemp, Warning, TEXT("Player gravity restored after stealth finish miss"));
-			}
-		}
-	}
+	RestorePlayerGravity();
 }
 
 void ABossEnemy::OnStealthFinishMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Stealth Finish Montage Ended"));
+	ResetUpperBodyBlend();
+	ResetLookAt(5.0f);
 
-	// ¾Ö´Ï¸ŞÀÌ¼Ç »óÅÂ º¹¿ø
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false;
-		AnimInstance->bShouldLookAtPlayer = false;
-	}
-	// ÀÌµ¿ ¹× °ø°İ º¹±¸
-	bIsFullBodyAttacking = false;
 	bCanBossAttack = true;
 	EnableBossMovement();
 
 	EndStealthAttack();
 }
 
+void ABossEnemy::OnStealthKickMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (IsDead()) return;
+
+	SetStealthPhase(EStealthPhase::None);
+	EnableBossMovement();
+	bCanBossAttack = true;
+}
+
 void ABossEnemy::EndStealthAttack()
 {
-	// ÃßÀû Å¸ÀÌ¸Ó Á¤¸® ¾ÈÀüÀåÄ¡
-	GetWorld()->GetTimerManager().ClearTimer(StealthWaitTimer);
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	// ¸ğµç »óÅÂ ÃÊ±âÈ­
-	CurrentStealthPhase = 0;
-	bIsStealthStarting = false;
-	bIsStealthDiving = false;
-	bIsStealthInvisible = false;
-	bIsStealthKicking = false;
-	bIsStealthFinishing = false;
+	World->GetTimerManager().ClearTimer(StealthWaitTimer);
+
+	SetState(EBossState::Combat);
+	SetStealthPhase(EStealthPhase::None);
 	bIsInvincible = false;
 	SetActorHiddenInGame(false);
-	// °ø°İ »óÅÂ °­Á¦ º¹±¸
 	bCanBossAttack = true;
-	bIsFullBodyAttacking = false;
 
-	// ¾ÈÀüÀåÄ¡: ÇÃ·¹ÀÌ¾î Áß·Â º¹±¸
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-	if (PlayerPawn)
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (IsValid(PlayerPawn))
 	{
 		ACharacter* PlayerCharacter = Cast<ACharacter>(PlayerPawn);
 		if (PlayerCharacter)
 		{
 			UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
-			if (Movement && Movement->GravityScale <= 0.0f) // Áß·ÂÀÌ ºñÈ°¼ºÈ­µÈ »óÅÂ¶ó¸é
+			if (Movement && Movement->GravityScale <= 0.0f)
 			{
-				Movement->GravityScale = 1.0f; // Áß·Â º¹±¸
-				UE_LOG(LogTemp, Warning, TEXT("Player gravity restored as safety measure"));
+				Movement->GravityScale = 1.0f;
 			}
 		}
 	}
 
-	// ÄğÅ¸ÀÓ ½ÃÀÛ
 	bCanUseStealthAttack = false;
-	GetWorld()->GetTimerManager().SetTimer(
-		StealthCooldownTimer,
-		this,
-		&ABossEnemy::OnStealthCooldownEnd,
-		StealthCooldown,
-		false
-	);
+	SetSafeTimer(StealthCooldownTimer, StealthCooldown, [this]()
+		{
+			OnStealthCooldownEnd();
+		});
 
-	UE_LOG(LogTemp, Warning, TEXT("Stealth Attack Completed - Cooldown Started"));
-
-	ABossEnemyAIController* BossAI = Cast<ABossEnemyAIController>(GetController());
-	if (BossAI)
+	if (AICon)
 	{
-		BossAI->HandleStealthPhaseTransition(0);
-
-		// Ãß°¡ ¾ÈÀüÀåÄ¡: AI »óÅÂ °­Á¦ ÃÊ±âÈ­
-		GetWorld()->GetTimerManager().SetTimerForNextTick([BossAI, this]()
+		SetSafeTimerForNextTick([this]()
 			{
-				if (IsValid(BossAI) && IsValid(this))
+				if (IsValid(this) && IsValid(AICon))
 				{
-					// ´ÙÀ½ ÇÁ·¹ÀÓ¿¡ AI »óÅÂ ÀçÈ®ÀÎ ¹× º¹±¸
-					BossAI->SetBossAIState(EBossEnemyAIState::MoveToPlayer);
-
-					APawn* Player = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-					if (Player)
-					{
-						BossAI->SetFocus(Player);
-					}
-
-					UE_LOG(LogTemp, Warning, TEXT("Post-stealth AI state recovery completed"));
+					AICon->HandlePostStealthRecovery();
 				}
 			});
 	}
@@ -1549,7 +1265,6 @@ void ABossEnemy::EndStealthAttack()
 void ABossEnemy::OnStealthCooldownEnd()
 {
 	bCanUseStealthAttack = true;
-	UE_LOG(LogTemp, Warning, TEXT("Stealth Attack Ready"));
 }
 
 void ABossEnemy::StartAttack()
@@ -1570,71 +1285,57 @@ void ABossEnemy::EndAttack()
 
 float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	if (bIsBossDead) return 0.0f; // ÀÌ¹Ì »ç¸ÁÇß´Ù¸é µ¥¹ÌÁö ¹«½Ã
+	if (IsDead()) return 0.0f;
 
-	// ¹«Àû »óÅÂÀÏ ¶§ µ¥¹ÌÁö ¹«½Ã
-	if (bIsInvincible || bIsPlayingBossIntro)
+	if (bIsInvincible || CurrentState == EBossState::Intro)
 	{
 		return 0.0f;
 	}
 
-	// 1. Ã¼·Â °¨¼Ò (ÀÌ ºÎºĞÀº Ç×»ó ½ÇÇàµÊ)
 	float DamageApplied = FMath::Min(BossHealth, DamageAmount);
 	BossHealth -= DamageApplied;
-	UE_LOG(LogTemp, Warning, TEXT("Boss took %f damage, Health remaining: %f"), DamageAmount, BossHealth);
 
-	// 2. ÇÇ°İ »ç¿îµå Àç»ı (Ç×»ó ½ÇÇàµÊ)
 	if (BossHitSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, BossHitSound, GetActorLocation());
 	}
 
-	// 3. ½´ÆÛ¾Æ¸Ó »óÅÂ È®ÀÎ
-	// Àü½Å °ø°İ(ÀÏ¹İ°ø°İ, ÅÚ·¹Æ÷Æ® µî) ÁßÀÌ°Å³ª »óÃ¼ °ø°İ ÁßÀÏ ¶§´Â ÇÇ°İ ¾Ö´Ï¸ŞÀÌ¼ÇÀ» Àç»ıÇÏÁö ¾ÊÀ½
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	bool bIsUninterruptible = bIsFullBodyAttacking || (AnimInstance && AnimInstance->bUseUpperBodyBlend);
+	// ìŠˆí¼ì•„ë¨¸ ì²´í¬: íŠ¹ì • ì•¡ì…˜ ì¤‘ì—ëŠ” í”¼ê²© ëª¨ì…˜ ìƒëµ
+	bool bIsUninterruptible = IsPerformingAction() && CurrentState != EBossState::Combat;
 
-	// 4. ÇÇ°İ ¾Ö´Ï¸ŞÀÌ¼Ç Àç»ı (½´ÆÛ¾Æ¸Ó°¡ ¾Æ´Ò ¶§¸¸ ½ÇÇà)
+	// í”¼ê²© ì• ë‹ˆë©”ì´ì…˜ (ìŠˆí¼ì•„ë¨¸ê°€ ì•„ë‹Œ ê²½ìš°ë§Œ)
 	if (BossHitReactionMontages.Num() > 0 && !bIsUninterruptible)
 	{
-		bIsBossHit = true;
+		EBossState PreviousState = CurrentState;
+		SetState(EBossState::HitReaction);
 		bCanBossAttack = false;
 
-		// AI ÀÌµ¿ ÁßÁö
-		ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
 		if (AICon)
 		{
 			AICon->StopMovement();
 		}
 
-		// ÇöÀç Àç»ı ÁßÀÎ ´Ù¸¥ ¸ùÅ¸ÁÖ ÁßÁö
 		if (AnimInstance)
 		{
 			AnimInstance->bUseUpperBodyBlend = false;
 			AnimInstance->Montage_Stop(0.5f);
 		}
 
-		// ·£´ı ÇÇ°İ ¸ùÅ¸ÁÖ Àç»ı
 		int32 RandomIndex = FMath::RandRange(0, BossHitReactionMontages.Num() - 1);
 		UAnimMontage* SelectedMontage = BossHitReactionMontages[RandomIndex];
-		if (SelectedMontage)
+		if (SelectedMontage && AnimInstance)
 		{
-			if (AnimInstance)
-			{
-				float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
+			float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
 
-				// ÇÇ°İ ¸ùÅ¸ÁÖ Á¾·á ½Ã »óÅÂ¸¦ º¹¿øÇÏµµ·Ï µ¨¸®°ÔÀÌÆ® ¹ÙÀÎµù
-				if (PlayResult > 0.0f)
-				{
-					FOnMontageEnded HitEndDelegate;
-					HitEndDelegate.BindUObject(this, &ABossEnemy::OnHitReactionMontageEnded);
-					AnimInstance->Montage_SetEndDelegate(HitEndDelegate, SelectedMontage);
-				}
+			if (PlayResult > 0.0f)
+			{
+				FOnMontageEnded HitEndDelegate;
+				HitEndDelegate.BindUObject(this, &ABossEnemy::OnHitReactionMontageEnded);
+				AnimInstance->Montage_SetEndDelegate(HitEndDelegate, SelectedMontage);
 			}
 			else
 			{
-				// ¾Ö´Ô ÀÎ½ºÅÏ½º°¡ ¾ø´Â ¿¹¿Ü »óÈ² Ã³¸®
-				bIsBossHit = false;
+				SetState(EBossState::Combat);
 				bCanBossAttack = true;
 			}
 		}
@@ -1645,15 +1346,30 @@ float ABossEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent
 		BossDie();
 	}
 
-	// ¸ğµç ·ÎÁ÷ÀÌ ³¡³­ ÈÄ Super::TakeDamage È£Ãâ
 	Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 
 	return DamageApplied;
 }
 
+void ABossEnemy::OnHitReactionMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (IsDead()) return;
+
+	ResetUpperBodyBlend();
+
+	SetState(EBossState::Combat);
+
+	if (AICon)
+	{
+		AICon->OnBossNormalAttackMontageEnded();
+	}
+
+	bCanBossAttack = true;
+}
+
 float ABossEnemy::GetHealthPercent_Implementation() const
 {
-	if (bIsBossDead || BossHealth <= 0.0f)
+	if (IsDead() || BossHealth <= 0.0f)
 	{
 		return 0.0f;
 	}
@@ -1666,7 +1382,7 @@ float ABossEnemy::GetHealthPercent_Implementation() const
 
 bool ABossEnemy::IsEnemyDead_Implementation() const
 {
-	return bIsBossDead;
+	return IsDead();
 }
 
 void ABossEnemy::PlayWeaponHitSound()
@@ -1677,41 +1393,11 @@ void ABossEnemy::PlayWeaponHitSound()
 	}
 }
 
-void ABossEnemy::OnHitReactionMontageEnded(UAnimMontage* Montage, bool bInterrupted)
-{
-	UE_LOG(LogTemp, Warning, TEXT("Hit Reaction Montage Ended"));
-
-	bIsBossHit = false; // È÷Æ®Áß »óÅÂ false
-
-	// ÇÇ°İ ¾Ö´Ï¸ŞÀÌ¼Ç Á¾·á ÈÄ »óÅÂ º¹¿ø
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->bUseUpperBodyBlend = false; // ±âº»°ªÀ¸·Î º¹¿ø
-	}
-
-	// AI ÄÁÆ®·Ñ·¯¿¡ È÷Æ® Á¾·á ¾Ë¸²
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
-	if (AICon)
-	{
-		AICon->OnBossNormalAttackMontageEnded(); // °ø°İ °¡´É »óÅÂ º¹¿ø
-	}
-
-	bCanBossAttack = true; // °ø°İ°¡´É ¿©ºÎ ÃÊ±âÈ­
-}
-
 void ABossEnemy::BossDie()
 {
-	if (bIsBossDead) return; // ÀÌ¹Ì »ç¸ÁÇÑ °æ¿ì ¸®ÅÏ
-	bIsBossDead = true; // »ç¸Á»óÅÂ Æ®·ç
+	if (IsDead()) return;
+	SetState(EBossState::Dead);
 
-	//// GameMode¿¡ º¸½º »ç¸Á ¾Ë¸²
-	//if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
-	//{
-	//	GameMode->OnBossDead();
-	//}
-
-	// »ç¸Á »ç¿îµå Àç»ı
 	if (BossDieSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, BossDieSound, GetActorLocation());
@@ -1719,11 +1405,10 @@ void ABossEnemy::BossDie()
 
 	StopBossActions();
 
-	UBossEnemyAnimInstance* BossAnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance());
-	if (BossAnimInstance)
+	if (AnimInstance)
 	{
-		BossAnimInstance->bUseUpperBodyBlend = false;
-		BossAnimInstance->Montage_Stop(0.0f); // ¸ùÅ¸ÁÖ Áï½Ã ÁßÁö
+		AnimInstance->bUseUpperBodyBlend = false;
+		AnimInstance->Montage_Stop(0.0f);
 	}
 
 	if (BossDeadMontages.Num() > 0)
@@ -1739,59 +1424,50 @@ void ABossEnemy::BossDie()
 
 				if (PlayResult > 0.0f)
 				{
-					// ¸ùÅ¸ÁÖ ±æÀÌÀÇ ÁöÁ¤µÈ ½ÃÁ¡¿¡ º¸½º ¼û±è
 					float MontageLength = SelectedMontage->GetPlayLength();
-					float HideTime = MontageLength * 0.9f; // 90% ½ÃÁ¡
+					float HideTime = MontageLength * 0.9f;
 
-					GetWorld()->GetTimerManager().SetTimer(
-						BossDeathHideTimerHandle,
-						this,
-						&ABossEnemy::HideBossEnemy,
-						HideTime, // ÁöÁ¤µÈ ½ÃÁ¡¿¡ ¼û±è
-						false
-					);
-
-					UE_LOG(LogTemp, Warning, TEXT("Death montage playing - will hide at 99%% (%.2f seconds)"), HideTime);
-					return; // Å¸ÀÌ¸Ó°¡ ½ÇÇàµÉ ¶§±îÁö ´ë±â
+					SetSafeTimer(BossDeathHideTimerHandle, HideTime, [this]()
+						{
+							HideBossEnemy();
+						});
+					return;
 				}
 			}
 		}
 	}
-	// ¸ùÅ¸ÁÖ°¡ ¾ø°Å³ª Àç»ı ½ÇÆĞ½Ã
-	HideBossEnemy(); // º¸½º¸¦ ¼û±â´Â ÇÔ¼ö È£Ãâ
+
+	HideBossEnemy();
 }
 
 void ABossEnemy::OnDeathMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Death Montage Ended"));
-	HideBossEnemy(); // »ç¸Á ¸ùÅ¸ÁÖ Á¾·á ÈÄ º¸½º ¼û±è
+	HideBossEnemy();
 }
 
 void ABossEnemy::StopBossActions()
 {
-	GetCharacterMovement()->DisableMovement(); // ¸ğµç ÀÌµ¿ Â÷´Ü
-	GetCharacterMovement()->StopMovementImmediately(); // ¸ğµç ÀÌµ¿ Áï½Ã Â÷´Ü
-	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None); // ÀÌµ¿ ¸ğµå ºñÈ°¼ºÈ­
+	if (MoveComp)
+	{
+		MoveComp->DisableMovement();
+		MoveComp->StopMovementImmediately();
+		MoveComp->SetMovementMode(EMovementMode::MOVE_None);
+	}
 
-	// AI ÄÁÆ®·Ñ·¯ Áï½Ã ÁßÁö
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController());
 	if (AICon)
 	{
-		AICon->StopBossAI(); // AI ÁßÁö
+		AICon->StopBossAI();
 	}
 
-	UBossEnemyAnimInstance* AnimInstance = Cast<UBossEnemyAnimInstance>(GetMesh()->GetAnimInstance()); // ÃÖ½Å ¾Ö´ÔÀÎ½ºÅÏ½º¸¦ Ä³½ºÆÃÇØ¼­ ¹Ş¾Æ¿È
-	if (AnimInstance) // ¾Ö´Ô ÀÎ½ºÅÏ½ºÀÇ
+	if (AnimInstance)
 	{
-		AnimInstance->Montage_Stop(0.0f); // ¸ğµç ¸ùÅ¸ÁÖ ÁßÁö
+		AnimInstance->Montage_Stop(0.0f);
 	}
 
-	// »ç¸Á½Ã
-	if (bIsBossDead)
+	if (IsDead())
 	{
-		SetActorTickEnabled(false); // Æ½ ºñÈ°¼ºÈ­
+		SetActorTickEnabled(false);
 
-		// µ¨¸®°ÔÀÌÆ® Á¤¸®
 		UAnimInstance* BaseAnimInstance = GetMesh()->GetAnimInstance();
 		if (BaseAnimInstance)
 		{
@@ -1802,88 +1478,81 @@ void ABossEnemy::StopBossActions()
 
 void ABossEnemy::HideBossEnemy()
 {
-	if (!bIsBossDead) return; // ÀÌ¹Ì »ç¸ÁÇÑ °æ¿ì ¸®ÅÏ
+	if (!IsDead()) return;
 
-	UE_LOG(LogTemp, Warning, TEXT("Hiding Boss Enemy - Memory Cleanup"));
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	// GameMode¿¡ ÆÄ±« ¾Ë¸²
-	if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(GetWorld()->GetAuthGameMode()))
+	// GameModeì— íŒŒê´´ ì•Œë¦¼
+	if (AMainGameModeBase* GameMode = Cast<AMainGameModeBase>(World->GetAuthGameMode()))
 	{
 		GameMode->OnEnemyDestroyed(this);
 	}
 
-	// 1. ÀÌº¥Æ® ¹× µ¨¸®°ÔÀÌÆ® Á¤¸® (ÃÖ¿ì¼±)
-	GetWorld()->GetTimerManager().ClearAllTimersForObject(this); // ¸ğµç Å¸ÀÌ¸Ó ÇØÁ¦
+	// ëª¨ë“  íƒ€ì´ë¨¸ ì •ë¦¬
+	World->GetTimerManager().ClearAllTimersForObject(this);
 
-	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // ¾Ö´Ô ÀÎ½ºÅÏ½º ÂüÁ¶ ¹Ş¾Æ¿È
-	if (AnimInstance && IsValid(AnimInstance)) // ¾Ö´Ô ÀÎ½ºÅÏ½º°¡ ÀÖ°í À¯È¿ÇÏ´Ù¸é
+	// ì• ë‹ˆë©”ì´ì…˜ ë¸ë¦¬ê²Œì´íŠ¸ í•´ì œ
+	UAnimInstance* BossAnimInstance = GetMesh()->GetAnimInstance();
+	if (BossAnimInstance && IsValid(BossAnimInstance))
 	{
-		// ¾Ö´Ï¸ŞÀÌ¼Ç ÀÌº¥Æ® ¹ÙÀÎµù ¿ÏÀü ÇØÁ¦
-		AnimInstance->OnMontageEnded.RemoveAll(this); // ¸ùÅ¸ÁÖ Á¾·á ÀÌº¥Æ® ¹ÙÀÎµù ÇØÁ¦
-		AnimInstance->OnMontageBlendingOut.RemoveAll(this); // ¸ùÅ¸ÁÖ ºí·£µå ¾Æ¿ô ¹ÙÀÎµù ÇØÁ¦
-		AnimInstance->OnMontageStarted.RemoveAll(this); // ¸ùÅ¸ÁÖ ½ÃÀÛ ÀÌº¥Æ® ¹ÙÀÎµù ÇØÃ¼
+		BossAnimInstance->OnMontageEnded.RemoveAll(this);
+		BossAnimInstance->OnMontageBlendingOut.RemoveAll(this);
+		BossAnimInstance->OnMontageStarted.RemoveAll(this);
 	}
 
-	// 2. AI ½Ã½ºÅÛ ¿ÏÀü Á¤¸® 
-	ABossEnemyAIController* AICon = Cast<ABossEnemyAIController>(GetController()); // AI ÄÁÆ®·Ñ·¯ ÂüÁ¶ ¹Ş¾Æ¿È
-	if (AICon && IsValid(AICon)) // AI ÄÁÆ®·Ñ·¯°¡ ÀÖ°í À¯È¿ÇÏ´Ù¸é
+	// AI ì‹œìŠ¤í…œ ì •ë¦¬
+	ABossEnemyAIController* BossAICon = Cast<ABossEnemyAIController>(GetController());
+	if (BossAICon && IsValid(BossAICon))
 	{
-		AICon->StopBossAI(); // AI ·ÎÁ÷ Áß´Ü
-		AICon->UnPossess(); // ÄÁÆ®·Ñ·¯-Æù °ü°è ÇØÁ¦
-		AICon->Destroy(); // AI ÄÁÆ®·Ñ·¯ ¿ÏÀü Á¦°Å
+		BossAICon->StopBossAI();
+		BossAICon->UnPossess();
+		BossAICon->Destroy();
 	}
 
-	// ¹«±â Á¤¸®
-	if (EquippedBossKatana && IsValid(EquippedBossKatana)) // ¹«±â À¯È¿¼º °Ë»ç
+	// ë¬´ê¸° ì •ë¦¬
+	if (EquippedBossKatana && IsValid(EquippedBossKatana))
 	{
-		EquippedBossKatana->HideKatana(); // AI°¡ Á¤¸® ÈÄ ¹«±â¸¦ Á¦°ÅÇÏ´Â HideKatana ÇÔ¼ö È£Ãâ
-		EquippedBossKatana = nullptr; // ¹«±â ÂüÁ¶ ÇØÁ¦
+		EquippedBossKatana->HideKatana();
+		EquippedBossKatana = nullptr;
 	}
 
-	// 3. ¹«ºê¸ÕÆ® ½Ã½ºÅÛ Á¤¸®
-	UCharacterMovementComponent* MovementComp = GetCharacterMovement(); // Ä³¸¯ÅÍ ¹«ºê¸ÕÆ® ÄÄÆ÷³ÍÆ® ÂüÁ¶ ¹Ş¾Æ¿È
-	if (MovementComp && IsValid(MovementComp)) // ¹«ºê¸ÕÆ® ÄÄÆ÷³ÍÆ®°¡ ÀÖ°í À¯È¿ÇÏ´Ù¸é
+	// ë¬´ë¸Œë¨¼íŠ¸ ì •ë¦¬
+	UCharacterMovementComponent* BossMoveComp = GetCharacterMovement();
+	if (BossMoveComp && IsValid(BossMoveComp))
 	{
-		MovementComp->DisableMovement(); // ÀÌµ¿ ºñÈ°¼ºÈ­
-		MovementComp->StopMovementImmediately(); // ÇöÀç ÀÌµ¿ Áï½Ã Áß´Ü
-		MovementComp->SetMovementMode(EMovementMode::MOVE_None); // Move¸ğµå None ¼³Á¤À¸·Î ³×ºñ°ÔÀÌ¼Ç¿¡¼­ Á¦¿Ü
-		MovementComp->SetComponentTickEnabled(false); // ¹«ºê¸ÕÆ® ÄÄÆ÷³ÍÆ® Tick ºñÈ°¼ºÈ­
+		BossMoveComp->DisableMovement();
+		BossMoveComp->StopMovementImmediately();
+		BossMoveComp->SetMovementMode(EMovementMode::MOVE_None);
+		BossMoveComp->SetComponentTickEnabled(false);
 	}
 
-	// 4. ¸Ş½¬ ÄÄÆ÷³ÍÆ® Á¤¸®
-	USkeletalMeshComponent* MeshComp = GetMesh(); // ½ºÄÌ·¹Å» ¸Ş½¬ ÄÄÆ÷³ÍÆ® ÂüÁ¶ ¹Ş¾Æ¿È
-	if (MeshComp && IsValid(MeshComp)) // ¸Ş½¬ ÄÄÆ÷³ÍÆ®°¡ ÀÖ°í À¯È¿ÇÏ´Ù¸é
+	// ë©”ì‹œ ì •ë¦¬
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (MeshComp && IsValid(MeshComp))
 	{
-		// ·»´õ¸µ ½Ã½ºÅÛ ºñÈ°¼ºÈ­
-		MeshComp->SetVisibility(false); // ¸Ş½¬ °¡½Ã¼º ºñÈ°¼ºÈ­
-		MeshComp->SetHiddenInGame(true); // °ÔÀÓ ³» ¼û±è Ã³¸®
- 
-		// ¹°¸® ½Ã½ºÅÛ ºñÈ°¼ºÈ­
-		MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision); // NoCollision ¼³Á¤À¸·Î Ãæµ¹°Ë»ç ºñÈ°¼ºÈ­
-		MeshComp->SetCollisionResponseToAllChannels(ECR_Ignore); // ECR_Ignore ¼³Á¤À¸·Î Ãæµ¹ÀÀ´ä ¹«½Ã
-
-		// ¾÷µ¥ÀÌÆ® ½Ã½ºÅÛ ºñÈ°¼ºÈ­
-		MeshComp->SetComponentTickEnabled(false); // ¸Ş½¬ ÄÄÆ÷³ÍÆ® Tick ºñÈ°¼ºÈ­
-
-		// ¾Ö´Ï¸ŞÀÌ¼Ç ÂüÁ¶ ÇØÁ¦
-		MeshComp->SetAnimInstanceClass(nullptr); // ABP ÂüÁ¶ ÇØÁ¦
-		MeshComp->SetSkeletalMesh(nullptr); // ½ºÄÌ·¹Å» ¸Ş½¬ ÂüÁ¶ ÇØÁ¦
-
+		MeshComp->SetVisibility(false);
+		MeshComp->SetHiddenInGame(true);
+		MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		MeshComp->SetCollisionResponseToAllChannels(ECR_Ignore);
+		MeshComp->SetComponentTickEnabled(false);
+		MeshComp->SetAnimInstanceClass(nullptr);
+		MeshComp->SetSkeletalMesh(nullptr);
 	}
 
-	// 5. ¾×ÅÍ ·¹º§ ½Ã½ºÅÛ Á¤¸®
-	SetActorHiddenInGame(true); // ¾×ÅÍ ·»´õ¸µ ºñÈ°¼ºÈ­
-	SetActorEnableCollision(false); // ¾×ÅÍ Ãæµ¹ ºñÈ°¼ºÈ­
-	SetActorTickEnabled(false); // ¾×ÅÍ Tick ºñÈ°¼ºÈ­
-	SetCanBeDamaged(false); // µ¥¹ÌÁö Ã³¸® ºñÈ°¼ºÈ­
+	// ì•¡í„° ì •ë¦¬
+	SetActorHiddenInGame(true);
+	SetActorEnableCollision(false);
+	SetActorTickEnabled(false);
+	SetCanBeDamaged(false);
 
-	// 6. ÇöÀç ÇÁ·¹ÀÓ Ã³¸® ¿Ï·á ÈÄ ´ÙÀ½ ÇÁ·¹ÀÓ¿¡ ¾ÈÀüÇÏ°Ô ¿¢ÅÍ Á¦°Å (Å©·¡½¬ ¹æÁö)
-	GetWorld()->GetTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<ABossEnemy>(this)]() // ½º¸¶Æ® Æ÷ÀÎÅÍ WeakObjectPtr·Î ¾àÇÑ ÂüÁ¶¸¦ »ç¿ëÇÏ¿© ¾ÈÀüÇÏ°Ô Áö¿¬ ½ÇÇà
+	// ë‹¤ìŒ í”„ë ˆì„ì— ì•ˆì „í•˜ê²Œ ì•¡í„° íŒŒê´´
+	TWeakObjectPtr<ABossEnemy> WeakThis(this);
+	World->GetTimerManager().SetTimerForNextTick([WeakThis]()
 		{
-			if (WeakThis.IsValid() && !WeakThis->IsActorBeingDestroyed()) // ¾àÇÑ ÂüÁ¶ÇÑ ¿¢ÅÍ°¡ À¯È¿ÇÏ°í ÆÄ±«µÇÁö ¾Ê¾Ò´Ù¸é
+			if (WeakThis.IsValid() && !WeakThis->IsActorBeingDestroyed())
 			{
-				WeakThis->Destroy(); // ¾×ÅÍ ¿ÏÀü Á¦°Å
-				UE_LOG(LogTemp, Warning, TEXT("EnemyBoss Successfully Destroyed."));
+				WeakThis->Destroy();
 			}
 		});
 }

@@ -2,7 +2,6 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/StaticMeshComponent.h"
-#include "TimerManager.h"
 #include "DrawDebugHelpers.h"
 #include "NiagaraFunctionLibrary.h" // 나이아가라 함수 라이브러리 추가
 #include "NiagaraComponent.h" // 나이아가라 컴포넌트 추가
@@ -26,10 +25,10 @@ ARifle::ARifle()
 
 	if (MuzzleSocket)
 	{
-		MuzzleSocket->SetSimulatePhysics(false);
-		MuzzleSocket->SetEnableGravity(false);
-		MuzzleSocket->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		MuzzleSocket->SetVisibility(false); // 에디터에서만 보이도록 설정
+		MuzzleSocket->SetSimulatePhysics(false); // 물리 시뮬레이션 비활성화
+		MuzzleSocket->SetEnableGravity(false); // 중력 영향 비활성화
+		MuzzleSocket->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 충돌 비활성화
+		MuzzleSocket->SetVisibility(false); // 렌더링 제외 (위치 정보용
 	}
 
 	CurrentMuzzleFlashComponent = nullptr; // 머즐 플래시 컴포넌트 초기화
@@ -57,38 +56,22 @@ void ARifle::BeginPlay()
 
 void ARifle::Fire(float CrosshairSpreadAngle)
 {
-	if (bIsReloading || !bCanFire) // 재장전 중이거나 격발 불가 상태이면
-	{
-		return; // 리턴
-	}
+	UWorld* World = GetWorld(); // 월드 가져오기
+	if (!World || bIsReloading || !bCanFire) return; // 유효성 및 조건검사
 
+	// 자동 장전
 	if (CurrentAmmo <= 0) // 현재 총알 수 가 0 이라면
 	{
-		UE_LOG(LogTemp, Warning, TEXT("No Ammo! Need to Reload."));
 		Reload(); // 재장전
 		return;
 	}
 
-	if (!GetOwner()) // 소유자가 없다면
-	{
-		UE_LOG(LogTemp, Error, TEXT("Rifle has NO OWNER!"));
-		return; // 리턴
-	}
-
-	AController* OwnerController = GetOwner()->GetInstigatorController(); // 총의 소유자를 조종하는 컨트롤러를 가져옴
-	
-	if (!OwnerController) // 컨트롤러가 없다면
-	{
-		UE_LOG(LogTemp, Error, TEXT("No OwnerController found!"));
-		return; // 리턴
-	}
-
+	AActor* WeaponOwner = GetOwner(); // 소유자 액터 가져오기
+	if (!IsValid(WeaponOwner)) return; // 소유자 없으면 리턴
+	AController* OwnerController = WeaponOwner->GetInstigatorController(); // 총의 소유자를 조종하는 컨트롤러를 가져옴
+	if (!IsValid(OwnerController)) return; // 컨트롤러 없으면 리턴
 	APlayerController* PlayerController = Cast<APlayerController>(OwnerController); // 가져온 컨트롤러를 플레이어 컨트롤러로 변환
-	if (!PlayerController) // 변환에 실패했다면
-	{
-		UE_LOG(LogTemp, Error, TEXT("Owner is not a PlayerController!"));
-		return; // 리턴
-	}
+	if (!PlayerController)return; // 플레이어 컨트롤러 없으면 리턴
 
 	FVector CameraLocation; // 카메라의 월드 위치 저장
 	FRotator CameraRotation; // 카메라의 월드 회전값 저장
@@ -101,26 +84,13 @@ void ARifle::Fire(float CrosshairSpreadAngle)
 	FCollisionQueryParams QueryParams; // 래이캐스트 추가 옵션을 설정
 	QueryParams.AddIgnoredActor(this); // 이 액터는 래이캐스트 히트를 무시 
 	QueryParams.AddIgnoredActor(GetOwner()); // 소유자도 래이캐스트 히트를 무시
-	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, CameraLocation, End, ECC_Visibility, QueryParams); // 월드에서 지정된 채널을 따라 래이캐스트를 수행하고 충돌 여부를 bHit에 저장
+	bool bHit = World->LineTraceSingleByChannel(HitResult, CameraLocation, End, ECC_Visibility, QueryParams); // 월드에서 지정된 채널을 따라 래이캐스트를 수행하고 충돌 여부를 bHit에 저장
 
 	if (bHit) // 래이캐스트에 뭔가 맞았다면
 	{
 		if (HitResult.GetActor()) // 래이캐스트 결과 유효한 대상이라면
 		{
 			ProcessHit(HitResult, ShotDirection); // 히트처리 함수 호출
-
-			if (BulletTrail)
-			{
-				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-					GetWorld(),
-					BulletTrail,
-					HitResult.ImpactPoint
-				);
-			}
-
-			UE_LOG(LogTemp, Warning, TEXT("Hit detected! Target: %s, Location: %s"),
-				*HitResult.GetActor()->GetName(), *HitResult.ImpactPoint.ToString());
-
 			//DrawDebugLine(GetWorld(), CameraLocation, HitResult.ImpactPoint, FColor::Green, false, 2.0f, 0, 2.0f);
 		}
 		else
@@ -140,8 +110,8 @@ void ARifle::Fire(float CrosshairSpreadAngle)
 		// 기존 이펙트가 있다면 제거
 		if (CurrentMuzzleFlashComponent && IsValid(CurrentMuzzleFlashComponent))
 		{
-			CurrentMuzzleFlashComponent->DestroyComponent();
-			CurrentMuzzleFlashComponent = nullptr;
+			CurrentMuzzleFlashComponent->DestroyComponent(); // 파괴후 메모리에서 제거
+			CurrentMuzzleFlashComponent = nullptr; // 포인터 초기화
 		}
 
 		// 부착된 위치에 새로운 이펙트 생성
@@ -163,16 +133,17 @@ void ARifle::Fire(float CrosshairSpreadAngle)
 			CurrentMuzzleFlashComponent->SetWorldScale3D(FVector(MuzzleFlashScale));
 			CurrentMuzzleFlashComponent->SetFloatParameter(FName("PlayRate"), MuzzleFlashPlayRate);
 
-			// 머즐 플래시 타이머 설정
-			GetWorldTimerManager().SetTimer(
+			TWeakObjectPtr<ARifle> WeakThis(this); // 약참조 생성
+			World->GetTimerManager().SetTimer(
 				MuzzleFlashTimerHandle,
-				this,
-				&ARifle::StopMuzzleFlash,
-				MuzzleFlashDuration,
-				false
-			);
-
-			UE_LOG(LogTemp, Warning, TEXT("Attached Muzzle Flash spawned and will stop in %f seconds"), MuzzleFlashDuration);
+				[WeakThis]() // 람다 캡처
+				{
+					if (WeakThis.IsValid()) // 유효성 검사
+					{
+						WeakThis->StopMuzzleFlash(); // 머즐 플래시 정지 함수 호출
+					}
+				},
+				MuzzleFlashDuration, false); // 한 번만 실행
 		}
 	}
 
@@ -187,30 +158,47 @@ void ARifle::Fire(float CrosshairSpreadAngle)
 		UE_LOG(LogTemp, Error, TEXT("FireSound is NULL! Check if it's set in BP."));
 	}
 
-	CurrentAmmo--;
-	bCanFire = false;
-	GetWorldTimerManager().SetTimer(FireRateTimerHandle, this, &ARifle::ResetFire, FireRate, false);
+	CurrentAmmo--; // 현재 총알 수 감소
+	bCanFire = false; // 사격 불가로 설정
+
+	// 발사 속도 리셋 타이머
+	TWeakObjectPtr<ARifle> WeakThis(this); // 약참조 생성
+	World->GetTimerManager().SetTimer(
+		FireRateTimerHandle, 
+		[WeakThis]() // 람다 캡처
+		{
+			if (WeakThis.IsValid()) // 유효성 검사
+			{
+				WeakThis->ResetFire(); // 사격 가능여부 리셋 함수 호출
+			}
+		}, FireRate, false); // 한 번만 실행
 }
 
 void ARifle::StopMuzzleFlash()
 {
-	if (CurrentMuzzleFlashComponent && IsValid(CurrentMuzzleFlashComponent)) // 현재 머즐임팩트가 유효한지 확인
+	UWorld* World = GetWorld();
+	if (!World) return;
+	World->GetTimerManager().ClearTimer(MuzzleFlashTimerHandle); // 머즐 플래시 타이머 클리어
+
+	if (IsValid(CurrentMuzzleFlashComponent)) // 현재 머즐임팩트가 유효한지 확인
 	{
 		CurrentMuzzleFlashComponent->Deactivate(); // 비활성화
 		CurrentMuzzleFlashComponent->DestroyComponent(); // 파괴후 메모리에서 제거
 		CurrentMuzzleFlashComponent = nullptr; // 포인터 초기화
-		UE_LOG(LogTemp, Warning, TEXT("Muzzle Flash stopped and destroyed"));
 	}
 }
 
 void ARifle::StopImpactEffect()
 {
-	if (CurrentImpactEffectComponent && IsValid(CurrentImpactEffectComponent)) // 현재 피격임팩트가 유효한지 확인
+	UWorld* World = GetWorld();
+	if (!World) return;
+	World->GetTimerManager().ClearTimer(ImpactEffectTimerHandle); // 히트 이펙트 타이머 클리어
+
+	if (IsValid(CurrentImpactEffectComponent)) // 현재 피격임팩트가 유효한지 확인
 	{
 		CurrentImpactEffectComponent->Deactivate(); // 비활성화 
 		CurrentImpactEffectComponent->DestroyComponent(); // 파괴 후 메모리에서 제거 
 		CurrentImpactEffectComponent = nullptr; // 포인터 초기화
-		UE_LOG(LogTemp, Warning, TEXT("Niagara Impact Effect stopped"));
 	}
 }
 
@@ -236,7 +224,10 @@ void ARifle::Reload()
 		UGameplayStatics::PlaySoundAtLocation(this, ReloadAnnouncementSound, GetActorLocation());
 	}
 
-	GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &ARifle::FinishReload, ReloadTime, false); // 재장전 시간만큼 기다린 후 FinishReload 함수를 호출핟록 타이머 설정
+	if (UWorld* World = GetWorld())
+	{
+		GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &ARifle::FinishReload, ReloadTime, false); // 재장전 시간만큼 기다린 후 FinishReload 함수를 호출핟록 타이머 설정
+	}
 }
 
 void ARifle::FinishReload()
@@ -257,81 +248,163 @@ void ARifle::ResetFire()
 	bCanFire = true; // 사격 가능여부를 true로 전환
 }
 
+//void ARifle::ProcessHit(const FHitResult& HitResult, FVector ShotDirection)
+//{
+//	UWorld* World = GetWorld(); // 월드 가져오기
+//	if (!World) return; // 월드 유효성 검사
+//	AActor* HitActor = HitResult.GetActor(); // 충돌 결과에서 맞은 액터를 가져옴
+//	if (!IsValid(HitActor)) return; // 맞은 액터가 유효하지 않다면 리턴
+//	AActor* WeaponOwner = GetOwner(); // 총의 소유자 액터 가져오기
+//	if (!IsValid(WeaponOwner)) return; // 소유자 유효성 검사
+//
+//	if (IsValid(HitActor)) // 맞은 액터가 유효하다면
+//	{
+//		float AppliedDamage = Damage; // 기본 데미지 설정
+//		if (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head") // 맞은 위의 본 이름이 Head 또는 CC_Base_Head라면
+//		{
+//			AppliedDamage *= HeadshotDamageMultiplier; // 헤드샷 배수만큼 데미지 적용
+//		}
+//		if (WeaponOwner)
+//		{
+//			AController* InstigatorController = WeaponOwner->GetInstigatorController(); // 소유자의 컨트롤러 가져오기
+//
+//			// 컨트롤러가 존재할 때만 데미지 적용
+//			if (InstigatorController)
+//			{
+//				UGameplayStatics::ApplyPointDamage( 
+//					HitActor, // 데미지를 적용할 액터
+//					AppliedDamage, // 적용할 데미지
+//					ShotDirection, // 발사 방향
+//					HitResult, // 충돌 결과
+//					InstigatorController, // 데미지를 준 컨트롤러
+//					this, // 데미지를 준 액터
+//					UDamageType::StaticClass() // 데미지 타입
+//				);
+//			}
+//			if (ImpactEffect) // 피격 이펙트가 설정되어 있다면
+//			{
+//				// 이전 Impact Effect가 있다면 제거
+//				if (IsValid(CurrentImpactEffectComponent))
+//				{
+//					CurrentImpactEffectComponent->DestroyComponent(); // 파괴후 메모리에서 제거
+//					CurrentImpactEffectComponent = nullptr; // 포인터 초기화
+//				}
+//
+//				FVector ImpactLocation = HitResult.ImpactPoint; // 피격 위치
+//				FRotator ImpactRotation = (-ShotDirection).Rotation(); // 충돌 방향으로 회전
+//
+//				CurrentImpactEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+//					World, // 월드
+//					ImpactEffect, // 이펙트 시스템
+//					ImpactLocation, // 피격 위치
+//					ImpactRotation // 충돌 방향으로 회전
+//				);
+//
+//				if (CurrentImpactEffectComponent)
+//				{
+//					TWeakObjectPtr<ARifle> WeakThis(this); // 약참조 생성
+//					World->GetTimerManager().SetTimer(
+//							ImpactEffectTimerHandle, 
+//						[WeakThis]() // 람다 캡처
+//							{
+//							if (WeakThis.IsValid()) // 유효성 검사
+//							{
+//								WeakThis->StopImpactEffect(); // 히트 이펙트 정지 함수 호출
+//							}
+//						},
+//						ImpactEffectDuration, false); // 한 번만 실행
+//				}
+//			}
+//
+//			// 사운드 재생 로직 수정
+//			USoundBase* SoundToPlay = HitSound; // 기본값은 일반 히트 사운드
+//
+//			// 헤드샷 여부를 다시 판단
+//			if (HitResult.GetActor() && (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head"))
+//			{
+//				// 헤드샷이라면 HeadshotSound로 변경
+//				if (HeadShotSound)
+//				{
+//					SoundToPlay = HeadShotSound;
+//				}
+//			}
+//			// 최종적으로 결정된 사운드를 피격 위치에서 재생
+//			if (SoundToPlay)
+//			{
+//				UGameplayStatics::PlaySoundAtLocation(this, SoundToPlay, HitResult.ImpactPoint); // 피격 위치에서 재생
+//			}
+//		}
+//	}
+//}
+
 void ARifle::ProcessHit(const FHitResult& HitResult, FVector ShotDirection)
 {
+	UWorld* World = GetWorld(); // 월드 유효성 검사
+	if (!World) return; // 월드 유효성 검사
 	AActor* HitActor = HitResult.GetActor(); // 충돌 결과에서 맞은 액터를 가져옴
-	if (HitActor) // 맞은 액터가 유효하다면
+	if (!IsValid(HitActor)) return; // 맞은 액터가 유효하지 않다면 리턴
+	AActor* WeaponOwner = GetOwner(); // 총의 소유자 액터 가져오기
+	if (!IsValid(WeaponOwner)) return; // 소유자 유효성 검사
+	AController* InstigatorController = WeaponOwner->GetInstigatorController(); // 소유자의 컨트롤러 가져오기
+	if (!IsValid(InstigatorController)) return; // 컨트롤러 유효성 검사
+
+	bool bIsHeadshot = false; // 헤드샷 여부 초기화
+	if (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head") // 맞은 위의 본 이름이 Head 또는 CC_Base_Head라면
 	{
-		/*if (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head")
+		bIsHeadshot = true; // 헤드샷 플래그 설정
+	}
+	float AppliedDamage = Damage; // 기본 데미지 설정
+	if (bIsHeadshot) // 헤드샷일 경우
+	{
+		AppliedDamage = Damage * HeadshotDamageMultiplier; // 헤드샷 배수만큼 데미지 적용
+	}
+	// 데미지 적용
+	UGameplayStatics::ApplyPointDamage(
+		HitActor, // 데미지를 적용할 액터
+		AppliedDamage, // 적용할 데미지
+		ShotDirection, // 발사 방향
+		HitResult, // 충돌 결과
+		InstigatorController, // 데미지를 준 컨트롤러
+		this, // 데미지를 준 액터
+		UDamageType::StaticClass() // 데미지 타입
+	);
+	if (ImpactEffect) // 피격 이펙트가 설정되어 있다면
+	{
+		StopImpactEffect(); // 이전 이펙트가 있다면 제거
+
+		CurrentImpactEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			World, // 월드
+			ImpactEffect, // 이펙트 시스템
+			HitResult.ImpactPoint, // 피격 위치
+			(-ShotDirection).Rotation() // 충돌 방향으로 회전
+		);
+		if (CurrentImpactEffectComponent) // 이펙트 컴포넌트가 유효하면
 		{
-			float AppliedDamage = Damage * 100.0f;
-		}
-		else
-		{
-			float sAppliedDamage = Damage;
-		}*/
-
-		float AppliedDamage = (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head") ? Damage * 10.0f : Damage;
-		// 맞은 부위의 본 이름이 Head 또는 CC_Base_Head라면 10배의 데미지를 아니면 기본 데미지를 적용 (인간형 적 ai 머리 본네임들)
-		UGameplayStatics::ApplyPointDamage(HitActor, AppliedDamage, ShotDirection, HitResult, GetOwner()->GetInstigatorController(), this, UDamageType::StaticClass());
-
-		// Impact Effect - 머즐 플래시처럼 조기 종료 기능 추가
-		if (ImpactEffect)
-		{
-			// 이전 Impact Effect가 있다면 제거
-			if (CurrentImpactEffectComponent && IsValid(CurrentImpactEffectComponent))
-			{
-				CurrentImpactEffectComponent->DestroyComponent();
-				CurrentImpactEffectComponent = nullptr;
-			}
-
-			FVector ImpactLocation = HitResult.ImpactPoint;
-			FRotator ImpactRotation = (-ShotDirection).Rotation(); // 충돌 방향으로 회전
-
-			CurrentImpactEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-				GetWorld(),
-				ImpactEffect,
-				ImpactLocation,
-				ImpactRotation
-			);
-
-			if (CurrentImpactEffectComponent)
-			{
-				// Impact Effect 타이머 설정 - 짧게 재생 후 종료
-				GetWorldTimerManager().SetTimer(
-					ImpactEffectTimerHandle,
-					this,
-					&ARifle::StopImpactEffect,
-					ImpactEffectDuration,
-					false
-				);
-
-				UE_LOG(LogTemp, Warning, TEXT("Niagara Impact Effect spawned at: %s, Duration: %f"),
-					*ImpactLocation.ToString(), ImpactEffectDuration);
-			}
+			TWeakObjectPtr<ARifle> WeakThis(this); // 약참조 생성
+			World->GetTimerManager().SetTimer( 
+				ImpactEffectTimerHandle,
+				[WeakThis]() // 람다 캡처
+				{
+					if (WeakThis.IsValid()) // 유효성 검사
+					{
+						WeakThis->StopImpactEffect(); // 히트 이펙트 정지 함수 호출
+					}
+				},
+				ImpactEffectDuration, false); // 한 번만 실행
 		}
 	}
 
-	// 사운드 재생 로직 수정
+	// 사운드 결정
 	USoundBase* SoundToPlay = HitSound; // 기본값은 일반 히트 사운드
-	
-	// 헤드샷 여부를 다시 판단
-	if (HitResult.GetActor() && (HitResult.BoneName == "Head" || HitResult.BoneName == "CC_Base_Head"))
+	if (bIsHeadshot) // 헤드샷일 경우
 	{
-		// 헤드샷이라면 HeadshotSound로 변경
-		if (HeadShotSound)
+		if (HeadShotSound) // 헤드샷 사운드가 유효하면
 		{
-			SoundToPlay = HeadShotSound;
+			SoundToPlay = HeadShotSound; // 헤드샷 사운드로 변경
 		}
 	}
-
-	// 최종적으로 결정된 사운드를 피격 위치에서 재생
-	if (SoundToPlay)
+	if (SoundToPlay) // 사운드가 유효하면
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, SoundToPlay, HitResult.ImpactPoint); // 피격 위치에서 재생
-	}
-	else // 디버깅을 위해 추가
-	{
-		UE_LOG(LogTemp, Warning, TEXT("No sound set for hit or headshot!"));
 	}
 }

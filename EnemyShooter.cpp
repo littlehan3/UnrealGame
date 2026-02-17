@@ -2,68 +2,58 @@
 #include "EnemyShooterAIController.h" // AI 컨트롤러 클래스
 #include "EnemyShooterGun.h" // 총 클래스
 #include "EnemyShooterAnimInstance.h" // 애님 인스턴스 클래스
-#include "Animation/AnimInstance.h" // UAnimInstance 클래스
-#include "GameFramework/Actor.h" // AActor 클래스
 #include "Kismet/GameplayStatics.h" // 게임플레이 유틸리티 함수
-#include "Components/SkeletalMeshComponent.h" // 스켈레탈 메쉬 컴포넌트
 #include "GameFramework/CharacterMovementComponent.h" // 캐릭터 무브먼트 컴포넌트
 #include "MainGameModeBase.h" // 게임모드 참조 (적 사망 알림용)
 
 AEnemyShooter::AEnemyShooter()
 {
 	PrimaryActorTick.bCanEverTick = true; // 매 프레임 Tick 함수 호출 활성화
-	bCanAttack = true; // 기본적으로 공격 가능한 상태로 설정
-	bIsAttacking = false; // 처음에는 공격 중이 아닌 상태로 설정
+	MoveComp = GetCharacterMovement();
+	
+	ApplyBaseWalkSpeed();
+	
+	MoveComp->bOrientRotationToMovement = false;
+    MoveComp->bUseControllerDesiredRotation = false;
 
-	// AI 및 애니메이션 클래스 설정
+	bUseControllerRotationYaw = true; // 컨트롤러의 Yaw 회전값을 캐릭터에 직접 적용
 	AIControllerClass = AEnemyShooterAIController::StaticClass(); // 이 캐릭터가 사용할 AI 컨트롤러 지정
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned; // 월드에 배치/스폰 시 AI가 자동 빙의
-	GetMesh()->SetAnimInstanceClass(UEnemyShooterAnimInstance::StaticClass()); // 사용할 애님 인스턴스 클래스 지정
-
-	// 회전 설정: AI 컨트롤러의 결정에 따라 캐릭터가 회전하도록 설정
-	GetCharacterMovement()->bOrientRotationToMovement = false; // 이동 방향으로 자동 회전 비활성화
-	GetCharacterMovement()->bUseControllerDesiredRotation = false; // 컨트롤러의 희망 회전값 사용 비활성화
-	bUseControllerRotationYaw = true; // 컨트롤러의 Yaw 회전값을 캐릭터에 직접 적용 (가장 중요)
-
-	GetCharacterMovement()->MaxWalkSpeed = 250.0f; // 기본 이동 속도 설정
-
-	UE_LOG(LogTemp, Warning, TEXT("EnemyShooter Generated"))
 }
 
 void AEnemyShooter::BeginPlay()
 {
 	Super::BeginPlay(); // 부모 클래스 BeginPlay 호출
+	UWorld* World = GetWorld();
+	if (!World) return;
+
 	SetCanBeDamaged(true); // 데미지를 받을 수 있도록 설정
 	SetActorTickInterval(0.2f); // Tick 주기 0.2초로 최적화
 	Health = MaxHealth; //최대 체력으로 현재 체력 초기화
 
-	SetupAI(); // AI 초기 설정 함수 호출
-
-	if (!GetController()) // AI 컨트롤러가 할당되지 않았다면 (만약을 위한 방어 코드)
+	AICon = Cast<AEnemyShooterAIController>(GetController()); // AI 컨트롤러 가져옴
+	if (!AICon) // AI 컨트롤러가 없다면
 	{
-		SpawnDefaultController(); // 기본 컨트롤러를 스폰하여 할당
-		UE_LOG(LogTemp, Warning, TEXT("EnemyShooter AI Controller manually spawned"));
+		SpawnDefaultController(); // AI 컨트롤러 스폰
+		AICon = Cast<AEnemyShooterAIController>(GetController()); // AI 컨트롤러 다시 가져옴
 	}
 
-	AAIController* AICon = Cast<AAIController>(GetController()); // AI 컨트롤러 가져오기
-	if (AICon)
+	USkeletalMeshComponent* MeshComp = GetMesh(); // 캐릭터 메쉬 컴포넌트 참조
+	if (GetMesh()) // 메쉬 컴포넌트가 유효하다면
 	{
-		UE_LOG(LogTemp, Warning, TEXT("EnemyShooter AI Controller Assigend %s"), *AICon->GetName());
+		AnimInstance = Cast<UEnemyShooterAnimInstance>(MeshComp->GetAnimInstance()); // 애님 인스턴스 가져옴
 	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("EnemyShooter AI Controller is Null!"));
-	}
+
+	MoveComp = GetCharacterMovement(); // 무브먼트 컴포넌트 참조
 
 	// 총 생성 및 장착
 	if (GunClass) // 블루프린트에서 설정한 총 클래스가 있다면
 	{
-		EquippedGun = GetWorld()->SpawnActor<AEnemyShooterGun>(GunClass); // 월드에 총 액터 스폰
+		EquippedGun = World->SpawnActor<AEnemyShooterGun>(GunClass); // 월드에 총 액터 스폰
 		if (EquippedGun)
 		{
 			EquippedGun->SetOwner(this); // 총의 소유자를 이 캐릭터로 설정
-			USkeletalMeshComponent* MeshComp = GetMesh(); // 캐릭터의 스켈레탈 메쉬를 가져옴
-			if (MeshComp)
+			if (MeshComp) // 메쉬 컴포넌트가 유효하다면
 			{
 				// 스켈레탈 메쉬의 특정 소켓에 총을 부착
 				FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
@@ -75,72 +65,43 @@ void AEnemyShooter::BeginPlay()
 	PlaySpawnIntroAnimation(); // 스폰 인트로 애니메이션 재생
 }
 
-void AEnemyShooter::PostInitializeComponents()
-{
-	Super::PostInitializeComponents(); // 부모 클래스 함수 호출
-	// 다음 틱에 실행되도록 타이머를 설정 (컨트롤러가 확실히 할당된 후 로그를 찍기 위함)
-	GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
-		{
-			AAIController* AICon = Cast<AAIController>(GetController()); // AI 컨트롤러 할당
-			if (AICon)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("AEnemyShooter AIController Assigned Later: %s"), *AICon->GetName());
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("AEnemyShooter AIController STILL NULL!"));
-			}
-		});
-}
 
 void AEnemyShooter::PlaySpawnIntroAnimation()
 {
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
-	if (!AnimInstance)
-	{
-		UE_LOG(LogTemp, Error, TEXT("EnemyShooter AnimInstance not found"));
-		return;
-	}
+	//UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
+	if (!AnimInstance || !AICon) return;
 
 	bIsPlayingIntro = true; // 인트로 재생 중 상태로 전환
 	bCanAttack = false; // 등장 중에는 공격 불가 상태
-
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController());
-	if (AICon)
-	{
-		AICon->StopMovement(); // 등장 애니메이션 동안 이동 중지
-	}
+	
+	AICon->StopMovement(); // 등장 애니메이션 동안 이동 중지
 
 	PlayAnimMontage(SpawnIntroMontage); // 스폰 인트로 몽타주 재생
 
 	// 몽타주가 끝나면 OnIntroMontageEnded 함수가 호출되도록 델리게이트 바인딩
-	FOnMontageEnded EndDelegate;
-	EndDelegate.BindUObject(this, &AEnemyShooter::OnIntroMontageEnded);
-	GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, SpawnIntroMontage);
+	FOnMontageEnded EndDelegate; // 델리게이트 생성
+	EndDelegate.BindUObject(this, &AEnemyShooter::OnIntroMontageEnded); // 델리게이트에 함수 바인딩
+	AnimInstance->Montage_SetEndDelegate(EndDelegate, SpawnIntroMontage); // 델리게이트 설정
 }
 
 void AEnemyShooter::OnIntroMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Shooter Intro Montage Ended"));
 	bIsPlayingIntro = false; // 인트로 재생 상태 해제
 	bCanAttack = true; // 공격 가능 상태로 전환
 }
 
 void AEnemyShooter::ApplyBaseWalkSpeed()
 {
-	GetCharacterMovement()->MaxWalkSpeed = 250.0f; // 기본 이동 속도 250으로 설정
-	GetCharacterMovement()->MaxAcceleration = 5000.0f; // 가속도를 높여 즉각 반응
-	GetCharacterMovement()->BrakingFrictionFactor = 10.0f; // 제동력을 높여 즉각 정지
-}
-
-void AEnemyShooter::SetupAI()
-{
-	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_NavWalking); // 네비게이션 메시 위를 걷는 모드로 설정
+	if (MoveComp)
+	{
+		MoveComp->MaxWalkSpeed = 250.0f; // 기본 이동 속도 250으로 설정
+		MoveComp->MaxAcceleration = 5000.0f; // 가속도를 높여 즉각 반응
+		MoveComp->BrakingFrictionFactor = 10.0f; // 제동력을 높여 즉각 정지
+	}
 }
 
 void AEnemyShooter::PlayShootingAnimation()
 {
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
 	if (!AnimInstance || !ShootingMontage)
 	{
 		// 애니메이션이 없더라도 공격 상태는 초기화해야 AI가 멈추지 않음
@@ -151,7 +112,6 @@ void AEnemyShooter::PlayShootingAnimation()
 
 	PlayAnimMontage(ShootingMontage); // 사격 몽타주 재생
 
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController());
 	if (AICon)
 	{
 		AICon->StopMovement(); // 이동 중지
@@ -161,9 +121,9 @@ void AEnemyShooter::PlayShootingAnimation()
 	bIsAttacking = true; // 공격 애니메이션 재생 중
 
 	// 몽타주 종료 시 OnShootingMontageEnded 호출하도록 델리게이트 바인딩
-	FOnMontageEnded EndDelegate;
-	EndDelegate.BindUObject(this, &AEnemyShooter::OnShootingMontageEnded);
-	AnimInstance->Montage_SetEndDelegate(EndDelegate, ShootingMontage);
+	FOnMontageEnded EndDelegate; // 델리게이트 생성
+	EndDelegate.BindUObject(this, &AEnemyShooter::OnShootingMontageEnded); // 델리게이트에 함수 바인딩
+	AnimInstance->Montage_SetEndDelegate(EndDelegate, ShootingMontage); // 델리게이트 설정
 }
 
 void AEnemyShooter::OnShootingMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -174,20 +134,19 @@ void AEnemyShooter::OnShootingMontageEnded(UAnimMontage* Montage, bool bInterrup
 
 void AEnemyShooter::PlayThrowingGrenadeAnimation()
 {
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
 	if (!AnimInstance || !ThrowingGrenadeMontage)
 	{
+		// 애니메이션이 없더라도 공격 상태는 초기화해야 AI가 멈추지 않음
 		bCanAttack = true;
 		bIsAttacking = false;
 		return;
 	}
 
-	// ★★★ 중요: 수류탄 투척 시에는 애니메이션 방향으로 몸을 고정해야 하므로, AI가 강제로 몸을 회전시키는 기능을 잠시 비활성화.
+	// 수류탄 투척 시에는 애니메이션 방향으로 몸을 고정해야 하므로 AI가 강제로 몸을 회전시키는 기능을 잠시 비활성화
 	bUseControllerRotationYaw = false;
 
 	PlayAnimMontage(ThrowingGrenadeMontage); // 수류탄 투척 몽타주 재생
 
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController());
 	if (AICon)
 	{
 		AICon->StopMovement(); // 이동 중지
@@ -197,43 +156,43 @@ void AEnemyShooter::PlayThrowingGrenadeAnimation()
 	bIsAttacking = true; // 공격 애니메이션 재생 중
 
 	// 몽타주 종료 시 OnThrowingGrenadeMontageEnded 호출하도록 델리게이트 바인딩
-	FOnMontageEnded EndDelegate;
-	EndDelegate.BindUObject(this, &AEnemyShooter::OnThrowingGrenadeMontageEnded);
-	AnimInstance->Montage_SetEndDelegate(EndDelegate, ThrowingGrenadeMontage);
+	FOnMontageEnded EndDelegate; // 델리게이트 생성
+	EndDelegate.BindUObject(this, &AEnemyShooter::OnThrowingGrenadeMontageEnded); // 델리게이트에 함수 바인딩
+	AnimInstance->Montage_SetEndDelegate(EndDelegate, ThrowingGrenadeMontage); // 델리게이트 설정
 }
 
 void AEnemyShooter::OnThrowingGrenadeMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	bCanAttack = true; // 공격 가능 상태로 복귀
 	bIsAttacking = false; // 공격 애니메이션 종료
-	bUseControllerRotationYaw = true; // ★★★ 중요: 비활성화했던 AI의 강제 회전 기능을 다시 활성화.
+	bUseControllerRotationYaw = true; // 비활성화했던 AI의 강제 회전 기능을 다시 활성화
 }
 
 float AEnemyShooter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	if (bIsDead || bIsPlayingIntro) return 0.0f; // 이미 사망했거나 인트로 재생중엔 피해를 받지 않음
 
+	if (!AICon || !AnimInstance) return 0.0f; // AI 컨트롤러나 애님 인스턴스가 없으면 데미지 무시
+
 	float DamageApplied = FMath::Min(Health, DamageAmount); // 실제 적용될 데미지 계산
 	Health -= DamageApplied; // 체력 감소
 	UE_LOG(LogTemp, Warning, TEXT("EnemyShooter took %f damage, Health remaining: %f"), DamageAmount, Health);
 
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance()); // 애님 인스턴스를 가져옴
-	if (!AnimInstance || HitMontages.Num() == 0) return 0.0f; // 애님 인스턴스가 없거나 피격 몽타주 배열이 비었다면 리턴
+	if (HitMontages.Num() == 0) return 0.0f; // 피격 몽타주 배열이 비었다면 리턴
 
 	int32 RandomIndex = FMath::RandRange(0, HitMontages.Num() - 1); // 피격 몽타주 배열에서 랜덤 인덱스 선택
 	UAnimMontage* SelectedMontage = HitMontages[RandomIndex]; // 선택된 몽타주
 
-	if (SelectedMontage)
+	if (SelectedMontage) // 선택된 몽타주가 유효하다면
 	{
 		AnimInstance->Montage_Play(SelectedMontage, 1.0f); // 선택된 몽타주 재생
 
 		// 피격 몽타주 종료 후 스턴 상태를 처리하기 위해 델리게이트 바인딩
-		FOnMontageEnded EndDelegate;
-		EndDelegate.BindUObject(this, &AEnemyShooter::OnHitMontageEnded);
-		AnimInstance->Montage_SetEndDelegate(EndDelegate, SelectedMontage);
+		FOnMontageEnded EndDelegate; // 델리게이트 생성
+		EndDelegate.BindUObject(this, &AEnemyShooter::OnHitMontageEnded); // 델리게이트에 함수 바인딩
+		AnimInstance->Montage_SetEndDelegate(EndDelegate, SelectedMontage); // 델리게이트 설정
 	}
 
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController());
 	if (AICon)
 	{
 		AICon->StopMovement(); // 피격 애니메이션 동안 이동 중지
@@ -243,6 +202,7 @@ float AEnemyShooter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEv
 	{
 		Die(); // 사망 처리
 	}
+
 	// 모든 로직이 끝난 후 Super::TakeDamage 호출
 	Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 	return DamageApplied; // 실제 적용된 데미지 양 반환
@@ -269,87 +229,83 @@ bool AEnemyShooter::IsEnemyDead_Implementation() const
 void AEnemyShooter::OnHitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	if (bIsDead) return; // 사망 시에는 아무것도 하지 않음
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController()); // [추가] 컨트롤러 참조
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
-	// 공중 스턴 상태에서 피격 애니메이션이 끝났을 경우, 다시 스턴 애니메이션을 이어서 재생
-	if (bIsInAirStun)
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	if (bIsInAirStun) // 공중 스턴 상태라면
 	{
-		if (AnimInstance && InAirStunMontage)
+		if (AnimInstance && InAirStunMontage) // 공중 스턴 몽타주가 유효하다면
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Hit animation ended while airborne. Resuming InAirStunMontage."));
-			AnimInstance->Montage_Play(InAirStunMontage, 1.0f);
+			AnimInstance->Montage_Play(InAirStunMontage, 1.0f); // 공중 스턴 몽타주 재생
 		}
 	}
-	else
+	else // 지상에 있을 때
 	{
-		// [추가] 지상에서 피격 몽타주가 끝났고, 스턴 상태가 아니라면 AI 이동 재개
-		if (AICon)
+		if (AICon) // AI 컨트롤러가 유효하다면
 		{
 			// AI가 멈춰있다가 다시 플레이어를 추적하게 함
-			APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-			if (PlayerPawn)
+			APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0); // 플레이어 폰 참조
+			if (PlayerPawn) // 플레이어 폰이 유효하다면
 			{
-				AICon->MoveToActor(PlayerPawn, 5.0f);
+				AICon->MoveToActor(PlayerPawn, 5.0f); // 플레이어 폰으로 이동 재개
 			}
 		}
-
-		UE_LOG(LogTemp, Warning, TEXT("Hit animation ended on ground. No need to resume InAirStunMontage."));
 	}
 }
 
 void AEnemyShooter::StopActions()
 {
-	AAIController* AICon = Cast<AAIController>(GetController());
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
+	UWorld* World = GetWorld();
+	if (!World) return;
 
-	GetCharacterMovement()->DisableMovement(); // 모든 이동 비활성화
-	GetCharacterMovement()->StopMovementImmediately(); // 즉시 정지
+	if (!MoveComp || !AnimInstance) return;
 
-	if (AnimInstance)
+	MoveComp->DisableMovement(); // 모든 이동 비활성화
+	MoveComp->StopMovementImmediately(); // 즉시 정지
+	 
+	AnimInstance->Montage_Stop(0.1f); // 재생 중인 모든 몽타주 정지
+
+	if (bIsInAirStun) // 스턴 상태일 경우 
 	{
-		AnimInstance->Montage_Stop(0.1f); // 재생 중인 모든 몽타주 정지
-	}
-
-	if (bIsInAirStun) // 스턴 상태일 경우 추가 조치
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Enemy is stunned! Forcing all actions to stop."));
 		bCanAttack = false; // 공격 불가 상태 유지
-		GetWorld()->GetTimerManager().ClearTimer(StunTimerHandle); // 스턴 해제 타이머가 있다면 취소
+		World->GetTimerManager().ClearTimer(StunTimerHandle); // 스턴 해제 타이머가 있다면 취소
 	}
 }
 
 void AEnemyShooter::Die()
 {
 	if (bIsDead) return; // 중복 사망 처리 방지
+
+	if (!MoveComp || !AnimInstance) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
 	bIsDead = true; // 사망 상태로 전환
 	Health = 0.0f;  // 체력 0으로 확정
 	StopActions();  // 모든 행동 및 타이머 정
+	
+	AnimInstance->Montage_Stop(0.1f); // 재생 중인 다른 몽타주 중지
 
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
-
-	if (AnimInstance)
-	{
-		AnimInstance->Montage_Stop(0.1f); // 재생 중인 다른 몽타주 중지
-	}
-
-	float HideTime = 0.0f; // 정리(Hide)까지 걸리는 시간
+	float HideTime = 0.0f; // 정리까지 걸리는 시간 선언
 	UAnimMontage* SelectedMontage = nullptr; // 재생할 사망 몽타주
 
-	// --- [수정된 핵심 로직] ---
-	// 1. 공중 스턴 상태이거나 낙하 중이고, 공중 사망 몽타주가 유효한지 확인
-	if ((bIsInAirStun || GetCharacterMovement()->IsFalling()) && InAirStunDeathMontage)
+	// 공중 스턴 상태이거나 낙하 중이고 공중 사망 몽타주가 유효한지 확인
+	if ((bIsInAirStun || MoveComp->IsFalling()) && InAirStunDeathMontage)
 	{
 		SelectedMontage = InAirStunDeathMontage; // 공중 사망 몽타주 선택
 	}
-	// 2. 1번이 아니라면, 지상 사망 몽타주가 있는지 확인
-	else if (DeadMontages.Num() > 0)
+	// 아니라면 
+	else if (DeadMontages.Num() > 0) // 지상 사망 몽타주 배열이 비어있지 않다면
 	{
-		int32 RandIndex = FMath::RandRange(0, DeadMontages.Num() - 1);
+		int32 RandIndex = FMath::RandRange(0, DeadMontages.Num() - 1); // 랜덤 인덱스 선택
 		SelectedMontage = DeadMontages[RandIndex]; // 지상 사망 몽타주 랜덤 선택
 	}
 
-	// 3. 재생할 몽타주가 결정되었다면
-	if (AnimInstance && SelectedMontage)
+	// 재생할 몽타주가 결정되었다면
+	if (SelectedMontage)
 	{
 		float PlayResult = AnimInstance->Montage_Play(SelectedMontage, 1.0f);
 
@@ -361,16 +317,19 @@ void AEnemyShooter::Die()
 			float HidePercent = (SelectedMontage == InAirStunDeathMontage) ? 0.35f : 0.8f;
 			HideTime = MontageLength * HidePercent;
 
-			// 계산된 시간 후에 HideEnemy 함수를 호출하도록 타이머 설정
-			GetWorld()->GetTimerManager().SetTimer(
-				DeathTimerHandle,
-				this,
-				&AEnemyShooter::HideEnemy,
+			TWeakObjectPtr<AEnemyShooter> WeakThis(this); // 약한 참조 생성
+			World->GetTimerManager().SetTimer( 
+				DeathTimerHandle, 
+				[WeakThis]()
+				{ 
+					if (WeakThis.IsValid()) // 유효성 검사
+					{
+						WeakThis->HideEnemy(); // 사망한 적을 숨기는 함수 호출
+					}
+				},
 				HideTime,
 				false
 			);
-			UE_LOG(LogTemp, Warning, TEXT("EnemyShooter death montage playing, will hide after %.2f seconds (%.0f%% of %.2f total)"),
-				HideTime, HidePercent * 100.0f, MontageLength);
 		}
 		else // 몽타주 재생에 실패했다면
 		{
@@ -382,25 +341,17 @@ void AEnemyShooter::Die()
 		HideEnemy(); // 즉시 정리
 	}
 
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController());
-	if (AICon)
-	{
-		// AICon->StopAI(); // AI 로직 중단 (정리 함수에서 처리하므로 주석)
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("AIController is NULL! Cannot stop AI."));
-	}
-
-	GetCharacterMovement()->DisableMovement(); // 이동 비활성화
-	GetCharacterMovement()->StopMovementImmediately(); // 즉시 정지
+	MoveComp->DisableMovement(); // 이동 비활성화
+	MoveComp->StopMovementImmediately(); // 즉시 정지
 	SetActorTickEnabled(false); // 성능을 위해 액터 틱 비활성화
-	UE_LOG(LogTemp, Warning, TEXT("EnemyShooter Die() completed"));
 }
 
 // 사망 후 메모리 및 시스템 정리 함수
 void AEnemyShooter::HideEnemy()
 {
+	UWorld* World = GetWorld();
+	if (!World) return;
+
 	if (!bIsDead) return;
 
 	DisableGravityPull(); //정리 작업의 일환으로 중력장 효과를 해제
@@ -413,24 +364,24 @@ void AEnemyShooter::HideEnemy()
 	}
 
 	// 1. 이벤트 및 델리게이트 정리 (가장 먼저)
-	GetWorld()->GetTimerManager().ClearAllTimersForObject(this); // 이 객체에 설정된 모든 타이머 해제
+	World->GetTimerManager().ClearAllTimersForObject(this); // 이 객체에 설정된 모든 타이머 해제
 
-	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	if (AnimInstance && IsValid(AnimInstance))
+	UAnimInstance* ShooterAnimInstance = GetMesh()->GetAnimInstance();
+	if (ShooterAnimInstance && IsValid(ShooterAnimInstance))
 	{
 		// 델리게이트 바인딩 완전 해제 (메모리 누수 방지)
-		AnimInstance->OnMontageEnded.RemoveAll(this);
-		AnimInstance->OnMontageBlendingOut.RemoveAll(this);
-		AnimInstance->OnMontageStarted.RemoveAll(this);
+		ShooterAnimInstance->OnMontageEnded.RemoveAll(this);
+		ShooterAnimInstance->OnMontageBlendingOut.RemoveAll(this);
+		ShooterAnimInstance->OnMontageStarted.RemoveAll(this);
 	}
 
 	// 2. AI 시스템 완전 정리
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController());
-	if (AICon && IsValid(AICon))
+	AEnemyShooterAIController* ShooterAICon = Cast<AEnemyShooterAIController>(GetController());
+	if (ShooterAICon && IsValid(ShooterAICon))
 	{
-		//AICon->StopAI(); // AI 로직 중단
-		AICon->UnPossess(); // 컨트롤러와 폰의 연결(빙의) 해제
-		AICon->Destroy(); // AI 컨트롤러 액터 자체를 파괴
+		//ShooterAICon->StopAI(); // AI 로직 중단
+		ShooterAICon->UnPossess(); // 컨트롤러와 폰의 연결(빙의) 해제
+		ShooterAICon->Destroy(); // AI 컨트롤러 액터 자체를 파괴
 	}
 
 	// 3. 무기 시스템 정리
@@ -470,9 +421,11 @@ void AEnemyShooter::HideEnemy()
 	SetCanBeDamaged(false); // 데미지를 받을 수 없도록 설정
 
 	// 7. 다음 프레임에 안전하게 액터 제거 (크래쉬 방지)
-	GetWorld()->GetTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<AEnemyShooter>(this)]()
+	TWeakObjectPtr<AEnemyShooter> WeakThis(this);
+	World->GetTimerManager().SetTimerForNextTick(
+		[WeakThis]()
 		{
-			if (WeakThis.IsValid() && !WeakThis->IsActorBeingDestroyed())
+			if (WeakThis.IsValid() && !WeakThis->IsActorBeingDestroyed()) // 안전성 검사
 			{
 				WeakThis->Destroy(); // 액터를 월드에서 완전히 제거
 				UE_LOG(LogTemp, Warning, TEXT("EnemyShooter Successfully Destroyed"));
@@ -483,17 +436,15 @@ void AEnemyShooter::HideEnemy()
 void AEnemyShooter::EnterInAirStunState(float Duration) 
 {
 	if (bIsDead || bIsInAirStun) return;
-	UE_LOG(LogTemp, Warning, TEXT("EnemyShooter Entering InAirStunState..."));
+
+	if (!AnimInstance || !AICon) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
 
 	bIsInAirStun = true;
-
-	// AI 멈추기
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController());
-	if (AICon)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Stopping Shooter AI manually..."));
-		AICon->StopMovement();
-	}
+	
+	AICon->StopMovement();
 
 	// 캐릭터를 위로 띄움
 	FVector LaunchDirection = FVector(0.0f, 0.0f, 1.0f);
@@ -501,86 +452,89 @@ void AEnemyShooter::EnterInAirStunState(float Duration)
 	LaunchCharacter(LaunchDirection * LaunchStrength, true, true);
 	UE_LOG(LogTemp, Warning, TEXT("EnemyShooter %s launched upwards!"), *GetName());
 
-	// 0.3초 후 중력 비활성화 (AEnemyDog와 동일)
-	FTimerHandle GravityDisableHandle;
-	GetWorld()->GetTimerManager().SetTimer(
+	TWeakObjectPtr<AEnemyShooter> WeakThis(this); // 약한 참조 생성
+	World->GetTimerManager().SetTimer( 
 		GravityDisableHandle,
-		[this]()
+		[WeakThis]()
 		{
-			GetCharacterMovement()->SetMovementMode(MOVE_Flying);
-			GetCharacterMovement()->GravityScale = 0.0f;
-			GetCharacterMovement()->Velocity = FVector::ZeroVector;
-			UE_LOG(LogTemp, Warning, TEXT("EnemyShooter %s gravity disabled, now floating!"), *GetName());
-		},
-		0.3f,
-		false
+			if (WeakThis.IsValid())
+			{
+				UCharacterMovementComponent* MC = WeakThis->GetCharacterMovement(); // 무브먼트 컴포넌트 참조
+				if (MC) // 무브먼트 컴포넌트가 유효하다면
+				{
+					MC->SetMovementMode(MOVE_Flying); // 비행 모드로 변경
+					MC->GravityScale = 0.0f; // 중력 비활성화
+					MC->Velocity = FVector::ZeroVector; // 속도 초기화
+					UE_LOG(LogTemp, Warning, TEXT("EnemyShooter %s gravity disabled, now floating!"), *WeakThis->GetName());
+				}
+			}
+		}, 0.3f, false // 한 번만 실행
 	);
 
-	// 스턴 애니메이션 실행
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance && InAirStunMontage)
+	if (InAirStunMontage) // 공중 스턴 몽타주가 유효하다면
 	{
-		AnimInstance->Montage_Play(InAirStunMontage, 1.0f);
+		AnimInstance->Montage_Play(InAirStunMontage, 1.0f); // 공중 스턴 몽타주 재생
 	}
 
-	// 일정 시간이 지나면 원래 상태로 복귀
-	GetWorld()->GetTimerManager().SetTimer(StunTimerHandle, this, &AEnemyShooter::ExitInAirStunState, Duration, false);
+	World->GetTimerManager().SetTimer(
+		StunTimerHandle,
+		[WeakThis]()
+		{
+			if (WeakThis.IsValid())
+			{
+				WeakThis->ExitInAirStunState(); // 공중 스턴 상태 종료 함수 호출
+			}
+		}, Duration, false
+	);
 }
 void AEnemyShooter::ExitInAirStunState()
 {
 	if (bIsDead) return;
-	UE_LOG(LogTemp, Warning, TEXT("EnemyShooter Exiting InAirStunState..."));
+	if (!MoveComp || !AnimInstance || !AICon) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
 
 	bIsInAirStun = false;
 
 	// 중력 복구 및 낙하 상태로 변경
-	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
-	GetCharacterMovement()->GravityScale = 1.5f;
+	MoveComp->SetMovementMode(MOVE_Falling);
+	MoveComp->GravityScale = 1.5f;
 	ApplyBaseWalkSpeed();
+	
+	UE_LOG(LogTemp, Warning, TEXT("Reactivating Shooter AI movement..."));
+	
+	MoveComp->SetMovementMode(MOVE_NavWalking); // 네비워킹 모드로 변경
+	MoveComp->SetDefaultMovementMode(); // 기본 이동 모드 복구
 
-	// AI 이동 다시 활성화
-	AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController());
-	if (AICon)
+	// 다시 이동 시작
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0); // 플레이어 폰 참조
+	if (PlayerPawn)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Reactivating Shooter AI movement..."));
-		GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
-		GetCharacterMovement()->SetDefaultMovementMode();
-
-		// 다시 이동 시작 (플레이어 추적)
-		APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-		if (PlayerPawn)
-		{
-			AICon->MoveToActor(PlayerPawn, 5.0f);
-		}
+		AICon->MoveToActor(PlayerPawn, 5.0f); // 플레이어 폰으로 이동 재개
 	}
-
-	// 애니메이션 정지
-	UEnemyShooterAnimInstance* AnimInstance = Cast<UEnemyShooterAnimInstance>(GetMesh()->GetAnimInstance());
-	if (AnimInstance)
-	{
-		AnimInstance->Montage_Stop(0.1f);
-	}
-
-	bIsInAirStun = false;
+	
+	AnimInstance->Montage_Stop(0.1f); // 재생 중인 모든 몽타주 정지
 }
 
 void AEnemyShooter::EnableGravityPull(FVector ExplosionCenter, float PullStrength)
 {
 	if (bIsDead) return; // 죽은 적은 끌어당기지 않음
 
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	if (!MoveComp || !AICon) return;
+
 	bIsTrappedInGravityField = true;
 	GravityFieldCenter = ExplosionCenter;
 
-	// AI·이동 전면 차단
-	if (AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController()))
-	{
-		AICon->StopMovement();
-		AICon->SetActorTickEnabled(false); // AI Tick 완전 중지
-	}
+	AICon->StopMovement();
+	AICon->SetActorTickEnabled(false); // AI Tick 완전 중지
 
-	GetCharacterMovement()->StopMovementImmediately();
-	GetCharacterMovement()->DisableMovement();
-	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+	MoveComp->StopMovementImmediately();
+	MoveComp->DisableMovement();
+	MoveComp->SetMovementMode(MOVE_Flying);
 
 	// 중력장 중앙으로 강제 이동 로직
 	FVector Direction = GravityFieldCenter - GetActorLocation();
@@ -594,54 +548,46 @@ void AEnemyShooter::EnableGravityPull(FVector ExplosionCenter, float PullStrengt
 	{
 		Direction.Normalize();
 		float PullSpeed = PullStrength * 10.f;
-		FVector NewLocation = GetActorLocation() + Direction * PullSpeed * GetWorld()->GetDeltaSeconds();
+		FVector NewLocation = GetActorLocation() + Direction * PullSpeed * World->GetDeltaSeconds();
 		SetActorLocation(NewLocation, true);
 	}
 
-	GetCharacterMovement()->Velocity = FVector::ZeroVector;
+	MoveComp->Velocity = FVector::ZeroVector;
 }
 
-/**
- * [신규 구현] AEnemy의 로직을 이식:
- * 중력장 효과를 해제합니다.
- */
 void AEnemyShooter::DisableGravityPull()
 {
 	if (!bIsTrappedInGravityField) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	if (!MoveComp || !AICon) return;
 
 	bIsTrappedInGravityField = false;
 
 	// 이동 모드 복구
 	ApplyBaseWalkSpeed();
-	GetCharacterMovement()->SetMovementMode(MOVE_NavWalking);
-	GetCharacterMovement()->SetDefaultMovementMode();
-	GetCharacterMovement()->StopMovementImmediately();
+	MoveComp->SetMovementMode(MOVE_NavWalking);
+	MoveComp->SetDefaultMovementMode();
+	MoveComp->StopMovementImmediately();
 
-	// AI 복구
-	if (AEnemyShooterAIController* AICon = Cast<AEnemyShooterAIController>(GetController()))
+	// 다시 플레이어를 추적하게 함
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	if (PlayerPawn)
 	{
-		// 다시 플레이어를 추적하게 함
-		APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-		if (PlayerPawn)
-		{
-			AICon->MoveToActor(PlayerPawn, 5.0f);
-		}
-		AICon->SetActorTickEnabled(true); // AI Tick 다시 활성화
+		AICon->MoveToActor(PlayerPawn, 5.0f);
 	}
+	AICon->SetActorTickEnabled(true); // AI Tick 다시 활성화
 
 	UE_LOG(LogTemp, Warning, TEXT("EnemyShooter %s has been released from gravity field"), *GetName());
 }
 
 void AEnemyShooter::Shoot()
 {
-	if (!EquippedGun || bIsDead || bIsPlayingIntro) // 총이 없거나, 죽었거나, 등장 중이면 발사 불가
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Cannot shoot: Gun not available or invalid state"));
-		return;
-	}
+	if (!IsValid(EquippedGun) || bIsDead || bIsPlayingIntro || bIsInAirStun) return; // 총이 없거나 죽었거나 등장 중이면 발사 불가
 
 	EquippedGun->FireGun(); // 장착된 총의 발사 함수 호출
-	bIsShooting = true; // 사격 중 상태로 전환 (현재는 사용되지 않음)
 
 	UE_LOG(LogTemp, Warning, TEXT("EnemyShooter fired gun!"));
 }
