@@ -7,7 +7,6 @@
 #include "EnemyAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
-#include "ObjectPoolManager.h"
 #include "MainGameModeBase.h"
 
 AEnemy::AEnemy()
