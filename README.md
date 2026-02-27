@@ -717,13 +717,41 @@
 <details>
 <summary><b>최종 업데이트 (시연 버전)</b></summary>
 
-### 1. 카메라 충돌 (Spring Arm Do Collision Test)
-### 2. 포스트 프로세싱 기반 사망 연출 (흑백 전환 + 비네팅)
-### 3. 시스템 UI 및 환경 설정 (그래픽, 사운드, 해상도)
-### 4. 메인 메뉴 및 UX 연출 (로딩 스크린, 일시정지, 이벤트 디스패처)
-### 5. 타격 피드백 및 넉백 시스템
+### 1. 카메라 충돌
+- 카메라와 캐릭터 사이의 지형지물을 감지하여 카메라가 벽을 투과하지 않도록 Spring Arm의 Do Collision Test를 활성화
+- 캐릭터가 벽에 밀착한 상태여도 카메라 시작지점(ViewPoint)에서 발생하는 레이캐스트 판정 오류가 없도록 함
+
+### 2. 포스트 프로세싱 기반 사망 연출
+- `UPostProcessComponent`를 직접 제어하여 캐릭터 사망 시 화면을 즉각적으로 흑백으로 전환
+- `ColorSaturation` = `FVector(0, 0, 1)` → 흑백 전환
+- `VignetteIntensity` = 0.5f → 화면 가장자리 어둡게 처리 (비네팅)
+
+### 3. 시스템 UI 및 환경 설정(Options) 구축
+- `USettingsGameInstance`를 통해 게임 시작부터 종료까지 유지되는 전역 설정 시스템 구축
+- `UGameUserSettings`를 활용하여 그래픽 품질, 안티앨리어싱, V-Sync, 창 모드 및 해상도를 C++에서 직접 제어
+- 사용자 모니터 지원 해상도 목록을 동적으로 가져와 UI에 표시
+- `USoundMix`와 `USoundClass`를 활용하여 마스터 볼륨 실시간 제어 및 파일 저장
+
+### 4. 메인 메뉴 및 UX 연출
+- `UMainMenuWidget`에서 `BindWidget` 매크로를 사용하여 WBP 버튼과 C++ 로직을 안전하게 연결
+- 레벨 전환 시 `LoadingScreenWidget`을 동적으로 생성하고, `FInputModeUIOnly`로 로딩 중 입력 차단
+- ESC를 통해 RESUME, RESTART, OPTIONS 메뉴를 사용할 수 있는 일시정지 시스템
+- 이벤트 디스패처 연동: 옵션에서 메인 메뉴 복귀 시 자동 설정 저장 및 UI 갱신
+
+### 5. 타격 피드백 및 넉백(Knockback) 시스템
+- `LaunchCharacter` 기반의 수평 넉백 로직 (총기 및 스킬 히트 시)
+- `bXYOverride = true` 적용: 기존 수평 이동 속도를 무시하고 넉백 속도를 즉시 덮어씌움
+- Z축 0 정규화로 공중 부양 방지, 지면 수평 이동만 허용
+
 ### 6. 웨이브 최고 기록 저장 시스템 (SaveGame)
-### 7. 게임 폴리싱 및 피드백 강화 (사운드, VFX, 밸런싱)
+- `UWaveRecordSaveGame` 클래스로 최고 웨이브 인덱스와 웨이브 이름을 로컬 슬롯에 저장
+- 게임 종료 또는 웨이브 클리어 시 현재 기록과 저장된 최고 기록을 비교하여 최신화
+
+### 7. 게임 폴리싱 및 피드백 강화
+- 모든 인게임 사운드를 Sound Cue → Sound Class로 체계화, 마스터 볼륨 옵션 실시간 연동
+- 거리 기반 사운드 감쇄(Attenuation) 적용
+- 총구 섬광, 피격 임팩트, 스킬 효과 등 모든 이펙트 최종 검수 및 눈부심 방지 조정
+- 적 체력, 공격력, 스폰 간격 등 웨이브 전반의 수치 밸런싱
 
 </details>
 
