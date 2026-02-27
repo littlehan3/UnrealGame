@@ -1,5 +1,6 @@
 # LOCOMOTION (TPS Action Survival Game)
-
+![C++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=c%2B%2B&logoColor=white)
+![Unreal Engine 5.4](https://img.shields.io/badge/Unreal%20Engine-5.4-313131?style=flat-square&logo=unrealengine&logoColor=white)
 > **2025년 공주대학교 정보통신공학과 졸업 작품 전시회 시연작**
 >
 > C++ 와 언리얼엔진 5.4 버전을 이용하여 제작된 실시간 액션 TPS 게임입니다.
