@@ -725,3 +725,38 @@
 ### 7. 게임 폴리싱 및 피드백 강화 (사운드, VFX, 밸런싱)
 
 </details>
+
+<details>
+<summary><b>프로젝트 최적화 및 리펙토링 업데이트 (시연 이후)</b></summary>
+
+### 1. 런타임 퍼포먼스 개선
+- 빈번한 `Cast<T>` 연산 → 멤버 변수 캐싱 + `BeginPlay` 초기화
+- `PrimaryActorTick.bCanEverTick = false` 설정으로 불필요한 Tick 제거
+- `GetWorld()` 반복호출 → 지역 변수(`UWorld* World`) 활용
+- 레이캐스트 호출 빈도를 로직에 맞게 조절
+
+### 2. 코드 안정성 및 컴파일 구조 개선
+- 54개 클래스 전체에 Early Return 패턴 도입
+- 불필요한 `#include` 제거 + 전방 선언 적용 → 컴파일 속도 개선, 순환 참조 방지
+- `this` 직접 캡처 타이머 람다를 약참조 방식으로 전환 (SafeTimer)
+- `UPROPERTY` / `UFUNCTION` 지정자 전수 조사 및 재정비
+
+### 3. 성능 검증 결과 (stat memory)
+| 측정항목 | 시연빌드 | 최적화빌드 | 개선결과 |
+| --- | --- | --- | --- |
+| Proxy Total (Avg) | 3806.00 | 166.00 | 평균부하 95% 감소 |
+| Proxy Total (Max) | 7704.00 | 3312.00 | 최대부하 57% 감소 |
+| MemStack Large Block | 2.50 MB | 1.25 MB | 메모리 점유 50% 감소 |
+| Used Streaming Pool | 187.68 MB | 159.49 MB | 텍스처 요구량 15% 감소 |
+
+### 4. 메인캐릭터 클래스 리펙토링 (SRP)
+- `AMainCharacter` → `USkillComponent` + `UMeleeCombatComponent` 분리
+- 2천 줄 단일 클래스 → 단일 책임 원칙에 따른 컴포넌트 분리
+
+### 5. 고도화 및 OOP 설계 연구 (진행중)
+- `TObjectPtr` 마이그레이션, `UDataAsset` 데이터 주도 설계, `UInterface` 기반 설계
+
+### 6. 저사양 PC 대응
+- 그래픽 기본값 Epic → Medium 조정, VRAM 부족 환경 GPU 크래시 방지
+
+</details>
