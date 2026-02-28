@@ -13,7 +13,16 @@
 | 문서 | 설명 |
 | --- | --- |
 | [졸업작품 전시 판넬](https://drive.google.com/file/d/1juNzVw-6LlI4VPA7kYJvu7l4knBZvY0F/view?usp=sharing) | 졸업 전시회에서 사용된 프로젝트 소개 판넬 |
-| [문제해결 및 개선 기록 노트](https://drive.google.com/file/d/1RFKRTb3lq0Ar7vT-4p2fAWsxuOvCUs_L/view?usp=sharing) | 36가지 기술적 난관과 데이터 기반 해결 과정을 기록한 기술 백서 |
+| [문제해결 및 개선 기록 노트](https://drive.google.com/file/d/1xz6mUJ4xct0AHBG25TouJpRpg-kXSh8e/view?usp=sharing) | 졸업 작품 출품까지의 개발 기간 동안 발생한 36가지 문제 해결 및 개선 기록 노트 |
+| [최적화 및 리펙토링 보고서](https://drive.google.com/file/d/19-7WQJbWdH-FLJ1KRGbyTvw9noyQnH2h/view?usp=sharing) | 출품 이후 코드 품질 향상과 게임의 안정성을 확보한 대표 사례 및 성과 보고서 |
+
+---
+
+## 시스템 아키텍처
+
+> 게임 클래스 전체의 흐름과 관계를 보여주는 다이어그램
+
+![시스템 아키텍처](https://github.com/user-attachments/assets/186ef8a6-6c62-49f9-81b2-9e6469140838)
 
 ---
 
