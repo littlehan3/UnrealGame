@@ -2,9 +2,11 @@
 ![C++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=c%2B%2B&logoColor=white)
 ![Unreal Engine 5.4](https://img.shields.io/badge/Unreal%20Engine-5.4-313131?style=flat-square&logo=unrealengine&logoColor=white)
 > **2025년 공주대학교 정보통신공학과 졸업 작품 전시회 시연작**
->
+> 
 > C++ 와 언리얼엔진 5.4 버전을 이용하여 제작된 실시간 액션 TPS 게임입니다.
 > 졸업 전시회에서 성공적으로 시연 및 발표를 마쳤습니다.
+>
+> 더블 점프와 역동적인 기동 시스템, 6종의 특화 스킬로 근·원거리를 넘나들며 한계를 시험하는 기록 갱신형 TPS 서바이벌 게임.
 
 ---
 
@@ -12,9 +14,11 @@
 
 | 문서 | 설명 |
 | --- | --- |
+| [플레이 영상(4분)](https://www.youtube.com/watch?v=pneKAQoV7Fg) | 자막 및 설명이 없는 플레이 영상
+| [기능 설명 영상(11분)](https://youtu.be/nkGwWj_yPy4) | 게임의 기능에 대한 설명이 담긴 영상
 | [졸업작품 전시 판넬](https://drive.google.com/file/d/1juNzVw-6LlI4VPA7kYJvu7l4knBZvY0F/view?usp=sharing) | 졸업 전시회에서 사용된 프로젝트 소개 판넬 |
 | [문제해결 및 개선 기록 노트](https://drive.google.com/file/d/1xz6mUJ4xct0AHBG25TouJpRpg-kXSh8e/view?usp=sharing) | 졸업 작품 출품까지의 개발 기간 동안 발생한 36가지 문제 해결 및 개선 기록 노트 |
-| [최적화 및 리펙토링 보고서](https://drive.google.com/file/d/19-7WQJbWdH-FLJ1KRGbyTvw9noyQnH2h/view?usp=sharing) | 출품 이후 코드 품질 향상과 게임의 안정성을 확보한 대표 사례 및 성과 보고서 |
+| [최적화 및 리펙토링 보고서](https://drive.google.com/file/d/19-7WQJbWdH-FLJ1KRGbyTvw9noyQnH2h/view?usp=sharing) | 시연 이후 코드 품질 향상과 게임의 안정성을 확보한 대표 사례 및 성과 보고서 |
 
 ---
 
