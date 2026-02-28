@@ -22,7 +22,9 @@
 
 > 게임 클래스 전체의 흐름과 관계를 보여주는 다이어그램
 
-![시스템 아키텍처](https://github.com/user-attachments/assets/186ef8a6-6c62-49f9-81b2-9e6469140838)
+<a href="https://github.com/user-attachments/assets/186ef8a6-6c62-49f9-81b2-9e6469140838" target="_blank">
+  <img src="https://github.com/user-attachments/assets/186ef8a6-6c62-49f9-81b2-9e6469140838" alt="시스템 아키텍처" width="100%">
+</a>
 
 ---
 
