@@ -767,7 +767,6 @@ void AMainCharacter::AttachRifleToBack()
 	if (IsValid(Rifle)) // 라이플이 유효할 때
     {
 		Rifle->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("BackGunSocket")); // 소켓에 부착
-        // 하드 코딩 된 수치 (에디터 내부의 소켓 설정에 따라 조정 가능)
 		Rifle->SetActorRelativeLocation(RifleBackLocation); // 위치 조정
 		Rifle->SetActorRelativeRotation(RifleBackRotation); // 회전 조정
 		Rifle->SetOwner(this); // 총기의 소유자를 캐릭터로 설정

@@ -10,7 +10,6 @@
 #include "EnemyDrone.h"
 #include "EnemyGuardian.h"
 #include "EnemyShooter.h"
-#include "Async/Async.h"
 #include "WaveRecordSaveGame.h"
 
 AMainGameModeBase::AMainGameModeBase()
@@ -23,7 +22,7 @@ AMainGameModeBase::AMainGameModeBase()
     CurrentWaveIndex = 0; 
     bWaveInProgress = false;
     bWaveSystemActive = false;
-    bEnableAsyncCleanup = true;
+    bEnableDeferredCleanup = true;
     PreCalculatedLocationCount = 200;
     CurrentLocationIndex = 0;
     bLocationCalculationComplete = false;
@@ -335,11 +334,6 @@ void AMainGameModeBase::OnWaveCompleted()
         UE_LOG(LogTemp, Warning, TEXT("Giving wave clear reward: Health=%f, Ammo=%d"), HealthRewardOnClear, AmmoRewardOnClear);
     }
 
-    if (bEnableAsyncCleanup) // 비동기 메모리 정리 가능 상태라면
-    {
-        PerformAsyncCleanup(); // 비동기 메모리 정리함수 호출
-    }
-
     PrepareNextWave(); // 다음 웨이브 준비 함수 호출
 }
 
@@ -425,38 +419,28 @@ void AMainGameModeBase::OnEnemyDestroyed(APawn* DestroyedEnemy)
     }
 }
 
-void AMainGameModeBase::PerformAsyncCleanup()
+void AMainGameModeBase::PerformDeferredCleanup()
 {
-    UE_LOG(LogTemp, Log, TEXT("Starting async cleanup for Wave %d"), CurrentWaveIndex + 1);
+    UE_LOG(LogTemp, Log, TEXT("Starting deferred cleanup for Wave %d"), CurrentWaveIndex + 1);
 
-    // 람다 캡처 시점부터 약참조를 사용하여 안정성 확보
-    AsyncTask(ENamedThreads::BackgroundThreadPriority, [WeakThis = TWeakObjectPtr<AMainGameModeBase>(this)]()
+    // 0.1초 후 게임스레드에서 정리 실행 (기존 AsyncTask + Sleep(0.1f) + GameThread 패턴을 타이머로 대체)
+    TWeakObjectPtr<AMainGameModeBase> WeakThis(this);
+    GetWorldTimerManager().SetTimer(CleanupTimer, [WeakThis]()
         {
-            FPlatformProcess::Sleep(0.1f); // 다른 프로세스들과의 충돌을 피하기 위해 약간의 지연시간동안 대기
-
-            // 액터나 배열 조작은 반드시 GameThread(메인스레드) 에서 이루어져야함
-            AsyncTask(ENamedThreads::GameThread, [WeakThis]() 
-                {
-                    // 약참조를 강참조로 일시적으로 변환
-                    // WeakThis.Get()은 객체가 살아있으면 진짜 주소인 StrongThis를 주고 이미 파괴되었다면 NULL을 줌
-                    // StrongThis라는 변수에 이 값을 담아 이 블록이 끝날 떄까지는 객체가 메모리에서 사라지지 않도록 붙잡음
-                    if (AMainGameModeBase* StrongThis = WeakThis.Get()) // GC에 주소가 유효한지 확인
+            if (WeakThis.IsValid())
+            {
+                // 더이상 유효하지 않은 적(이미 파괴된 적)의 참조를 배열에서 모두 제거
+                WeakThis->SpawnedEnemies.RemoveAll([](const TWeakObjectPtr<APawn>& EnemyPtr)
                     {
-                        // StrongThis는 유효성이 보장되므로 내부 변수인 SpawnedEnemies에 접근 가능
-                        // 더이상 유효하지 않은 적(이미 파괴된 적)의 참조를 배열에서 모두 제거
-                        StrongThis->SpawnedEnemies.RemoveAll([](const TWeakObjectPtr<APawn>& EnemyPtr)
-                            {
-                                return !EnemyPtr.IsValid(); // 약참조가 유효하지 않다면 true를 반환하여 제거
-                            });
+                        return !EnemyPtr.IsValid();
+                    });
 
-                        // 배열의 실제 메모리 할당 크리를 현재 데이터 개수에 딱 맞게 줄여 메모리 누수를 방지
-                        // Shrink함수는 현재 요소를 보유하는데 필요한 최소 크기로 할당 크기를 조정해줌
-                        StrongThis->SpawnedEnemies.Shrink();
-                        // 정리가 끝난 후 현재 살아있는 적의 숫자를 출력
-                        UE_LOG(LogTemp, Warning, TEXT("Async cleanup completed. Active enemies: %d"), StrongThis->SpawnedEnemies.Num());
-                    }
-                });
-        });
+                // 배열의 실제 메모리 할당 크기를 현재 데이터 개수에 딱 맞게 줄여 메모리 낭비 방지
+                WeakThis->SpawnedEnemies.Shrink();
+
+                UE_LOG(LogTemp, Warning, TEXT("Deferred cleanup completed. Active enemies: %d"), WeakThis->SpawnedEnemies.Num());
+            }
+        }, 0.1f, false); // 0.1초 후 1회 실행
 }
 
 void AMainGameModeBase::ForceCompleteMemoryCleanup()
@@ -602,6 +586,7 @@ void AMainGameModeBase::StopAllSystems()
     GetWorldTimerManager().ClearTimer(WaveStartTimer);
     GetWorldTimerManager().ClearTimer(SpawnTimer);
     GetWorldTimerManager().ClearTimer(CleanupTimer);
+    GetWorldTimerManager().ClearTimer(RefillTimer);
 }
 
 void AMainGameModeBase::PreCalculateSpawnLocations()
@@ -633,51 +618,52 @@ void AMainGameModeBase::PreCalculateSpawnLocations()
 void AMainGameModeBase::RefreshSpawnLocations()
 {
     UE_LOG(LogTemp, Warning, TEXT("Refreshing spawn locations..."));
-    RefillSpawnLocationsAsync();
+    RefillSpawnLocationsPerFrame();
 }
 
-void AMainGameModeBase::RefillSpawnLocationsAsync()
+void AMainGameModeBase::RefillSpawnLocationsPerFrame()
 {
     if (!bLocationCalculationComplete) return;
-    
-    // 비동기 데이터 캡처
-    // 배경 스레드에서 안전하게 사용하기 위해 멤버 변수의 값을 지역 변수로 미리 복사
-  
-    // 메인 스레드에서 안전하게 값을 먼저 확보
-    const FVector CachedCenter = bSpawnAroundPlayer ? GetPlayerLocation() : SpawnCenterLocation;
-    const float Radius = DefaultSpawnRadius;
 
-    // 배경 스레드에서 안전하게 사용하기 위해 값을 미리 복사
-    AsyncTask(ENamedThreads::BackgroundThreadPriority, [this, CachedCenter, Radius]()
+    // 게임스레드에서 안전하게 값 캐싱
+    RefillCenter = bSpawnAroundPlayer ? GetPlayerLocation() : SpawnCenterLocation;
+    RefillRadius = DefaultSpawnRadius;
+    RefillCount = 0;
+
+    // 기존 타이머가 있으면 정리
+    GetWorldTimerManager().ClearTimer(RefillTimer);
+
+    // 프레임당 1개씩 NavMesh 쿼리 실행 (게임스레드에서 안전)
+    TWeakObjectPtr<AMainGameModeBase> WeakThis(this);
+    GetWorldTimerManager().SetTimer(RefillTimer, [WeakThis]()
         {
-            TArray<FVector> NewLocations;
-
-            for (int32 i = 0; i < 50; i++)
+            if (WeakThis.IsValid())
             {
-                FVector SpawnLocation;
-                // 복사된 안전한 값을 사용하여 navmesh 연산을 배경에서 수행
-                if (FindRandomLocationOnNavMesh(CachedCenter, Radius, SpawnLocation))
-                {
-                    NewLocations.Add(SpawnLocation);
-                }
+                WeakThis->RefillOneSpawnLocation();
             }
-            // 계산된 결과물을 적용할 때는 다시 GameThread로 돌아옴
-            AsyncTask(ENamedThreads::GameThread, [WeakThis = TWeakObjectPtr<AMainGameModeBase>(this), NewLocations]()
-                {
-                    if (AMainGameModeBase* StrongThis = WeakThis.Get())
-                    {
-                        if (NewLocations.Num() > 0)
-                        {
-                            // 캐싱된 배열의 일부 구간을 무작위로 덮어씌워 스폰 포인트를 순환
-                            int32 StartIndex = FMath::RandRange(0, FMath::Max(0, StrongThis->PreCalculatedSpawnLocations.Num() - NewLocations.Num()));
-                            for (int32 i = 0; i < NewLocations.Num() && StartIndex + i < StrongThis->PreCalculatedSpawnLocations.Num(); i++)
-                            {
-                                StrongThis->PreCalculatedSpawnLocations[StartIndex + i] = NewLocations[i];
-                            }
-                        }
-                    }
-                });
-        });
+        }, 0.0f, true); // 0초 간격 = 매 프레임, 반복
+}
+
+void AMainGameModeBase::RefillOneSpawnLocation()
+{
+    if (RefillCount >= RefillTargetCount)
+    {
+        GetWorldTimerManager().ClearTimer(RefillTimer);
+        UE_LOG(LogTemp, Warning, TEXT("Spawn location refill completed: %d locations updated"), RefillCount);
+        return;
+    }
+
+    FVector SpawnLocation;
+    if (FindRandomLocationOnNavMesh(RefillCenter, RefillRadius, SpawnLocation))
+    {
+        if (PreCalculatedSpawnLocations.Num() > 0)
+        {
+            int32 ReplaceIndex = FMath::RandRange(0, PreCalculatedSpawnLocations.Num() - 1);
+            PreCalculatedSpawnLocations[ReplaceIndex] = SpawnLocation;
+        }
+    }
+
+    RefillCount++;
 }
 
 FVector AMainGameModeBase::GetNextSpawnLocation()

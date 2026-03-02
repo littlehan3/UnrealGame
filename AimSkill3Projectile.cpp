@@ -5,6 +5,7 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/AudioComponent.h"
 
 AAimSkill3Projectile::AAimSkill3Projectile()
 {
@@ -36,7 +37,7 @@ void AAimSkill3Projectile::BeginPlay()
     Super::BeginPlay();
     SetLifeSpan(10.f);
 
-    // [추가] 루핑 사운드 시작
+    // 루핑 사운드 시작
     if (LoopingSoundComponent && LoopingSound)
     {
         LoopingSoundComponent->SetSound(LoopingSound);
@@ -89,7 +90,7 @@ void AAimSkill3Projectile::Explode()
         LoopingSoundComponent->DestroyComponent();
     }
 
-    // 폭발 사운드 재생 (Actor 위치에서)
+    // 폭발 사운드 재생
     if (ExplosionSound)
     {
         UGameplayStatics::PlaySoundAtLocation(

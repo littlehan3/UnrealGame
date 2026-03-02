@@ -8,9 +8,9 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "AimSkill2Projectile.generated.h"
 
-class UProjectileMovementComponent; // Åõ»çÃ¼ ÀÌµ¿ÄÄÆ÷³ÍÆ® Àü¹æ¼±¾ğ
-class USphereComponent; // ±¸Ã¼Äİ¸®Àü ÄÄÆ÷³ÍÆ® Å¬·¡½º Àü¹æ¼±¾ğ
-class UStaticMeshComponent; // Á¤Àû ¸Ş½Ã ÄÄÆ÷³ÍÆ® Å¬·¡½º Àü¹æ¼±¾ğ
+class UProjectileMovementComponent; // íˆ¬ì‚¬ì²´ ì´ë™ì»´í¬ë„ŒíŠ¸ ì „ë°©ì„ ì–¸
+class USphereComponent; // êµ¬ì²´ì¶©ëŒ ì»´í¬ë„ŒíŠ¸ í´ë˜ìŠ¤ ì „ë°©ì„ ì–¸
+class UStaticMeshComponent; // ìŠ¤íƒœí‹± ë©”ì‰¬ ì»´í¬ë„ŒíŠ¸ í´ë˜ìŠ¤ ì „ë°©ì„ ì–¸
 
 UCLASS()
 class LOCOMOTION_API AAimSkill2Projectile : public AActor
@@ -18,86 +18,86 @@ class LOCOMOTION_API AAimSkill2Projectile : public AActor
 	GENERATED_BODY()
 
 public:
-	AAimSkill2Projectile(); 
+	AAimSkill2Projectile();
 	virtual void Tick(float DeltaTime) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	void FireInDirection(const FVector& ShootDirection); // Æ¯Á¤ ¹æÇâÀ¸·Î Åõ»çÃ¼ ¹ß»çÇÏ´Â ÇÔ¼ö
-	void SetDamage(float InDamage) { Damage = InDamage; } // Åõ»çÃ¼ µ¥¹ÌÁö ¼³Á¤ ÇÔ¼ö
-	void SetShooter(AActor* InShooter); //{ Shooter = InShooter; } // ¹ß»çÀÚ ¼³Á¤ ÇÔ¼ö
+	void FireInDirection(const FVector& ShootDirection); // íŠ¹ì • ë°©í–¥ìœ¼ë¡œ íˆ¬ì‚¬ì²´ ë°œì‚¬í•˜ëŠ” í•¨ìˆ˜
+	void SetDamage(float InDamage) { Damage = InDamage; } // íˆ¬ì‚¬ì²´ ë°ë¯¸ì§€ ì„¤ì • í•¨ìˆ˜
+	void SetShooter(AActor* InShooter); //{ Shooter = InShooter; } // ë°œì‚¬ì ì„¤ì • í•¨ìˆ˜
 
 protected:
 	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
-		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit); // Ãæµ¹ ¹ß»ı½Ã È£ÃâµÇ´Â ÇÔ¼ö
+		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit); // ì¶©ëŒ ë°œìƒì‹œ í˜¸ì¶œë˜ëŠ” í•¨ìˆ˜
 
-	void ApplyAreaDamage(); // ¹üÀ§ µ¥¹ÌÁö Àû¿ë ÇÔ¼ö
-	AActor* FindClosestEnemy(); // °¡Àå °¡±î¿î Àû Å½»ö ÇÔ¼ö
-	void EvaluateTargetAfterApex(); // ÃÖ°íÁ¡ µµ´Ş½Ã Å¸ÄÏÀ» Æò°¡ÇÏ´Â ÇÔ¼ö
-	void AutoExplodeIfNoTarget(); // Å¸ÄÏÀÌ ¾øÀ»¶§ ÀÚµ¿ Æø¹ßÇÏ´Â ÇÔ¼ö
+	void ApplyAreaDamage(); // ê´‘ì—­ ë°ë¯¸ì§€ ì ìš© í•¨ìˆ˜
+	AActor* FindClosestEnemy(); // ê°€ì¥ ê°€ê¹Œìš´ ì  íƒìƒ‰ í•¨ìˆ˜
+	void EvaluateTargetAfterApex(); // ìµœê³ ì  ë„ë‹¬ì‹œ íƒ€ê²Ÿì„ ì •í•˜ëŠ” í•¨ìˆ˜
+	void AutoExplodeIfNoTarget(); // íƒ€ê²Ÿì´ ì—†ìœ¼ë©´ ìë™ í­ë°œí•˜ëŠ” í•¨ìˆ˜
 
-	void SpawnPersistentExplosionArea(const FVector& Location); // Æø¹ß¿µ¿ªÀ» ³²±â´Â ÇÔ¼ö
-	void ApplyPersistentEffects(); // Æø¹ß¿µ¿ªÈ¿°ú ÇÔ¼ö
-	void ApplyPeriodicDamage(); // Æø¹ß¿µ¿ª ÁÖ±âÀûµ¥¹ÌÁö Àû¿ë ÇÔ¼ö
+	void SpawnPersistentExplosionArea(const FVector& Location); // ì§€ì†ì˜ì—­ì„ ìƒì„±í•˜ëŠ” í•¨ìˆ˜
+	void ApplyPersistentEffects(); // ì§€ì†ì˜ì—­ ëŒì–´ë‹¹ê¸°ê¸° íš¨ê³¼ í•¨ìˆ˜
+	void ApplyPeriodicDamage(); // ì§€ì†ì˜ì—­ ì£¼ê¸°ì  ë°ë¯¸ì§€ ì ìš© í•¨ìˆ˜
 
 private:
 	UPROPERTY(VisibleAnywhere)
-	USphereComponent* CollisionComponent; // Ãæµ¹°¨Áö ÄÄÆ÷³ÍÆ®
+	USphereComponent* CollisionComponent; // ì¶©ëŒíŒì • ì»´í¬ë„ŒíŠ¸
 
 	UPROPERTY(VisibleAnywhere)
-	UProjectileMovementComponent* ProjectileMovement; // Åõ»çÃ¼ ÀÌµ¿ Ã³¸® ÄÄÆ÷³ÍÆ®
+	UProjectileMovementComponent* ProjectileMovement; // íˆ¬ì‚¬ì²´ ì´ë™ ì²˜ë¦¬ ì»´í¬ë„ŒíŠ¸
 
 	UPROPERTY(VisibleAnywhere)
-	UStaticMeshComponent* MeshComponent; // Åõ»çÃ¼ ¸Å½¬ ÄÄÆ÷³ÍÆ®
+	UStaticMeshComponent* MeshComponent; // íˆ¬ì‚¬ì²´ ì™¸í˜• ì»´í¬ë„ŒíŠ¸
 
 	UPROPERTY(EditDefaultsOnly)
-	UNiagaraSystem* ExplosionEffect; // Æø¹ßÀÌÆåÆ® ³ªÀÌ¾Æ°¡¶ó ÄÄÆ÷³ÍÆ®
+	UNiagaraSystem* ExplosionEffect; // í­ë°œì´í™íŠ¸ ë‚˜ì´ì•„ê°€ë¼ ì‹œìŠ¤í…œ
 
 	UPROPERTY(EditDefaultsOnly)
-	UNiagaraSystem* PersistentAreaEffect; // Æø¹ß¿µ¿ª ³ªÀÌ¾Æ°¡¶ó ÄÄÆ÷³ÍÆ®
+	UNiagaraSystem* PersistentAreaEffect; // ì§€ì†ì˜ì—­ ë‚˜ì´ì•„ê°€ë¼ ì‹œìŠ¤í…œ
 
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* ExplosionSound; // Æø¹ß »ç¿îµå
+	USoundBase* ExplosionSound; // í­ë°œ ì‚¬ìš´ë“œ
 
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* LoopingFlightSound; // Åõ»çÃ¼ ºñÇà ½Ã »ç¿îµå
+	USoundBase* LoopingFlightSound; // íˆ¬ì‚¬ì²´ ë¹„í–‰ ë£¨í”„ ì‚¬ìš´ë“œ
 
 	UPROPERTY(EditAnywhere, Category = "SoundEffects")
-	USoundBase* PersistentAreaSound; // Æø¹ß¿µ¿ª »ç¿îµå
+	USoundBase* PersistentAreaSound; // ì§€ì†ì˜ì—­ ì‚¬ìš´ë“œ
 
 	UPROPERTY()
-	UNiagaraComponent* PersistentAreaNiagaraComponent; // ½ºÆù½Ã ÄÄÆ÷³ÍÆ®¸¦ ÀúÀåÇÏ°í Áö¼Ó½Ã°£ Á¾·á ½Ã Á÷Á¢ Á¦¾îÇÏ±â À§ÇÑ Æ÷ÀÎÅÍ
+	UNiagaraComponent* PersistentAreaNiagaraComponent; // ë‚˜ì´ì•„ê°€ë¼ ì»´í¬ë„ŒíŠ¸ë¥¼ ì €ì¥í•˜ê³  ì§€ì†ì‹œê°„ ì¢…ë£Œ ì‹œ ì•ˆì „ ì •ë¦¬í•˜ê¸° ìœ„í•œ í¬ì¸í„°
 
 	UPROPERTY()
-	UAudioComponent* FlightAudioComponent;  // ºñÇà »ç¿îµå ¿Àµğ¿À ÄÄÆ÷³ÍÆ®
+	UAudioComponent* FlightAudioComponent;  // ë¹„í–‰ ì‚¬ìš´ë“œ ì˜¤ë””ì˜¤ ì»´í¬ë„ŒíŠ¸
 
 	UPROPERTY()
-	UAudioComponent* PersistentAreaAudioComponent;  // Æø¹ß ¿µ¿ª »ç¿îµå ¿Àµğ¿À ÄÄÆ÷³ÍÆ®
+	UAudioComponent* PersistentAreaAudioComponent;  // í­ë°œ ì˜ì—­ ì§€ì† ì˜¤ë””ì˜¤ ì»´í¬ë„ŒíŠ¸
 
-	AActor* Shooter; // Åõ»çÃ¼¸¦ ¹ß»çÇÑ ¿¢ÅÍ
+	AActor* Shooter; // íˆ¬ì‚¬ì²´ë¥¼ ë°œì‚¬í•œ ì•¡í„°
 
-	float Damage = 10.0f; // Åõ»çÃ¼ µ¥¹ÌÁö
-	float DamageRadius = 300.0f; // Åõ»çÃ¼ Æø¹ß¹İ°æ
-	float PullStrength = 1000.0f; // ²ø¾î´ç±è ¼¼±â
+	float Damage = 10.0f; // íˆ¬ì‚¬ì²´ ë°ë¯¸ì§€
+	float DamageRadius = 300.0f; // íˆ¬ì‚¬ì²´ í­ë°œë°˜ê²½
+	float PullStrength = 1000.0f; // ëŒì–´ë‹¹ê¸°ëŠ” ì„¸ê¸°
 
-	bool bHasReachedApex = false; // Åõ»çÃ¼°¡ °íÁ¡¿¡ µµ´ŞÇß´ÂÁö ¿©ºÎ
-	float ApexHeight = 500.0f; // °íÁ¡ ³ôÀÌ
-	float DelayBeforeTracking = 0.5f; // °íÁ¡ µµ´Ş ÈÄ Å¸°Ù ÃßÀû Àü µô·¹ÀÌ
-	float DetectionRadius = 1500.0f; // °¨Áö ¹üÀ§
+	bool bHasReachedApex = false; // íˆ¬ì‚¬ì²´ê°€ ì •ì ì— ë„ë‹¬í–ˆëŠ”ì§€ ì—¬ë¶€
+	float ApexHeight = 500.0f; // ì •ì  ë†’ì´
+	float DelayBeforeTracking = 0.5f; // ì •ì  ë„ë‹¬ í›„ íƒ€ê²Ÿ ì¶”ì  ì „ ë”œë ˆì´
+	float DetectionRadius = 1500.0f; // ê°ì§€ ë²”ìœ„
 
-	float ExplosionDuration = 7.0f; // Æø¹ß Áö¼Ó ½Ã°£
-	float DamageInterval = 1.0f; // ÁÖ±âÀû µ¥¹ÌÁö Àû¿ë °£°İ
-	bool bExplosionActive = false; // Æø¹ß ÀÌÆåÆ®°¡ È°¼ºÈ­ µÇ¾ú´ÂÁö ¿©ºÎ
+	float ExplosionDuration = 7.0f; // í­ë°œ ì§€ì† ì‹œê°„
+	float DamageInterval = 1.0f; // ì£¼ê¸°ì  ë°ë¯¸ì§€ ì ìš© ê°„ê²©
+	bool bExplosionActive = false; // í­ë°œ ì´í™íŠ¸ê°€ í™œì„±í™” ë˜ì—ˆëŠ”ì§€ ì—¬ë¶€
 
-	FVector ExplosionLocation; // Æø¹ß ¹ß»ı À§Ä¡
+	FVector ExplosionLocation; // í­ë°œ ë°œìƒ ìœ„ì¹˜
 
-	FTimerHandle PersistentEffectsTimerHandle; // Æø¹ß¿µ¿ª ÀÌÆåÆ® Àû¿ëÀ» À§ÇÑ Å¸ÀÌ¸Ó ÇÚµé
-	FTimerHandle PeriodicDamageTimerHandle; // Æø¹ß¿µ¿ª µ¥¹ÌÁö Àû¿ëÀ» ½Ã°£À» À§ÇÑ Å¸ÀÌ¸Ó ÇÚµé
-	FTimerHandle ExplosionDurationTimerHandle; // Æø¹ß¿µ¿ª Áö¼Ó½Ã°£À» À§ÇÑ Å¸ÀÌ¾î ÇÚµé
-	FTimerHandle DelayTimerHandle; // Áö¿¬ µ¿ÀÛÀ» À§ÇÑ Å¸ÀÌ¸Ó ÇÚµé
+	FTimerHandle PersistentEffectsTimerHandle; // ì§€ì†ì˜ì—­ ì´í™íŠ¸ ì ìš©ì„ ìœ„í•œ íƒ€ì´ë¨¸ í•¸ë“¤
+	FTimerHandle PeriodicDamageTimerHandle; // ì§€ì†ì˜ì—­ ë°ë¯¸ì§€ ì ìš© ì‹œê°„ì„ ìœ„í•œ íƒ€ì´ë¨¸ í•¸ë“¤
+	FTimerHandle ExplosionDurationTimerHandle; // ì§€ì†ì˜ì—­ ì§€ì†ì‹œê°„ì„ ìœ„í•œ íƒ€ì´ë¨¸ í•¸ë“¤
+	FTimerHandle DelayTimerHandle; // ì •ì  ë”œë ˆì´ë¥¼ ìœ„í•œ íƒ€ì´ë¨¸ í•¸ë“¤
 
-	TSet<AActor*> DamagedActorsThisTick; // ÇöÀç Æ½¿¡¼­ µ¥¹ÌÁö¸¦ ÀÔÀº ¿¢ÅÍµéÀ» ÃßÀûÇÏ´Â ÁıÇÕ
+	TSet<AActor*> DamagedActorsThisTick; // í˜„ì¬ í‹±ì—ì„œ ë°ë¯¸ì§€ë¥¼ ë°›ì€ ì•¡í„°ë“¤ì„ ì €ì¥í•˜ëŠ” ì„¸íŠ¸
 
 	bool bHasExploded = false;
 };

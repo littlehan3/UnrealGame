@@ -126,9 +126,9 @@ void AEnemyShooterGrenade::Explode()
 
 	if (PlayerCharacter)
 	{
-		// OverlapMultiByChannel 대신 Dist를 사용하여 기존 TArray<FOverlapResult> 메모리 할당을 하지 않아도 되도록 변경 (히트 대상이 플레이어 뿐이기에)
-		float DistanceToPlayer = FVector::Dist(ExplosionCenter, PlayerCharacter->GetActorLocation());
-		if (DistanceToPlayer <= ExplosionRadius)
+		// OverlapMultiByChannel 대신 DistSquared를 사용하여 기존 TArray<FOverlapResult> 메모리 할당을 하지 않아도 되도록 변경 (히트 대상이 플레이어 뿐이기에)
+		float DistanceToPlayer = FVector::DistSquared(ExplosionCenter, PlayerCharacter->GetActorLocation());
+		if (DistanceToPlayer <= FMath::Square(ExplosionRadius))
 		{
 			UGameplayStatics::ApplyDamage(
 				PlayerCharacter, ExplosionDamage,

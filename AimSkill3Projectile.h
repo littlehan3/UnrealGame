@@ -2,13 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "NiagaraSystem.h"
-#include "Components/AudioComponent.h"
 #include "AimSkill3Projectile.generated.h"
 
 class UProjectileMovementComponent;
 class USphereComponent;
 class UStaticMeshComponent;
+class UNiagaraSystem;
+class UAudioComponent;
 
 UCLASS()
 class LOCOMOTION_API AAimSkill3Projectile : public AActor
@@ -34,34 +34,35 @@ private:
     void Explode();
 
     UPROPERTY(VisibleAnywhere)
-    USphereComponent* CollisionComponent;
+    TObjectPtr<USphereComponent> CollisionComponent = nullptr;
 
     UPROPERTY(VisibleAnywhere)
-    UProjectileMovementComponent* ProjectileMovement;
+    TObjectPtr<UProjectileMovementComponent> ProjectileMovement = nullptr;
 
     UPROPERTY(VisibleAnywhere)
-    UStaticMeshComponent* MeshComponent;
+    TObjectPtr<UStaticMeshComponent> MeshComponent = nullptr;
 
     UPROPERTY(EditDefaultsOnly)
-    UNiagaraSystem* ExplosionEffect;
+    TObjectPtr<UNiagaraSystem> ExplosionEffect = nullptr;
 
     // 낙하 중 루핑 사운드 컴포넌트
     UPROPERTY(VisibleAnywhere, Category = "Audio")
-    class UAudioComponent* LoopingSoundComponent;
+    TObjectPtr<UAudioComponent> LoopingSoundComponent = nullptr;
 
     // 낙하 중 재생할 루핑 사운드 에셋
     UPROPERTY(EditAnywhere, Category = "Audio")
-    class USoundBase* LoopingSound;
+    TObjectPtr<USoundBase> LoopingSound = nullptr;
 
     // 폭발 시 재생할 사운드 에셋
-    UPROPERTY(EditAnywhere, Category = "Audio")
-    class USoundBase* ExplosionSound;
+    UPROPERTY(EditAnywhere, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<USoundBase> ExplosionSound = nullptr;
 
-    UPROPERTY(EditAnywhere)
+    UPROPERTY(EditAnywhere, Category = "Stat", meta = (AllowPrivateAccess = "true"))
     float Damage = 500.f;
 
-    UPROPERTY(EditAnywhere)
+    UPROPERTY(EditAnywhere, Category = "Stat", meta = (AllowPrivateAccess = "true"))
     float ExplosionRadius = 300.f;
 
+	UPROPERTY(VisibleAnywhere, Category = "State", meta = (AllowPrivateAccess = "true"))
     bool bExploded = false;
 };

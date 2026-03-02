@@ -14,25 +14,25 @@
 AAimSkill2Projectile::AAimSkill2Projectile()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	PrimaryActorTick.bStartWithTickEnabled = true; // ½ÃÀÛºÎÅÍ tick È°¼ºÈ­
+	PrimaryActorTick.bStartWithTickEnabled = true; // ì‹œì‘ë¶€í„° Tick í™œì„±í™”
 
-	CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionComponent")); // Ãæµ¹ ÄÄÆ÷³ÍÆ® »ı¼º ¹× ¼³Á¤
-	CollisionComponent->InitSphereRadius(20.f); // ±¸Ã¼ ¹İ°æ
-	CollisionComponent->SetCollisionProfileName("BlockAllDynamic"); // Äİ¸®Àü ¼³Á¤
-	CollisionComponent->OnComponentHit.AddDynamic(this, &AAimSkill2Projectile::OnHit); // Ãæµ¹ ÀÌº¥Æ® ÇÚµé·¯ µî·Ï
-	RootComponent = CollisionComponent; // ·çÆ® ÄÄÆ÷³ÍÆ® ¼³Á¤
+	CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionComponent")); // ì¶©ëŒ ì»´í¬ë„ŒíŠ¸ ìƒì„± ë° ì„¤ì •
+	CollisionComponent->InitSphereRadius(20.f); // êµ¬ì²´ ë°˜ê²½
+	CollisionComponent->SetCollisionProfileName("BlockAllDynamic"); // ì½œë¦¬ì „ ì„¤ì •
+	CollisionComponent->OnComponentHit.AddDynamic(this, &AAimSkill2Projectile::OnHit); // ì¶©ëŒ ì´ë²¤íŠ¸ í•¸ë“¤ëŸ¬ ë“±ë¡
+	RootComponent = CollisionComponent; // ë£¨íŠ¸ ì»´í¬ë„ŒíŠ¸ ì„¤ì •
 
-	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent")); // Á¤Àû ¸Ş½Ã ÄÄÆ÷³ÍÆ® »ı¼º
-	MeshComponent->SetupAttachment(CollisionComponent); // Äİ¸®Àü ÄÄÆ÷³ÍÆ®¿¡ ºÎÂø
-	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // ¸Ş½¬ÀÇ Äİ¸®Àü ºñÈ°¼ºÈ­
+	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent")); // ìŠ¤íƒœí‹± ë©”ì‰¬ ì»´í¬ë„ŒíŠ¸ ìƒì„±
+	MeshComponent->SetupAttachment(CollisionComponent); // ì½œë¦¬ì „ ì»´í¬ë„ŒíŠ¸ì— ë¶€ì°©
+	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // ë©”ì‰¬ì˜ ì½œë¦¬ì „ ë¹„í™œì„±í™”
 
-	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement")); // Åõ»çÃ¼ ÀÌµ¿ ÄÄÆ÷³ÍÆ® »ı¼º
-	ProjectileMovement->InitialSpeed = 2000.0f; // Åõ»çÃ¼ ÃÊ±â¼Óµµ 
-	ProjectileMovement->MaxSpeed = 2000.0f; // Åõ»çÃ¼ ÃÖ°í ¼Óµµ
-	ProjectileMovement->ProjectileGravityScale = 0.0f; // Áß·Â ¿µÇâ ºñÈ°¼ºÈ­
-	ProjectileMovement->bRotationFollowsVelocity = true; // ÀÌµ¿ ¹æÇâ¿¡ µû¶ó È¸Àü
+	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement")); // íˆ¬ì‚¬ì²´ ì´ë™ ì»´í¬ë„ŒíŠ¸ ìƒì„±
+	ProjectileMovement->InitialSpeed = 2000.0f; // íˆ¬ì‚¬ì²´ ì´ˆê¸°ì†ë„
+	ProjectileMovement->MaxSpeed = 2000.0f; // íˆ¬ì‚¬ì²´ ìµœê³  ì†ë„
+	ProjectileMovement->ProjectileGravityScale = 0.0f; // ì¤‘ë ¥ ì˜í–¥ ë¹„í™œì„±í™”
+	ProjectileMovement->bRotationFollowsVelocity = true; // ì´ë™ ë°©í–¥ì— ë”°ë¼ íšŒì „
 
-	InitialLifeSpan = 10.0f; // ¿¢ÅÍ ÃÊ±â¼ö¸í ¼³Á¤
+	InitialLifeSpan = 10.0f; // ì•¡í„° ì´ˆê¸°ìˆ˜ëª… ì„¤ì •
 }
 
 void AAimSkill2Projectile::BeginPlay()
@@ -41,52 +41,52 @@ void AAimSkill2Projectile::BeginPlay()
 
 	if (Shooter && CollisionComponent)
 	{
-		CollisionComponent->IgnoreActorWhenMoving(Shooter, true); // ¹ß»çÀÚ¿ÍÀÇ Ãæµ¹ ¹«½Ã
+		CollisionComponent->IgnoreActorWhenMoving(Shooter, true); // ë°œì‚¬ìì™€ì˜ ì¶©ëŒ ë¬´ì‹œ
 	}
 
 	if (LoopingFlightSound)
 	{
-		FlightAudioComponent = UGameplayStatics::SpawnSoundAttached( //»ç¿îµå ÄÄÆ÷³ÍÆ® »ı¼º ¹× ºÎÂø
+		FlightAudioComponent = UGameplayStatics::SpawnSoundAttached( // ì‚¬ìš´ë“œ ì»´í¬ë„ŒíŠ¸ ìƒì„± ë° ë¶€ì°©
 			LoopingFlightSound, RootComponent, NAME_None, FVector::ZeroVector,
-			EAttachLocation::KeepRelativeOffset, true); // ·çÆ® ÄÄÆ÷³ÍÆ®¿¡ »ç¿îµå ºÎÂø
+			EAttachLocation::KeepRelativeOffset, true); // ë£¨íŠ¸ ì»´í¬ë„ŒíŠ¸ì— ì‚¬ìš´ë“œ ë¶€ì°©
 	}
 }
 
-void AAimSkill2Projectile::EndPlay(const EEndPlayReason::Type EndPlayReason) // ¿¢ÅÍ°¡ Á¦°ÅµÉ ¶§ È£ÃâµÇ´Â ÇÔ¼ö
+void AAimSkill2Projectile::EndPlay(const EEndPlayReason::Type EndPlayReason) // ì•¡í„°ê°€ ì œê±°ë  ë•Œ í˜¸ì¶œë˜ëŠ” í•¨ìˆ˜
 {
-	Super::EndPlay(EndPlayReason); // ºÎ¸ğ Å¬·¡½ºÀÇ endplay È£Ãâ
+	Super::EndPlay(EndPlayReason); // ë¶€ëª¨ í´ë˜ìŠ¤ì˜ EndPlay í˜¸ì¶œ
 
-	// Å¸ÀÌ¸Ó Á¤¸®
+	// íƒ€ì´ë¨¸ ì •ë¦¬
 	GetWorldTimerManager().ClearTimer(PersistentEffectsTimerHandle);
 	GetWorldTimerManager().ClearTimer(PeriodicDamageTimerHandle);
 	GetWorldTimerManager().ClearTimer(ExplosionDurationTimerHandle);
 	GetWorldTimerManager().ClearTimer(DelayTimerHandle);
 
-	// ¿Àµğ¿À ÄÄÆ÷³ÍÆ® Á¤¸®
+	// ì˜¤ë””ì˜¤ ì»´í¬ë„ŒíŠ¸ ì •ë¦¬
 	if (PersistentAreaAudioComponent)
 	{
 		PersistentAreaAudioComponent->Stop();
 	}
 
-	// ³ªÀÌ¾Æ°¡¶ó ÄÄÆ÷³ÍÆ® Á¤¸®
+	// ë‚˜ì´ì•„ê°€ë¼ ì»´í¬ë„ŒíŠ¸ ì •ë¦¬
 	if (PersistentAreaNiagaraComponent)
 	{
 		PersistentAreaNiagaraComponent->Deactivate();
-		PersistentAreaNiagaraComponent->DestroyComponent(); // È®½ÇÇÏ°Ô ÆÄ±«
+		PersistentAreaNiagaraComponent->DestroyComponent(); // í™•ì‹¤í•˜ê²Œ íŒŒê´´
 		PersistentAreaNiagaraComponent = nullptr;
 	}
 
-	// ¸ğµç Àû Áß·ÂÀå ÇØÁ¦ ·ÎÁ÷
+	// ì¢…ë£Œ ì‹œ ì¤‘ë ¥ì¥ íš¨ê³¼ í•´ì œ
 	TArray<AActor*> OverlappedActors;
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
 	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
 
 	TArray<AActor*> IgnoredActors;
-	if (Shooter) // Shooter°¡ À¯È¿ÇÑÁö È®ÀÎ
+	if (Shooter) // Shooterê°€ ìœ íš¨í•œì§€ í™•ì¸
 	{
-		IgnoredActors.Add(Shooter); 
+		IgnoredActors.Add(Shooter);
 	}
-	// AEnemy::StaticClass() -> nullptr·Î º¯°æÇÏ¿© ¸ğµç PawnÀ» Ã£µµ·Ï ¼öÁ¤
+	// AEnemy::StaticClass() -> nullptrë¡œ ë³€ê²½í•˜ì—¬ ëª¨ë“  Pawnì„ ì°¾ë„ë¡ ìˆ˜ì •
 	UKismetSystemLibrary::SphereOverlapActors(
 		GetWorld(), ExplosionLocation, DamageRadius,
 		ObjectTypes, nullptr, IgnoredActors, OverlappedActors);
@@ -97,7 +97,7 @@ void AAimSkill2Projectile::EndPlay(const EEndPlayReason::Type EndPlayReason) // 
 		{
 			Enemy->DisableGravityPull();
 		}
-		//  EnemyDogµµ ÇØÁ¦ÇÏµµ·Ï ¼öÁ¤
+		// EnemyDogë„ ì²˜ë¦¬í•˜ë„ë¡ ì¶”ê°€
 		else if (AEnemyDog* DogEnemy = Cast<AEnemyDog>(Actor))
 		{
 			DogEnemy->DisableGravityPull();
@@ -108,7 +108,7 @@ void AAimSkill2Projectile::EndPlay(const EEndPlayReason::Type EndPlayReason) // 
 		}
 	}
 
-	// »óÅÂ ÇÃ·¡±× ºñÈ°¼ºÈ­
+	// í­ë°œ í”Œë˜ê·¸ ë¹„í™œì„±í™”
 	bExplosionActive = false;
 }
 
@@ -116,56 +116,56 @@ void AAimSkill2Projectile::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (!bHasReachedApex && GetActorLocation().Z >= ApexHeight) // ¾ÆÁ÷ °íÁ¡¿¡ µµ´ŞÇÏÁö ¾Ê¾Ò°í À§Ä¡°¡ ÃÖ°íÁ¡ ÀÌ»óÀÌ¶ó¸é
+	if (!bHasReachedApex && GetActorLocation().Z >= ApexHeight) // ì•„ì§ ì •ì ì— ë„ë‹¬í•˜ì§€ ì•Šì•˜ê³  ìœ„ì¹˜ê°€ ìµœê³ ì  ì´ìƒì´ë¼ë©´
 	{
-		bHasReachedApex = true; // ÃÖ°íÁ¡ µµ´Ş ÇÃ·¡±× ¼³Á¤
-		ProjectileMovement->StopMovementImmediately(); // ÀÌµ¿ Áï½Ã Á¤Áö
-		GetWorldTimerManager().SetTimer(DelayTimerHandle, this, &AAimSkill2Projectile::EvaluateTargetAfterApex, DelayBeforeTracking, false); // Áö¿¬ ÈÄ Å¸°Ù Æò°¡ ÇÔ¼ö È£Ãâ Å¸ÀÌ¸Ó ¼³Á¤
+		bHasReachedApex = true; // ìµœê³ ì  ë„ë‹¬ í”Œë˜ê·¸ ì„¤ì •
+		ProjectileMovement->StopMovementImmediately(); // ì´ë™ ì¦‰ì‹œ ì •ì§€
+		GetWorldTimerManager().SetTimer(DelayTimerHandle, this, &AAimSkill2Projectile::EvaluateTargetAfterApex, DelayBeforeTracking, false); // ì •ì  í›„ íƒ€ê²Ÿ í‰ê°€ í•¨ìˆ˜ í˜¸ì¶œ íƒ€ì´ë¨¸ ì„¤ì •
 	}
 
-	FRotator RotationDelta(0.0f, 720.0f * DeltaTime, 0.0f); // ÃÊ´ç ¸Ş½¬ È¸Àü
-	MeshComponent->AddRelativeRotation(RotationDelta); // ¸Ş½¬¿¡ È¸Àü Àû¿ë
+	FRotator RotationDelta(0.0f, 720.0f * DeltaTime, 0.0f); // ì´ˆë‹¹ ë©”ì‰¬ íšŒì „
+	MeshComponent->AddRelativeRotation(RotationDelta); // ë©”ì‰¬ì— íšŒì „ ì ìš©
 
-	// Æø¹ß È¿°ú°¡ È°¼ºÈ­µÇ¾î ÀÖÀ¸¸é ¸Å Æ½¸¶´Ù DamagedActorsThisTick ÃÊ±âÈ­
+	// í­ë°œ íš¨ê³¼ê°€ í™œì„±í™”ë˜ì–´ ìˆìœ¼ë©´ ë§¤ í‹±ë§ˆë‹¤ DamagedActorsThisTick ì´ˆê¸°í™”
 	if (bExplosionActive)
 	{
 		DamagedActorsThisTick.Empty();
 	}
 }
 
-void AAimSkill2Projectile::FireInDirection(const FVector& ShootDirection) 
+void AAimSkill2Projectile::FireInDirection(const FVector& ShootDirection)
 {
-	if (ProjectileMovement) // Åõ»çÃ¼ ÀÌµ¿ ÄÄÆ÷³ÍÆ®°¡ Á¸ÀçÇÏ¸é
+	if (ProjectileMovement) // íˆ¬ì‚¬ì²´ ì´ë™ ì»´í¬ë„ŒíŠ¸ê°€ ì¡´ì¬í•˜ë©´
 	{
-		ProjectileMovement->Velocity = ShootDirection * ProjectileMovement->InitialSpeed; // ÁöÁ¤µÈ ¹æÇâÀ¸·Î ¼Óµµ ¼³Á¤
+		ProjectileMovement->Velocity = ShootDirection * ProjectileMovement->InitialSpeed; // ì£¼ì–´ì§„ ë°©í–¥ìœ¼ë¡œ ì†ë„ ì„¤ì •
 	}
 }
 
 void AAimSkill2Projectile::EvaluateTargetAfterApex()
 {
-	AActor* Target = FindClosestEnemy(); // °¡Àå °¡±î¿î Àû Å½»ö
+	AActor* Target = FindClosestEnemy(); // ê°€ì¥ ê°€ê¹Œìš´ ì  íƒìƒ‰
 
-	if (Target) // Å¸°ÙÀÌ Á¸ÀçÇÏ¸é
+	if (Target) // íƒ€ê²Ÿì´ ì¡´ì¬í•˜ë©´
 	{
-		FVector ToTarget = (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal(); // Å¸°Ù ¹æÇâ º¤ÅÍ °è»ê
-		ProjectileMovement->Velocity = ToTarget * 1500.0f; // Å¸°Ù ¹æÇâÀ¸·Î ¼Óµµ ¼³Á¤
+		FVector ToTarget = (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal(); // íƒ€ê²Ÿ ë°©í–¥ ë²¡í„° ê³„ì‚°
+		ProjectileMovement->Velocity = ToTarget * 1500.0f; // íƒ€ê²Ÿ ë°©í–¥ìœ¼ë¡œ ì†ë„ ì„¤ì •
 	}
-	else // ¾øÀ¸¸é
+	else // ì—†ìœ¼ë©´
 	{
-		GetWorldTimerManager().SetTimer(DelayTimerHandle, this, &AAimSkill2Projectile::AutoExplodeIfNoTarget, 0.3f, false); // 0.3ÃÊÈÄ ÀÚµ¿ Æø¹ß
+		GetWorldTimerManager().SetTimer(DelayTimerHandle, this, &AAimSkill2Projectile::AutoExplodeIfNoTarget, 0.3f, false); // 0.3ì´ˆí›„ ìë™ í­ë°œ
 	}
 }
 
 void AAimSkill2Projectile::AutoExplodeIfNoTarget()
 {
 	UE_LOG(LogTemp, Warning, TEXT("AutoExplode called at %s"), *GetActorLocation().ToString());
-	OnHit(nullptr, nullptr, nullptr, FVector::ZeroVector, FHitResult()); // Ãæµ¹ ÀÌº¥Æ® ¼öµ¿ È£Ãâ
+	OnHit(nullptr, nullptr, nullptr, FVector::ZeroVector, FHitResult()); // ì¶©ëŒ ì´ë²¤íŠ¸ ê°•ì œ í˜¸ì¶œ
 }
 
 void AAimSkill2Projectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (OtherActor && (OtherActor == this || OtherActor == Shooter)) return; // ÀÚ±â ÀÚ½ÅÀÌ³ª ¹ß»çÀÚ¿Í ÃÑµ¹ ½Ã ¹«½Ã
+	if (OtherActor && (OtherActor == this || OtherActor == Shooter)) return; // ìê¸° ìì‹ ì´ë‚˜ ë°œì‚¬ìì™€ ì¶©ëŒ ì‹œ ë¬´ì‹œ
 
 	if (bHasExploded)
 	{
@@ -174,31 +174,31 @@ void AAimSkill2Projectile::OnHit(UPrimitiveComponent* HitComponent, AActor* Othe
 
 	bHasExploded = true;
 
-	if (FlightAudioComponent) FlightAudioComponent->Stop(); // ºñÇà »ç¿îµå ÁßÁö
+	if (FlightAudioComponent) FlightAudioComponent->Stop(); // ë¹„í–‰ ì‚¬ìš´ë“œ ì •ì§€
 
-	// Æø¹ß È¿°ú »ı¼º
-	if (ExplosionEffect) 
+	// í­ë°œ íš¨ê³¼ ìƒì„±
+	if (ExplosionEffect)
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 			GetWorld(), ExplosionEffect, GetActorLocation(), GetActorRotation(), FVector(1.0f), true);
 	}
 
-	// Æø¹ß »ç¿îµå »ı¼º
+	// í­ë°œ ì‚¬ìš´ë“œ ì¬ìƒ
 	if (ExplosionSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, ExplosionSound, GetActorLocation());
 	}
 
-	ApplyAreaDamage(); // ¿µ¿ª µ¥¹ÌÁö Àû¿ë
+	ApplyAreaDamage(); // ê´‘ì—­ ë°ë¯¸ì§€ ì ìš©
 
-	// Áö¼ÓÀûÀÎ Æø¹ß ¿µ¿ª »ı¼º
-	SpawnPersistentExplosionArea(GetActorLocation()); // ÇöÀç À§Ä¡¿¡ Áö¼Ó Æø¹ß ¿µ¿ª »ı¼º
+	// ì§€ì†ì ì¸ í­ë°œ ì˜ì—­ ìƒì„±
+	SpawnPersistentExplosionArea(GetActorLocation()); // í˜„ì¬ ìœ„ì¹˜ì— ì§€ì† í­ë°œ ì˜ì—­ ìƒì„±
 
-	// ¸Ş½Ã¿Í Äİ¸®Àü ÄÄÆ÷³ÍÆ® ¼û±â±â
-	SetActorHiddenInGame(true); // ¾×ÅÍ¸¦ °ÔÀÓ¿¡¼­ ¼û±è
-	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // Äİ¸®Àü ºñÈ°¼ºÈ­
+	// ë©”ì‰¬ì™€ ì½œë¦¬ì „ ì»´í¬ë„ŒíŠ¸ ìˆ¨ê¸°ê¸°
+	SetActorHiddenInGame(true); // ì•¡í„°ë¥¼ ê²Œì„ì—ì„œ ìˆ¨ê¹€
+	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // ì½œë¦¬ì „ ë¹„í™œì„±í™”
 
-	// Åõ»çÃ¼´Â Æø¹ß Áö¼Ó ½Ã°£ÀÌ ³¡³­ ÈÄ¿¡ ÆÄ±«µÊ
+	// íˆ¬ì‚¬ì²´ì˜ í­ë°œ ì§€ì† ì‹œê°„ì´ ì§€ë‚œ í›„ì— íŒŒê´´ë¨
 	SetLifeSpan(ExplosionDuration);
 }
 
@@ -207,7 +207,7 @@ void AAimSkill2Projectile::SpawnPersistentExplosionArea(const FVector& Location)
 	ExplosionLocation = Location;
 	bExplosionActive = true;
 
-	// Áö¼ÓÀûÀÎ Æø¹ß È¿°ú »ı¼º
+	// ì§€ì†ì ì¸ ì˜ì—­ íš¨ê³¼ ìƒì„±
 	if (PersistentAreaEffect)
 	{
 		PersistentAreaNiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
@@ -215,22 +215,22 @@ void AAimSkill2Projectile::SpawnPersistentExplosionArea(const FVector& Location)
 			FVector(1.0f), true, true, ENCPoolMethod::AutoRelease, false);
 	}
 
-	// Áö¼ÓÀûÀÎ »ç¿îµå È¿°ú »ı¼º
+	// ì§€ì†ì ì¸ ì‚¬ìš´ë“œ íš¨ê³¼ ì¬ìƒ
 	if (PersistentAreaSound)
 	{
 		PersistentAreaAudioComponent = UGameplayStatics::SpawnSoundAtLocation(
 			this, PersistentAreaSound, Location, FRotator::ZeroRotator, 1.0f, 1.0f, 0.0f, nullptr, nullptr, true);
 	}
 
-	// Áö¼ÓÀûÀÎ È¿°ú Å¸ÀÌ¸Ó ¼³Á¤
+	// ì§€ì†ì˜ì—­ ëŒì–´ë‹¹ê¸°ê¸° íš¨ê³¼ íƒ€ì´ë¨¸ ì„¤ì •
 	GetWorldTimerManager().SetTimer(
 		PersistentEffectsTimerHandle,
 		this,
 		&AAimSkill2Projectile::ApplyPersistentEffects,
-		0.1f, // 0.1ÃÊ¸¶´Ù ²ø¾î´ç±â´Â È¿°ú Àû¿ë
+		0.1f, // 0.1ì´ˆë§ˆë‹¤ ëŒì–´ë‹¹ê¸°ëŠ” íš¨ê³¼ ì ìš©
 		true);
 
-	// ÁÖ±âÀûÀÎ µ¥¹ÌÁö Å¸ÀÌ¸Ó ¼³Á¤
+	// ì£¼ê¸°ì ì¸ ë°ë¯¸ì§€ íƒ€ì´ë¨¸ ì„¤ì •
 	GetWorldTimerManager().SetTimer(
 		PeriodicDamageTimerHandle,
 		this,
@@ -244,10 +244,10 @@ void AAimSkill2Projectile::ApplyPersistentEffects()
 {
 	if (!bExplosionActive) return;
 
-	//// µğ¹ö±× ½Ã°¢È­
+	//// ë²”ìœ„ ì‹œê°í™”
 	//DrawDebugSphere(GetWorld(), ExplosionLocation, DamageRadius, 16, FColor::Yellow, false, 0.12f, 0, 1.0f);
 
-	// ¹üÀ§ ³» ¾×ÅÍ Ã£±â
+	// ë²”ìœ„ ë‚´ ì•¡í„° ì°¾ê¸°
 	TArray<AActor*> OverlappedActors;
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
 	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
@@ -264,7 +264,7 @@ void AAimSkill2Projectile::ApplyPersistentEffects()
 		IgnoredActors,
 		OverlappedActors);
 
-	// °¢ ¾×ÅÍ¿¡ ²ø¾î´ç±â´Â È¿°ú Àû¿ë
+	// ê° ì•¡í„°ì— ëŒì–´ë‹¹ê¸°ëŠ” íš¨ê³¼ ì ìš©
 	for (AActor* Actor : OverlappedActors)
 	{
 		if (Actor && Actor != Shooter)
@@ -272,10 +272,10 @@ void AAimSkill2Projectile::ApplyPersistentEffects()
 			AEnemy* Enemy = Cast<AEnemy>(Actor);
 			if (Enemy)
 			{
-				Enemy->bIsTrappedInGravityField = true; // ÇÑ ¹ø µé¾î¿ÔÀ¸¸é »óÅÂ True 
+				Enemy->bIsTrappedInGravityField = true; // ì ì´ ì¤‘ë ¥ì¥ì— ê°‡í˜ True
 				Enemy->EnableGravityPull(ExplosionLocation, PullStrength);
 			}
-			// EnemyDogµµ ²ø¾î´ç±âµµ·Ï
+			// EnemyDogë„ ì²˜ë¦¬í•˜ë„ë¡
 			else if (AEnemyDog* DogEnemy = Cast<AEnemyDog>(Actor))
 			{
 				DogEnemy->bIsTrappedInGravityField = true;
@@ -303,7 +303,7 @@ void AAimSkill2Projectile::ApplyPeriodicDamage()
 {
 	if (!bExplosionActive) return;
 
-	// ¹üÀ§ ³» ¾×ÅÍ Ã£±â
+	// ë²”ìœ„ ë‚´ ì•¡í„° ì°¾ê¸°
 	TArray<AActor*> OverlappedActors;
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
 	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
@@ -320,14 +320,14 @@ void AAimSkill2Projectile::ApplyPeriodicDamage()
 		IgnoredActors,
 		OverlappedActors);
 
-	// °¢ ¾×ÅÍ¿¡ µ¥¹ÌÁö Àû¿ë
+	// ê° ì•¡í„°ì— ë°ë¯¸ì§€ ì ìš©
 	for (AActor* Actor : OverlappedActors)
 	{
 		if (Actor && Actor != Shooter)
 		{
 			UGameplayStatics::ApplyDamage(Actor, Damage, nullptr, Shooter, nullptr);
 
-			//// µ¥¹ÌÁö Àû¿ë ½Ã°¢È­
+			//// ë°ë¯¸ì§€ ì ìš© ì‹œê°í™”
 			//DrawDebugLine(
 			//	GetWorld(),
 			//	ExplosionLocation,

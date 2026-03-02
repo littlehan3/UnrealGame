@@ -14,41 +14,41 @@ class AEnemyGuardian;
 class UNavigationSystemV1;
 class UWaveRecordSaveGame;
 
-// ¿şÀÌºêº° ½ºÆù Á¤º¸ ±¸Á¶Ã¼
+// ì›¨ì´ë¸Œë³„ ìŠ¤í° ê·œì¹™ êµ¬ì¡°ì²´
 USTRUCT(BlueprintType)
 struct FWaveSpawnEntry
 {
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
-    TSubclassOf<class APawn> EnemyClass; // ½ºÆùÇÒ Àû Å¬·¡½º
+    TSubclassOf<class APawn> EnemyClass; // ìŠ¤í°í•  ì  í´ë˜ìŠ¤
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Spawn")
-    int32 SpawnCount = 1; // ½ºÆù °¹¼ö
+    int32 SpawnCount = 1; // ìŠ¤í° ê°œìˆ˜
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Spawn")
-    float SpawnDelay = 0.0f; // Ç×¸ñº° ½ºÆù Áö¿¬ ½Ã°£
+    float SpawnDelay = 0.0f; // ê·¸ë£¹ ì‹œì‘ ì§€ì—° ì‹œê°„
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Spawn")
-    float SpawnInterval = 1.0f; // °´Ã¼º° ½ºÆù ÁÖ±â
+    float SpawnInterval = 1.0f; // ê°œì²´ë³„ ìŠ¤í° ì£¼ê¸°
 
     FWaveSpawnEntry() : SpawnCount(1), SpawnDelay(0.0f), SpawnInterval(1.0f) {}
 };
 
-// ¿şÀÌºê ¼³Á¤ ±¸Á¶Ã¼
+// ì›¨ì´ë¸Œ ì„¤ì • êµ¬ì¡°ì²´
 USTRUCT(BlueprintType)
 struct FWaveConfiguration
 {
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Config")
-    FString WaveName = TEXT("Wave"); // ¿şÀÌºê ÀÌ¸§
+    FString WaveName = TEXT("Wave"); // ì›¨ì´ë¸Œ ì´ë¦„
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Config")
-    TArray<FWaveSpawnEntry> SpawnEntries; // ÇØ´ç ¿şÀÌºêÀÇ Àû ½ºÆù ¸ñ·Ï ¹è¿­
+    TArray<FWaveSpawnEntry> SpawnEntries; // í•´ë‹¹ ì›¨ì´ë¸Œì˜ ì  ìŠ¤í° ëª©ë¡ ë°°ì—´
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave Config")
-    float PrepareTime = 7.0f; // ¿şÀÌºê ½ÃÀÛ Àü ´ë±â½Ã°£
+    float PrepareTime = 7.0f; // ì›¨ì´ë¸Œ ì‹œì‘ ì „ ì¤€ë¹„ì‹œê°„
 
     FWaveConfiguration() : PrepareTime(7.0f) {}
 };
@@ -61,61 +61,61 @@ class LOCOMOTION_API AMainGameModeBase : public AGameModeBase
 public:
     AMainGameModeBase();
 
-    // AIµéÀÌ Âü°íÇÒ ¼ö ÀÖµµ·Ï ÇöÀç ½ºÆùµÈ ÀûµéÀÇ ¸í´ÜÀ» ¹İÈ¯ÇÏ´Â getter ÇÔ¼ö
+    // AIì—ì„œ ì ‘ê·¼í•  ìˆ˜ ìˆë„ë¡ ì‚´ì•„ìˆëŠ” ì  ëª©ë¡ì„ ë°˜í™˜í•˜ëŠ” getter í•¨ìˆ˜
     const TArray<TWeakObjectPtr<class APawn>>& GetSpawnedEnemies() const { return SpawnedEnemies; }
 
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    void OnEnemyDestroyed(APawn* DestroyedEnemy); // Àû ÆÄ±«½Ã È£ÃâµÇ¾î ¿şÀÌºê ÁøÇà »óÅÂ °»½Å
+    void OnEnemyDestroyed(APawn* DestroyedEnemy); // ì  íŒŒê´´ì‹œ í˜¸ì¶œë˜ì–´ ì›¨ì´ë¸Œ ì§„í–‰ ìƒíƒœ ê°±ì‹ 
 
-    // ¿şÀÌºê ½Ã½ºÅÛ Á¦¾î
+    // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ ì œì–´
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    void SetWaveSystemEnabled(bool bEnabled); // ¿şÀÌºê ½Ã½ºÅÛ È°¼ºÈ­ »óÅÂ ¼³Á¤ ÇÔ¼ö
-
-    UFUNCTION(BlueprintCallable, Category = "Wave System")
-    bool IsWaveSystemEnabled() const { return bWaveSystemEnabled; } // ÇöÀç ¿şÀÌºê ½Ã½ºÅÛ È°¼ºÈ­ ¿©ºÎ ¹İÈ¯ ÇÔ¼ö
+    void SetWaveSystemEnabled(bool bEnabled); // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ í™œì„±í™” ì—¬ë¶€ ì„¤ì • í•¨ìˆ˜
 
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    FORCEINLINE int32 GetCurrentWaveIndex() const { return CurrentWaveIndex; } // ÇöÀç ÁøÇàÁßÀÎ ¿şÀÌºê ¹øÈ£ ¹İÈ¯ ÇÔ¼ö
+    bool IsWaveSystemEnabled() const { return bWaveSystemEnabled; } // í˜„ì¬ ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ í™œì„±í™” ì—¬ë¶€ ë°˜í™˜ í•¨ìˆ˜
 
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    FORCEINLINE bool IsWaveInProgress() const { return bWaveInProgress; } // ÇöÀç ¿şÀÌºê°¡ ÁøÇàÁßÀÎÁö ¿©ºÎ ¹İÈ¯ ÇÔ¼ö
+    FORCEINLINE int32 GetCurrentWaveIndex() const { return CurrentWaveIndex; } // í˜„ì¬ ì§„í–‰ì¤‘ì¸ ì›¨ì´ë¸Œ ë²ˆí˜¸ ë°˜í™˜ í•¨ìˆ˜
 
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    int32 GetTotalWaveCount() const { return WaveConfigurations.Num(); } // ÀüÃ¼ ¼³Á¤µÈ ¿şÀÌºêÀÇ ÃÑ °³¼ö ¹İÈ¯ ÇÔ¼ö
+    FORCEINLINE bool IsWaveInProgress() const { return bWaveInProgress; } // í˜„ì¬ ì›¨ì´ë¸Œê°€ ì§„í–‰ì¤‘ì¸ì§€ ì—¬ë¶€ ë°˜í™˜ í•¨ìˆ˜
 
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    FString GetCurrentWaveName() const; // ÇöÀç ¿şÀÌºêÀÇ ÀÌ¸§À» °¡Á®¿À´Â ÇÔ¼ö
+    int32 GetTotalWaveCount() const { return WaveConfigurations.Num(); } // ì „ì²´ ì„¤ì •ëœ ì›¨ì´ë¸Œì˜ ì´ ê°œìˆ˜ ë°˜í™˜ í•¨ìˆ˜
 
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    void RestartWaveSystem(); // ¿şÀÌºê ½Ã½ºÅÛÀ» ÃÊ±â»óÅÂ·Î µ¹¸®°í Àç½ÃÀÛ ÇÏ´Â ÇÔ¼ö
+    FString GetCurrentWaveName() const; // í˜„ì¬ ì›¨ì´ë¸Œì˜ ì´ë¦„ì„ ê°€ì ¸ì˜¤ëŠ” í•¨ìˆ˜
 
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    void SkipToWave(int32 WaveIndex); // Æ¯Á¤ ¿şÀÌºê ¹øÈ£¸¦ Áï½Ã °Ç³Ê¶Ù´Â ÇÔ¼ö
+    void RestartWaveSystem(); // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œì„ ì´ˆê¸°ìƒíƒœë¡œ ë˜ëŒë ¤ ì¬ì‹œì‘ í•˜ëŠ” í•¨ìˆ˜
 
-    // Àû Á¤º¸
+    UFUNCTION(BlueprintCallable, Category = "Wave System")
+    void SkipToWave(int32 WaveIndex); // íŠ¹ì • ì›¨ì´ë¸Œ ë²ˆí˜¸ë¡œ ë°”ë¡œ ê±´ë„ˆë›°ëŠ” í•¨ìˆ˜
+
+    // ì  ì •ë³´
     UFUNCTION(BlueprintCallable, Category = "Enemy Info")
-    int32 GetActiveEnemyCount() const; // ÇöÀç ¸Ê¿¡ »ì¾ÆÀÖ´Â ÀûµéÀÇ ¼ö ¹İÈ¯
-
-    UFUNCTION(BlueprintCallable, Category = "Enemy Info")
-    int32 GetEnemiesKilledInWave() const { return EnemiesKilledInWave; } // ÇöÀç ¿şÀÌºê¿¡¼­ Ã³Ä¡ÇÑ ÀûµéÀÇ ¼ö ¹İÈ¯
+    int32 GetActiveEnemyCount() const; // í˜„ì¬ í•„ë“œì— ì‚´ì•„ìˆëŠ” ì ì˜ ìˆ˜ ë°˜í™˜
 
     UFUNCTION(BlueprintCallable, Category = "Enemy Info")
-    int32 GetTotalEnemiesInWave() const { return TotalEnemiesInWave; } // ÇöÀç ¿şÀÌºê¿¡¼­ ½ºÆùµÇ¾î¾ß ÇÒ ÀûµéÀÇ ¼ö ¹İÈ¯
+    int32 GetEnemiesKilledInWave() const { return EnemiesKilledInWave; } // í˜„ì¬ ì›¨ì´ë¸Œì—ì„œ ì²˜ì¹˜í•œ ì ì˜ ìˆ˜ ë°˜í™˜
 
     UFUNCTION(BlueprintCallable, Category = "Enemy Info")
-    int32 GetPreCalculatedLocationCount() const { return PreCalculatedSpawnLocations.Num(); } // »çÀü¿¡ °è»êµÇ¾î ÀúÀåµò ½ºÆù °¡´É À§Ä¡µéÀÇ ¼ö ¹İÈ¯
+    int32 GetTotalEnemiesInWave() const { return TotalEnemiesInWave; } // í˜„ì¬ ì›¨ì´ë¸Œì—ì„œ ìŠ¤í°ë˜ì–´ì•¼ í•  ì ì˜ ìˆ˜ ë°˜í™˜
 
-    // ÃÖ°í ±â·ÏÀ» Ã¼Å©ÇÏ°í ÀúÀåÇÏ´Â ÇÔ¼ö
+    UFUNCTION(BlueprintCallable, Category = "Enemy Info")
+    int32 GetPreCalculatedLocationCount() const { return PreCalculatedSpawnLocations.Num(); } // ì‚¬ì „ì— ê³„ì‚°ë˜ì–´ ì €ì¥ëœ ìŠ¤í° ìœ„ì¹˜ë“¤ì˜ ìˆ˜ ë°˜í™˜
+
+    // ìµœê³  ê¸°ë¡ì„ ì²´í¬í•˜ê³  ì €ì¥í•˜ëŠ” í•¨ìˆ˜
     UFUNCTION(BlueprintCallable, Category = "Wave System")
-    void CheckAndSaveBestWaveRecord(int32 LastClearedWaveIndex); // ÃÖ°í ±â·ÏÀ» È®ÀÎÇÏ°í ¼¼ÀÌºê µ¥ÀÌÅÍ¿¡ ÀúÀåÇÏ´Â ÇÔ¼ö
+    void CheckAndSaveBestWaveRecord(int32 LastClearedWaveIndex); // ìµœê³  ê¸°ë¡ì„ í™•ì¸í•˜ê³  ì„¸ì´ë¸Œ ë°ì´í„°ì— ì €ì¥í•˜ëŠ” í•¨ìˆ˜
 
 protected:
     virtual void BeginPlay() override;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
-    bool bWaveSystemEnabled = true; // ¿şÀÌºê ½Ã½ºÅÛ È°¼ºÈ­ ¿©ºÎ
+    bool bWaveSystemEnabled = true; // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ í™œì„±í™” ì—¬ë¶€
 
-    // 6°³ AI Å¬·¡½º µî·Ï
+    // 6ì¢… AI í´ë˜ìŠ¤ ë“±ë¡
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
     TSubclassOf<class AEnemy> EnemyType;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
@@ -129,93 +129,100 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Classes")
     TSubclassOf<class AEnemyShooter> EnemyShooterType;
 
-    // ¿şÀÌºê ½Ã½ºÅÛ
+    // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
-    TArray<FWaveConfiguration> WaveConfigurations; // ¿şÀÌºê ¼³Á¤ ¹è¿­
+    TArray<FWaveConfiguration> WaveConfigurations; // ì›¨ì´ë¸Œ ì„¤ì • ë°°ì—´
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System")
-    float DefaultWaveClearDelay = 5.0f; // ±âº» ¿şÀÌºê Å¬¸®¾î Áö¿¬½Ã°£
+    float DefaultWaveClearDelay = 5.0f; // ê¸°ë³¸ ì›¨ì´ë¸Œ í´ë¦¬ì–´ ëŒ€ê¸°ì‹œê°„
 
-    // ½ºÆù ¼³Á¤
+    // ìŠ¤í° ì„¤ì •
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Settings")
-    bool bSpawnAroundPlayer = true; // ÇÃ·¹ÀÌ ÁÖº¯ ½ºÆù ¿©ºÎ
+    bool bSpawnAroundPlayer = true; // í”Œë ˆì´ì–´ ì£¼ë³€ ìŠ¤í° ì—¬ë¶€
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Settings")
-    FVector SpawnCenterLocation = FVector::ZeroVector; // °íÁ¤ ½ºÆù Áß½ÉÁ¡
+    FVector SpawnCenterLocation = FVector::ZeroVector; // ê³ ì • ìŠ¤í° ì¤‘ì‹¬ì 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Settings")
-    float DefaultSpawnRadius = 1000.0f; // ½ºÆù ¹İ°æ
+    float DefaultSpawnRadius = 1000.0f; // ìŠ¤í° ë°˜ê²½
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Settings")
-    float DroneSpawnHeightOffset = 200.0f; // µå·Ğ Àü¿ë ½ºÆù ¿ÀÇÁ¼Â
+    float DroneSpawnHeightOffset = 200.0f; // ë“œë¡  ìŠ¤í° ë†’ì´ ì˜¤í”„ì…‹
 
-    // ¼º´É ÃÖÀûÈ­
+    // ì„±ëŠ¥ ìµœì í™”
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Performance")
-    int32 PreCalculatedLocationCount = 200; // »çÀü¿¡ °è»êÇÒ À§Ä¡ ¼ö
+    int32 PreCalculatedLocationCount = 200; // ì‚¬ì „ê³„ì‚° ìŠ¤í° ìœ„ì¹˜ ìˆ˜
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Performance")
-    bool bEnableAsyncCleanup = true; // ºñµ¿±â ¸Ş¸ğ¸® Á¤¸® È°¼ºÈ­¿©ºÎ
+    bool bEnableDeferredCleanup = true; // ì§€ì—° ë©”ëª¨ë¦¬ ì •ë¦¬ í™œì„±í™” ì—¬ë¶€
 
-    // º¸»ó ¼³Á¤
+    // ë³´ìƒ ì„¤ì •
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System|Reward")
-    float HealthRewardOnClear = 200.0f; // Ã¼·Â º¸»ó
+    float HealthRewardOnClear = 200.0f; // ì²´ë ¥ ë³´ìƒ
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wave System|Reward")
-    int32 AmmoRewardOnClear = 60; // ÃÑ¾Ë º¸»ó
+    int32 AmmoRewardOnClear = 60; // íƒ„ì•½ ë³´ìƒ
 
 private:
-    // ¿şÀÌºê »óÅÂ ¸ğ´ÏÅÍ¸µ
+    // ì›¨ì´ë¸Œ ìƒíƒœ ëª¨ë‹ˆí„°ë§
     UPROPERTY(VisibleInstanceOnly, Category = "State|Wave", meta = (AllowPrivateAccess = "true"))
-    int32 CurrentWaveIndex = 0; // ÇöÀç ¿şÀÌºê 
+    int32 CurrentWaveIndex = 0; // í˜„ì¬ ì›¨ì´ë¸Œ
     UPROPERTY(VisibleInstanceOnly, Category = "State|Wave", meta = (AllowPrivateAccess = "true"))
-    bool bWaveInProgress = false; // ¿şÀÌºê ÁøÇà Áß ¿©ºÎ
+    bool bWaveInProgress = false; // ì›¨ì´ë¸Œ ì§„í–‰ ì¤‘ ì—¬ë¶€
     UPROPERTY(VisibleInstanceOnly, Category = "State|Wave", meta = (AllowPrivateAccess = "true"))
-    bool bWaveSystemActive = false; // ¿şÀÌºê ½Ã½ºÅÛ µ¿ÀÛ ¿©ºÎ
+    bool bWaveSystemActive = false; // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ ê°€ë™ ì—¬ë¶€
     UPROPERTY(VisibleInstanceOnly, Category = "State|Wave", meta = (AllowPrivateAccess = "true"))
-    float SpawnLocationRefreshTime = 300.0f; // ½ºÆù À§Ä¡ °»½Å ÁÖ±â
+    float SpawnLocationRefreshTime = 300.0f; // ìŠ¤í° ìœ„ì¹˜ ê°±ì‹  ì£¼ê¸°
 
-    // Å¸ÀÌ¸Ó
+    // íƒ€ì´ë¨¸
     FTimerHandle WaveStartTimer;
     FTimerHandle SpawnTimer;
     FTimerHandle CleanupTimer;
     FTimerHandle LocationRefreshTimer;
     FTimerHandle WaveSystemStartDelayTimer;
 
-    // ÇöÀç ¿şÀÌºê ½ºÆù ÁøÇà »óÈ²
-    int32 CurrentSpawnEntryIndex = 0; // ÇöÀç ¿şÀÌºê
-    int32 CurrentSpawnCount = 0; // ÇöÀç½ºÆù¼ö
+    // í˜„ì¬ ì›¨ì´ë¸Œ ìŠ¤í° ì§„í–‰ ìƒí™©
+    int32 CurrentSpawnEntryIndex = 0; // í˜„ì¬ ì—”íŠ¸ë¦¬ ì¸ë±ìŠ¤
+    int32 CurrentSpawnCount = 0; // í˜„ì¬ ìŠ¤í° ìˆ˜
 
-    // ½ºÆù µÈ Àû °ü¸® ¾àÂüÁ¶·Î ¾ÈÀüÇÏ°Ô À¯Áö
+    // ì‚´ì•„ìˆëŠ” ì ì„ ì•½ì°¸ì¡°ë¡œ ê´€ë¦¬
     UPROPERTY()
-    TArray<TWeakObjectPtr<class APawn>> SpawnedEnemies; // ½ºÆùµÈ Àûµé ¹è¿­
+    TArray<TWeakObjectPtr<class APawn>> SpawnedEnemies; // ìŠ¤í°ëœ ì  ë°°ì—´
 
-    int32 TotalEnemiesInWave = 0; // ¿şÀÌºêÀÇ ÃÑ Àû ¼ö
-    int32 EnemiesKilledInWave = 0; // ¿şÀÌºê¿¡¼­ »ç¸Á ÇÑ Àû ¼ö
+    int32 TotalEnemiesInWave = 0; // ì›¨ì´ë¸Œì˜ ì´ ì  ìˆ˜
+    int32 EnemiesKilledInWave = 0; // ì›¨ì´ë¸Œì—ì„œ ì²˜ì¹˜í•œ ì  ìˆ˜
 
-    // ½ºÆù À§Ä¡ °ü¸®
-    TArray<FVector> PreCalculatedSpawnLocations; // »çÀü¿¡ °è»êÇÒ ½ºÆù À§Ä¡ ¹è¿­
-    int32 CurrentLocationIndex = 0; // ÇöÀç À§Ä¡ ¸ñ·Ï
-    bool bLocationCalculationComplete = false; // »çÀü°è»ê ¼º°ø ¿©ºÎ
+    // ìŠ¤í° ìœ„ì¹˜ ìºì‹±
+    TArray<FVector> PreCalculatedSpawnLocations; // ì‚¬ì „ê³„ì‚°ëœ ìŠ¤í° ìœ„ì¹˜ ë°°ì—´
+    int32 CurrentLocationIndex = 0; // í˜„ì¬ ìœ„ì¹˜ ì¸ë±ìŠ¤
+    bool bLocationCalculationComplete = false; // ì‚¬ì „ê³„ì‚° ì™„ë£Œ ì—¬ë¶€
 
-    // ¿şÀÌºê ½Ã½ºÅÛ ÇÔ¼ö
-    void StartWaveSystem(); // Ã¹ ¿şÀÌºê ½ÃÀÛ ÇÔ¼ö
-    void StartWave(int32 WaveIndex); // ¸î ¹øÂ° ¿şÀÌºê¸¦ ½ÃÀÛÇÒÁö Á¤ÇÏ´Â ÇÔ¼ö
-    void ProcessWaveSpawn(); // ¿şÀÌºê ½ºÆù ÇÔ¼ö
-    void SpawnEnemyFromEntry(const FWaveSpawnEntry& Entry); // BP·Î ¼³Á¤ÇÑ ¿£Æ®¸®ÀÇ Àû ¼ÒÈ¯ ÇÔ¼ö
-    void CheckWaveCompletion(); // ¿şÀÌºê Å¬¸®¾î ¿©ºÎ Ã¼Å© ÇÔ¼ö 
-    void OnWaveCompleted(); // ¿şÀÌºê Å¬¸®¾î½Ã ÇÔ¼ö
-    void PrepareNextWave(); // ´ÙÀ½ ¿şÀÌºê ÁØºñ ÇÔ¼ö
+    // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ í•¨ìˆ˜
+    void StartWaveSystem(); // ì²« ì›¨ì´ë¸Œ ì‹œì‘ í•¨ìˆ˜
+    void StartWave(int32 WaveIndex); // ëª‡ ë²ˆì§¸ ì›¨ì´ë¸Œë¥¼ ì‹œì‘í• ì§€ ì •í•˜ëŠ” í•¨ìˆ˜
+    void ProcessWaveSpawn(); // ì›¨ì´ë¸Œ ìŠ¤í° í•¨ìˆ˜
+    void SpawnEnemyFromEntry(const FWaveSpawnEntry& Entry); // BPì— ì„¤ì •ëœ ì—”íŠ¸ë¦¬ë³„ ì  ì†Œí™˜ í•¨ìˆ˜
+    void CheckWaveCompletion(); // ì›¨ì´ë¸Œ í´ë¦¬ì–´ ì¡°ê±´ ì²´í¬ í•¨ìˆ˜
+    void OnWaveCompleted(); // ì›¨ì´ë¸Œ í´ë¦¬ì–´ì‹œ í•¨ìˆ˜
+    void PrepareNextWave(); // ë‹¤ìŒ ì›¨ì´ë¸Œ ì¤€ë¹„ í•¨ìˆ˜
     UFUNCTION()
-    void StartNextWave(); // ´ÙÀ½ ¿şÀÌºê ½ÃÀÛÇÔ¼ö
-    void SpawnEnemyAtLocation(TSubclassOf<class APawn> EnemyClass, const FVector& Location); // ½ÇÁ¦ ½ºÆù ÇÔ¼ö
+    void StartNextWave(); // ë‹¤ìŒ ì›¨ì´ë¸Œ ì‹œì‘ í•¨ìˆ˜
+    void SpawnEnemyAtLocation(TSubclassOf<class APawn> EnemyClass, const FVector& Location); // ì  ìŠ¤í° í•¨ìˆ˜
 
-    // ¼º´É ÃÖÀûÈ­ ÇÔ¼ö
-    void PreCalculateSpawnLocations(); // ½ºÆùÀ§Ä¡ »çÀü °è»ê ÇÔ¼ö
-    void RefreshSpawnLocations(); // ½ºÆùÀ§Ä¡ ÃÊ±âÈ­ ÇÔ¼ö
-    void RefillSpawnLocationsAsync(); // ºñµ¿±â·Î ½ºÆùÀ§Ä¡¸¦ Ã¤¿ì´Â ÇÔ¼ö
-    FVector GetNextSpawnLocation(); // ´ÙÀ½ ½ºÆù À§Ä¡¸¦ °¡Á®¿À´Â ÇÔ¼ö
-    void PerformAsyncCleanup(); // ºñµ¿±â ½ºÆùÀ§Ä¡ Á¤¸® ÇÔ¼ö
-    void ForceCompleteMemoryCleanup(); // °­Á¦ ¸Ş¸ğ¸® Á¤¸® ÇÔ¼ö
+    // ì„±ëŠ¥ ìµœì í™” í•¨ìˆ˜
+    void PreCalculateSpawnLocations(); // ìŠ¤í°ìœ„ì¹˜ ì‚¬ì „ ê³„ì‚° í•¨ìˆ˜
+    void RefreshSpawnLocations(); // ìŠ¤í°ìœ„ì¹˜ ê°±ì‹  í•¨ìˆ˜
+    void RefillSpawnLocationsPerFrame(); // í”„ë ˆì„ë‹¹ 1ê°œì”© ìŠ¤í°ìœ„ì¹˜ë¥¼ ì±„ìš°ëŠ” í•¨ìˆ˜
+    FVector GetNextSpawnLocation(); // ë‹¤ìŒ ìŠ¤í° ìœ„ì¹˜ë¥¼ ê°€ì ¸ì˜¤ëŠ” í•¨ìˆ˜
+    void PerformDeferredCleanup(); // ì§€ì—° ë©”ëª¨ë¦¬ ì •ë¦¬ í•¨ìˆ˜
+    void ForceCompleteMemoryCleanup(); // ê°•ì œ ë©”ëª¨ë¦¬ ì •ë¦¬ í•¨ìˆ˜
 
-    // À¯Æ¿¸®Æ¼ ÇÔ¼ö
-    void KillAllEnemies(); // ¸ğµç ÀûÀ» Á×ÀÌ´Â ÇÔ¼ö
-    bool FindRandomLocationOnNavMesh(FVector CenterLocation, float Radius, FVector& OutLocation); // ³×ºê ¸Ş½¬ À§ÀÇ ÇÚ´ı À§Ä¡¸¦ Ã£´Â ÇÔ¼ö
-    FVector GetPlayerLocation(); // ÇÃ·¹ÀÌ¾î À§Ä¡¸¦ °¡Á®¿À´Â ÇÔ¼ö
-    void StopAllSystems(); // ¿şÀÌºê ½Ã½ºÅÛ Á¤Áö ÇÔ¼ö
+    // ìŠ¤í° ìœ„ì¹˜ ë¶„í•  ê°±ì‹  (ê²Œì„ìŠ¤ë ˆë“œ)
+	FTimerHandle RefillTimer; // ìŠ¤í° ìœ„ì¹˜ ë¶„í•  ê°±ì‹  íƒ€ì´ë¨¸ í•¸ë“¤
+	int32 RefillCount = 0; // í˜„ì¬ê¹Œì§€ ì±„ìš´ ìœ„ì¹˜ ìˆ˜
+	int32 RefillTargetCount = 50; // í•œ ë²ˆì— ì±„ìš¸ ìœ„ì¹˜ ìˆ˜
+	FVector RefillCenter; // ìŠ¤í° ìœ„ì¹˜ë¥¼ ì±„ìš¸ ì¤‘ì‹¬ì 
+	float RefillRadius = 0.0f; // ìŠ¤í° ìœ„ì¹˜ë¥¼ ì±„ìš¸ ë°˜ê²½
+    void RefillOneSpawnLocation(); // í”„ë ˆì„ë‹¹ 1ê°œì”© NavMesh ì¿¼ë¦¬ ì‹¤í–‰
+
+    void KillAllEnemies(); // ëª¨ë“  ì ì„ ì£½ì´ëŠ” í•¨ìˆ˜
+    bool FindRandomLocationOnNavMesh(FVector CenterLocation, float Radius, FVector& OutLocation); // ë‚´ë¸Œ ë©”ì‹œ ìœ„ì˜ ëœë¤ ìœ„ì¹˜ë¥¼ ì°¾ëŠ” í•¨ìˆ˜
+    FVector GetPlayerLocation(); // í”Œë ˆì´ì–´ ìœ„ì¹˜ë¥¼ ê°€ì ¸ì˜¤ëŠ” í•¨ìˆ˜
+    void StopAllSystems(); // ì›¨ì´ë¸Œ ì‹œìŠ¤í…œ ì •ì§€ í•¨ìˆ˜
 
 };

@@ -33,7 +33,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "Weapon Stats")
     int32 GetTotalAmmo() const { return TotalAmmo;  } // 전체 총알 수 반환 Getter
 
-    // [신규] 전체 탄약 수를 추가하는 함수 선언
+    // 전체 탄약 수를 추가하는 함수 선언
     void AddTotalAmmo(int32 AmmoToAdd);
 
 protected:

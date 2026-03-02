@@ -44,97 +44,212 @@
 ## 핵심 시스템
 
 <details>
-<summary><b>사격 및 레이캐스트 시스템</b></summary>
+<summary><b>캐릭터 기본 시스템 (AMainCharacter)</b></summary>
 
-- 레이캐스트 발사 위치를 총구(Muzzle)에서 카메라 중앙(ViewPoint)으로 변경하여 조준 방향과 탄도를 일치
-- `CapsuleComponent`와 `Mesh`의 Collision 설정 수정으로 적 감지 문제 해결
-- `ARifle::Fire()`에서 적중 대상이 Enemy인지 판별 후 데미지 적용 (`ProcessHit()`)
-- 헤드샷 데미지 시스템: 본(Bone) 이름이 "Head" 또는 "CC_Base_Head"일 경우 기본 데미지의 100배 적용
+**클래스 구조**: `AMainCharacter` + `UMeleeCombatComponent` + `USkillComponent` + `UCrossHairComponent` (SRP 기반 컴포넌트 분리)
+
+**기본 스탯**
+| 항목 | 값 | 변수명 |
+|------|-----|--------|
+| 최대 체력 | `1000` | `MaxHealth` |
+| 기본 이동속도 | `700` | `DefaultWalkSpeed` |
+| 에임 이동속도 | `500` | `AimWalkSpeed` |
+| 대쉬 쿨타임 | `1.0초` | `DashCooldown` |
+
+**Enhanced Input System (UE5)**
+- 13개 `UInputAction` 바인딩: `Move`, `Look`, `Jump`, `Aim`, `Fire`, `Reload`, `Dash`, `ZoomIn`, `ZoomOut`, `Skill1~3`, `Pause`
+- `UInputMappingContext` 기반 컨텍스트 매핑
+
+**이동 시스템**
+- 더블 점프: `bCanDoubleJump` 플래그 + 중력 마찰력 조절 (`HandleDoubleJump()`)
+- 8방향 대쉬: `DotProduct` 기반 전/후/좌/우/대각선 방향 판별, 방향별 전용 몽타주
+- 대쉬 제약: 대쉬 중 근접 공격 불가, 사격 가능 / 점프 중 대쉬 불가 / 대쉬 중 점프 불가
+- 에임 모드 중 대쉬 후 원래 조준 방향 자동 복귀
+- `UpdateMovementSpeed()`: 에임/비에임 상태 동적 속도 전환
+
+**무기 장착 시스템**
+- `ARifle` × 1, `AKnife` × 2 (좌/우): 소켓 기반 등/손 탈부착
+- `AMachineGun`, `ACannon`: 스킬 전용 무기, 1회 생성 후 `SetActorHiddenInGame`으로 재활용
+- 모든 소켓 위치/회전값을 `EditAnywhere`로 에디터 커스터마이징 가능
 
 </details>
 
 <details>
-<summary><b>리코일 및 화면 흔들림 시스템</b></summary>
+<summary><b>사격 및 레이캐스트 시스템 (ARifle)</b></summary>
 
-- 사격 시 `ApplyCameraRecoil()` 호출로 수직/수평 반동 목표 값 설정
-- `Tick` 함수에서 `FMath::Vector2DInterpTo`를 사용한 부드러운 보간 반동 적용
-- `ApplyCameraShake()` 함수를 통한 카메라 위치 랜덤 오프셋 기반 흔들림
-- `ShakeDuration` 후 타이머로 카메라 위치 원상 복구
-- 재장전 중에는 반동 및 화면 흔들림 비활성화
+**라이플 스탯**
+| 항목 | 값 | 변수명 |
+|------|-----|--------|
+| 탄창 용량 | `30발` | `MaxAmmo` |
+| 예비 탄약 | `90발` | `TotalAmmo` |
+| 연사 간격 | `0.15초` | `FireRate` (~6.67발/초) |
+| 재장전 시간 | `2.0초` | `ReloadTime` |
+| 기본 데미지 | `15` | `Damage` |
+| 헤드샷 배율 | `10배` | `HeadshotDamageMultiplier` |
+| 유효 사거리 | `5000` | `Range` |
+
+**레이캐스트 방식**
+- 발사 기점: 카메라 중앙(`ViewPoint`) — 조준 방향과 탄도 일치
+- 적중 판별: 본(Bone) 이름이 `"Head"` 또는 `"CC_Base_Head"`일 경우 헤드샷 데미지 적용
+- `CapsuleComponent` + `Mesh`의 Collision `Visibility:Block` 설정으로 적 감지
+
+**정확도 보정**
+| 상태 | 배율 | 변수명 |
+|------|------|--------|
+| 이동 중 | ×`1.5` | `MovementSpreadMultiplier` |
+| 에임 모드 | ×`0.3` | `AimSpreadReduction` |
 
 </details>
 
 <details>
-<summary><b>다이나믹 크로스헤어 시스템</b></summary>
+<summary><b>카메라 반동 및 화면 흔들림</b></summary>
 
-- 이동 번짐: 현재 이동 속도에 따라 크로스헤어 실시간 확장
-- 격발 번짐: `StartExpansion()` 호출을 통한 즉시 확장
-- 연속 사격 번짐: `ConsecutiveShotWindow` 내 연속 호출 감지 및 추가 분산도 배율 적용
+**반동 시스템 (`ApplyCameraRecoil()`)**
+| 항목 | 값 |
+|------|-----|
+| 수직 반동 범위 | `1.0` ~ `2.0` |
+| 수평 반동 범위 | `-7.0` ~ `7.0` |
+| 반동 지속시간 | `0.25초` |
+| 회복 속도 | `5.0` |
+
+- `Tick`에서 `FMath::Vector2DInterpTo`로 부드러운 보간 반동 적용
+- 재장전 중 반동 비활성화
+
+**화면 흔들림 (`ApplyCameraShake()`)**
+| 항목 | 값 |
+|------|-----|
+| 흔들림 강도 | `0.8` |
+| 지속시간 | `0.15초` |
+
+- 카메라 위치에 랜덤 오프셋 적용 → 타이머로 원위치 복구
 
 </details>
 
 <details>
-<summary><b>근접 전투 (콤보 / 히트판정 / 자동조준)</b></summary>
+<summary><b>다이나믹 크로스헤어 (UCrossHairComponent)</b></summary>
 
-**콤보 공격 시스템**
-- 콤보별 차등 데미지 (1콤보: 20, 2콤보: 25, 3콤보: 30, 4콤보 발차기: 35)
-- 1.5초 동안 콤보를 이어서 하지 않으면 1타로 초기화
-- 4콤보(발차기)는 전용 히트박스(`KickHitBox`)를 `FootSocket_R`에 부착하여 처리
+**크로스헤어 수치**
+| 항목 | 값 |
+|------|-----|
+| 기본 스프레드 | `10.0` |
+| 최소 스프레드 | `5.0` |
+| 최대 스프레드 | `50.0` |
+| 확장 속도 | `8.0` |
+| 회복 속도 | `4.0` |
 
-**히트판정 개선**
-- 근접공격 시 캐릭터 전방에 레이캐스트를 발사, 히트박스 충돌과 동시 충족 시에만 데미지 적용
-- `SweepMultiByChannel`로 변경: 9개의 구체 스윕을 부채꼴 형태로 발사하여 180도 범위 커버
-- `TSet<AActor*>`를 통한 중복 데미지 방지
+**탄퍼짐 연동**
+| 항목 | 값 |
+|------|-----|
+| 기본 탄퍼짐 각도 | `1.0도` |
+| 최대 탄퍼짐 각도 | `5.0도` |
+
+**동적 반응**
+- 이동 번짐: 현재 이동 속도에 따라 실시간 확장
+- 격발 번짐: `StartExpansion()` 호출로 즉시 확장
+- 연속 사격 번짐: `ConsecutiveShotWindow`(`0.5초`) 내 연속 호출 감지 시 추가 분산
+- 색상 변화: 기본 `White` → 확장 시 `Orange`(`1.0, 0.5, 0.0`)
+
+</details>
+
+<details>
+<summary><b>근접 전투 (UMeleeCombatComponent)</b></summary>
+
+**5단 콤보 시스템**
+| 콤보 | 데미지 | 무기 | 설명 |
+|------|--------|------|------|
+| 1타 | `20` | 칼 | 약공격 |
+| 2타 | `25` | 칼 | 약공격 |
+| 3타 | `30` | 칼 | 약공격 |
+| 4타 | `35` | 발차기 | `KickHitBox` + `FootSocket_R` |
+| 5타 | `50` | 칼 | 강공격 |
+
+- 콤보 리셋: `1.5초` 동안 입력 없으면 1타로 초기화 (`ComboResetTime`)
+- 콤보 쿨타임: `2.0초` (`ComboCooldownTime`)
+
+**히트 판정 (`SweepMultiByChannel`)**
+- 9개 구체 스윕을 부채꼴 형태로 발사하여 180도 범위 커버
+- 구체 반지름: `20.0` (`TraceSphereRadius`), 공격 사거리: `180.0` (`AttackRadius`)
+- `TSet<AActor*>` 중복 데미지 방지
 
 **자동 조준 및 텔레포트 돌진**
-- `AdjustAttackDirection` 함수에서 모든 종류의 적을 단일 배열로 통합 탐색
-- 거리 우선 타겟 선정 + 사선 확보(LineTrace) 검증
-- 조건부 텔레포트: `MinTeleportDistance` ~ `TeleportDistance` 범위 내 적에게 즉시 이동
+| 항목 | 값 |
+|------|-----|
+| 자동 조준 거리 | `300` |
+| 텔레포트 최소 거리 | `150` |
+| 텔레포트 최대 거리 | `1200` |
+| 텔레포트 쿨타임 | `5.0초` |
+| 텔레포트 도착 오프셋 | `50` |
 
-</details>
-
-<details>
-<summary><b>대쉬 시스템</b></summary>
-
-- WASD 방향 입력 기반, 카메라 방향과 독립적인 직관적 대쉬
-- `DotProduct`를 활용한 전/후/좌/우/대각선 방향 판별 및 애니메이션 적용
-- 대쉬 중 근접 공격 불가, 사격 가능 / 점프 중 대쉬 불가 / 대쉬 중 점프 불가
-- 에임 모드 중 대쉬 후 원래 조준 방향으로 자동 복귀
+- `AdjustAttackDirection()`: 모든 적 클래스를 단일 배열로 탐색, 거리 우선 타겟 선정 + `LineTrace` 사선 검증
+- 넉백: 칼 `1000`, 킥 `1500` (`KnifeKnockbackStrength`, `KickKnockbackStrength`)
 
 </details>
 
 <details>
 <summary><b>에임 모드 / 카메라 시스템</b></summary>
 
+**줌 제어**
+| 항목 | 값 |
+|------|-----|
+| 기본 줌 | `250` |
+| 에임 줌 | `70` |
+| 최소 줌 | `125` |
+| 최대 줌 | `500` |
+| 줌 단계 | `20` |
+| 줌 보간 속도 | `10.0` |
+
+- 마우스 휠 줌인/줌아웃 (`FMath::FInterpTo` 보간)
+- `PreviousZoom` 저장: 에임 모드 해제 시 마지막 줌 값 유지
+- Spring Arm `Do Collision Test` 활성화: 카메라 벽 투과 방지
 - 에임 모드 시 `FRotator ControlRotation` 기반 이동 방향 조절
-- `AimPitch` 값을 활용한 부드러운 상하 조준 애니메이션
-- 에임 모드 전환 시 보간을 적용한 부드러운 카메라 전환
-- 마우스 휠 줌인/줌아웃 (`FMath::FInterpTo` 보간), 에임 모드 해제 시 마지막 줌 값 유지
-- Spring Arm의 `Do Collision Test` 활성화로 카메라 벽 투과 방지
-- 에임 모드 시 이동 속도 저하 (700 → 500)
+- `AimPitch` 값을 ABP와 공유하여 부드러운 상하 조준 애니메이션
 
 </details>
 
 <details>
-<summary><b>웨이브 시스템</b></summary>
+<summary><b>웨이브 시스템 (AMainGameModeBase)</b></summary>
 
-- `AMainGameModeBase` 기반 웨이브 제어 및 스폰 관리
-- 10초 간격 `ProcessSpawnStep` 기반 점진적 스폰 패턴 (1명 → 2명 → ... → 5명)
-- 보스 등장 시 일반 적 즉시 처리 및 메모리 정리 후 1:1 구도 진입
-- 보스 사망 후 다음 웨이브 레벨 (증가된 체력, 이동속도)
-- `UWaveRecordSaveGame` 기반 최고 기록 저장 시스템
+**데이터 주도 설계**
+- `FWaveConfiguration` + `FWaveSpawnEntry` 구조체: BP 에디터에서 웨이브별 적 구성 편집
+- 6종 AI 클래스 등록: `AEnemy`, `ABossEnemy`, `AEnemyDog`, `AEnemyDrone`, `AEnemyShooter`, `AEnemyGuardian`
+
+**스폰 시스템**
+| 항목 | 값 |
+|------|-----|
+| 사전계산 스폰 위치 | `200개` |
+| 스폰 반경 | `1000` |
+| 드론 높이 오프셋 | `200` |
+| 위치 갱신 주기 | `300초` (5분) |
+| 갱신 시 교체 수 | `50개` |
+
+- NavMesh 기반 사전계산: `PreCalculateSpawnLocations()`에서 게임 시작 시 5단계 반경으로 200개 위치 계산
+- 타이머 기반 분할 갱신: `RefillSpawnLocationsPerFrame()` → 게임스레드에서 프레임당 1개씩 NavMesh 쿼리 (AsyncTask 제거, 스레드 안전성 확보)
+
+**웨이브 진행**
+- 웨이브 클리어 조건: 현재 웨이브의 모든 적 처치
+- 웨이브 간 준비시간: `PrepareTime` (기본 `7.0초`)
+- 클리어 대기시간: `DefaultWaveClearDelay` (`5.0초`)
+- 클리어 보상: 체력 `200`, 탄약 `60` (`HealthRewardOnClear`, `AmmoRewardOnClear`)
+- `UWaveRecordSaveGame` 기반 최고 기록 저장
 
 </details>
 
 <details>
-<summary><b>이동 속도 제어 / 넉백 시스템</b></summary>
+<summary><b>넉백 및 피격 시스템</b></summary>
 
-**이동 속도 제어**
-- `UpdateMovementSpeed()` 함수로 상태에 따른 동적 속도 변경 (기본 700, 에임 500)
+**넉백**
+- `LaunchCharacter` 기반 수평 넉백 (`bXYOverride = true`로 즉각 피드백)
+- Z축 0 정규화: 공중 부양 방지, 지면 수평 이동만 허용
 
-**넉백 시스템**
-- `LaunchCharacter` 기반 수평 넉백 (`bXYOverride = true`로 즉각적 피드백)
-- Z축 0 정규화로 공중 부양 방지, 지면 수평 이동만 허용
+**피격 반응**
+- 일반 피격: `NormalHitMontages` 배열에서 랜덤 재생
+- 빅 히트: `BigHitMontage` → `BigHitRecoverMontage` 순차 재생
+- 사망: `DieMontages` 배열에서 랜덤 선택, 포스트프로세싱 사망 연출
+
+**포스트프로세싱 사망 연출**
+- `UPostProcessComponent` 직접 제어
+- `ColorSaturation = FVector(0, 0, 1)` → 흑백 전환
+- `VignetteIntensity = 0.5f` → 화면 가장자리 어둡게 처리
 
 </details>
 
@@ -143,149 +258,279 @@
 ## AI 시스템
 
 <details>
-<summary><b>Enemy AI (기본 적)</b></summary>
+<summary><b>Enemy AI (기본 적) — AEnemy + AEnemyAIController</b></summary>
 
-**기본 행동**
-- `AEnemyAIController`에서 `DetectionRadius` 내 플레이어 감지 시 추적
-- `MoveToActor`를 활용한 네비게이션 시스템 기반 이동
+**기본 스탯**
+| 항목 | 일반 | 엘리트 |
+|------|------|--------|
+| 체력 | `100` | `400` |
+| 이동속도 | `300` | `500` |
+| 일반공격 데미지 | `20` | `30` |
+| 강공격 데미지 | `50` | `60` |
+| 점프공격 데미지 | `30` | `40` |
+| 엘리트 확률 | — | `30%` (`EliteChance`) |
+
+**상태 머신 (`EEnemyAIState`)**
+```
+Idle → MoveToCircle (포위 위치 이동) → ChasePlayer (추격)
+```
 
 **공격 패턴**
-- 일반 공격 → 3회 후 강공격 자동 전환
-- 점프 공격: 감지 범위 진입 시 실행, 루트 모션 기반 이동
-- 30% 확률 좌/우 닷지 (쿨다운 적용)
+| 공격 | 조건 | 설명 |
+|------|------|------|
+| 일반 공격 | `AttackRange`(`200`) 이내 | 쿨타임 `2.0초` |
+| 강 공격 | 일반 공격 3회 후 | 자동 전환 |
+| 점프 공격 | 감지 범위 진입 시 | 루트 모션 기반 이동 |
+| 닷지 | 공격 쿨타임 중 `30%` 확률 | 좌/우 랜덤, 쿨다운 `5.0초` |
 
-**히트 및 사망 처리**
-- 총기/칼 공격 시 히트 애니메이션 호출, 사망 시 AI 완전 중지
-- 사망 상황별 다른 애니메이션 (공중 사망, 일반 사망)
-- 사망 후 일정 시간 뒤 무기와 함께 사라짐
+**포위 시스템**
+- 플레이어 중심 반지름 `500` 원형 포위 (`CircleRadius`)
+- `StaticAngleOffset`: 적 수에 따라 360° 균등 분배로 겹침 방지
+- `ChaseStartDistance`(`3000`) 이내 진입 시 추격 개시
+- `StopChasingRadius`(`6000`) 초과 시 추격 중단
 
-**노티파이 기반 타이밍 제어**
-- `UAnimNotify_EnemyStartAttack` / `UAnimNotify_EnemyEndAttack`로 정확한 공격 타이밍 제어
-- 카타나 `Tick`에서 `PerformRaycastAttack()` 실행 (5단계 구체 스윕, 반지름 30)
-
-**포위 로직**
-- 3가지 상태: `Idle`, `MoveToCircle`, `ChasePlayer`
-- 플레이어 중심 반지름 200 원형 포위, `StaticAngleOffset`으로 겹침 방지
-- 성능 최적화: AI 업데이트 60fps → 20fps, 회전 보간 10fps, 원형 위치 2초 간격 재계산
+**카타나 히트판정 (`AEnemyKatana`)**
+- 5단계 구체 스윕 (`NumSteps: 5`, `HitRadius: 30`, `TotalDistance: 150`)
+- `TraceInterval: 0.016초` (~60FPS 동기화)
+- `TSet<AActor*>` 중복 피격 방지
 
 **엘리트 Enemy**
-- 10% 확률 생성, 체력 2배(200), 이동속도 증가(500), 공격 데미지 상승
+- `30%` 확률 생성, 전용 등장 애니메이션
 - 모든 공격 몽타주 1.5배 속도 재생
-- 전용 등장 애니메이션, ABP 연동 블렌드스페이스 분기
+- ABP 연동 블렌드스페이스 분기
 
 </details>
 
 <details>
-<summary><b>Boss AI</b></summary>
+<summary><b>Boss AI — ABossEnemy + ABossEnemyAIController</b></summary>
 
-**핵심 시스템**
-- 클래스 구조: `ABossEnemy`, `ABossEnemyAIController`, `AEnemyBossKatana`, `ABossProjectile`
-- 상하체 분리 시스템: `bUseUpperBodyBlend` 플래그로 이동 중 독립적 상체 공격
-- 무적 시스템: 텔레포트 및 스텔스 특정 구간에서 `bIsInvincible` 활성화
-- 상태: `Idle`, `MoveToPlayer`, `NormalAttack` 3가지 핵심 상태
+**기본 스탯**
+| 항목 | 값 |
+|------|-----|
+| 최대 체력 | `2000` |
+| 기본 이동속도 | `300` |
+| 최대 가속도 | `5000` |
+| 텔레포트 거리 | `500` |
+| 텔레포트 쿨다운 | `10초` |
+| 스텔스 쿨다운 | `30초` |
+| 원거리 공격 쿨다운 | `10초` |
 
-**텔레포트 시스템**
-- 후퇴 텔레포트: 플레이어 반대 방향 이동 → 원거리 공격 또는 공격형 텔레포트 연계
-- 공격 텔레포트: 플레이어 등 뒤 사각지대로 기습 이동 후 즉시 공격
+**상태 Enum (`EBossState`) — 11개 상태**
+```
+Idle → Intro → Combat → Teleporting / AttackTeleport / RangedAttack / NormalAttack / UpperBodyAttack / StealthAttack / HitReaction → Dead
+```
 
-**스텔스 공격 (6단계 시퀀스)**
-1. `StealthStartMontage` 재생
-2. `StealthDiveMontage` 재생 (지면 파고들기)
-3. `SetActorHiddenInGame(true)` 투명화 + 5초간 플레이어 주변 위치 갱신 추적
-4. 마지막 갱신 위치로 즉시 텔레포트
-5. 킥 공격 (`LineTrace` 판정, `LaunchCharacter`로 플레이어 공중 부양 + 중력 0)
-6. 피니시 연계 공격
+**AI 상태 머신 (`EBossEnemyAIState`)**
+| 상태 | 설명 |
+|------|------|
+| `Idle` | 대기 |
+| `MoveToPlayer` | 접근 (`BossMoveRadius: 600`) |
+| `NormalAttack` | 근접 공격 (`BossStandingAttackRange: 200`, `BossMovingAttackRange: 250`) |
 
 **공격 패턴 우선순위**
 ```
-1순위: 스텔스 공격 (300~600 거리, 50% 확률)
-2순위: 거리별 일반 공격
-  ├─ 0~200: 후퇴텔레포트(50%) vs 전신공격(50%)
-  ├─ 201~250: 상체분리 이동공격
+1순위: 스텔스 공격 (200~250 거리, 쿨다운 미적용 시)
+2순위: 거리별 분기
+  ├─ 0~200: 후퇴텔레포트(50%) vs 근접공격(50%)
+  ├─ 201~250: 상체분리 이동공격 (bUseUpperBodyBlend)
   └─ 251+: 걸어서 추격
 ```
 
-**투사체 공격**
-- `ABossProjectile`: 직선 비행 → 충돌 시 `ApplyAreaDamage()` 광역 피해
+**스텔스 공격 시퀀스 (`EStealthPhase`) — 6단계**
+| 단계 | 설명 |
+|------|------|
+| `Starting` | 시작 몽타주 재생 |
+| `Diving` | 지면 파고들기 |
+| `Invisible` | `SetActorHiddenInGame(true)` 투명화, 플레이어 주변 위치 갱신 추적 |
+| `Kicking` | 텔레포트 후 킥 공격 (`LineTrace` 판정, `LaunchCharacter`로 공중 발사) |
+| `Finishing` | 킥 적중 시 피니시 연계 공격 |
+| `None` | 종료, AI 복구 |
+
+**텔레포트 시스템**
+- 후퇴 텔레포트: 플레이어 반대 방향 → 원거리 공격 또는 공격 텔레포트 연계
+- 공격 텔레포트: 플레이어 등 뒤 사각지대(`AttackTeleportRange: 150`)로 기습 이동
+
+**상하체 분리**: `bUseUpperBodyBlend` 플래그로 이동 중 독립적 상체 공격
+
+**무적 시스템**: 텔레포트/스텔스 특정 구간에서 `bIsInvincible` 활성화
+
+**투사체 공격 (`ABossProjectile`)**: 직선 비행 → 충돌 시 `ApplyAreaDamage()` 광역 피해
 
 **메모리 관리**
-- 사망 시 `HideBossEnemy()`로 무기, AI 컨트롤러, 타이머, 델리게이트 안전 정리
-- `SetTimerForNextTick`으로 다음 프레임에 액터 파괴
+- 사망 시 `HideBossEnemy()`: 무기/AI/타이머/델리게이트 안전 정리
+- `SetSafeTimerForNextTick`으로 다음 프레임에 액터 파괴
 
 </details>
 
 <details>
-<summary><b>EnemyDog AI</b></summary>
+<summary><b>EnemyDog AI (돌격형) — AEnemyDog + AEnemyDogAIController</b></summary>
 
-- 2가지 상태: `Idle`, `ChasePlayer`
-- 플레이어 중심 반지름 100 원형 포위
-- `TActorIterator`로 실시간 아군 수 파악, 360도 균등 분배 각도 할당
-- 150 단위 이하 접근 시 `NormalAttack` 실행
-- 틱 빈도 0.05초 제한, `FMath::RInterpTo` 회전 보간
+**기본 스탯**
+| 항목 | 값 |
+|------|-----|
+| 체력 | `50` |
+| 이동속도 | `600` |
+| 일반공격 데미지 | `10` |
+| 자폭 데미지 | `40` |
+| 자폭 반경 | `100` |
+
+**상태 머신 (`EEnemyDogAIState`)**
+```
+Idle → ChasePlayer
+```
+
+**포위 시스템**
+- 플레이어 중심 반지름 `100` 원형 포위 (`SurroundRadius`)
+- `TActorIterator` 실시간 아군 수 파악, 360° 균등 분배 각도 할당
+- `AttackRange`(`130`) 이내 접근 시 공격 실행
+
+**자폭 메카닉**
+- 사망 시 `Explode()` 호출 → 반경 `100` 내 `40` 데미지
+- 나이아가라 폭발 이펙트 + 폭발 사운드
+
+**성능 최적화**
+- `AIUpdateInterval: 0.05초` 틱 제한
+- `RotationInterpSpeed: 10.0`, `MoveAcceptanceRadius: 10.0`
 
 </details>
 
 <details>
-<summary><b>EnemyDrone AI (비행형)</b></summary>
+<summary><b>EnemyDrone AI (비행형) — AEnemyDrone + AEnemyDroneAIController</b></summary>
 
-- 플레이어 중심 반지름 500, 높이 300 궤도 비행
-- `LineTrace` 기반 장애물 회피 (아군 드론 충돌 시 고도 변경, 지형 충돌 시 궤도 방향 반전)
-- 끼임 탈출: `MaxStuckTime` 초과 시 고도 급상승
-- `FMath::VInterpTo` 보간 이동, 틱 주기 0.2초 제한
-- 독립적인 미사일 발사 시스템 (`MissileCooldown` 타이머)
+**기본 스탯**
+| 항목 | 값 |
+|------|-----|
+| 체력 | `40` |
+| 궤도 반경 | `500` |
+| 비행 높이 | `300` |
+| 궤도 속도 | `45°/초` |
+| 미사일 쿨다운 | `3.0초` |
+
+**궤도 비행**
+- 플레이어 중심 반지름 `500`, 높이 `300` 궤도 비행
+- `bClockwise` 기반 시계/반시계 방향 회전
+- `FMath::VInterpTo` 보간 이동 (`MoveInterpSpeed: 2.0`)
+
+**장애물 회피**
+| 상황 | 대응 |
+|------|------|
+| 아군 드론 충돌 | 고도 `150` 단위 변경 (`DroneAvoidanceStep`) |
+| 지형 충돌 | 궤도 방향 반전 |
+| 끼임 (`MaxStuckTime: 1.5초` 초과) | 고도 `500`으로 급상승 (`EscapeHight`) |
+| 궤도 이탈 (`OutOfRadiusLimit: 1.5초`) | 궤도 복귀 |
+
+**미사일 시스템 (오브젝트 풀링)**
+- `InitialMissilePoolSize: 10` — 게임 시작 시 10개 사전 생성
+- `GetAvailableMissileFromPool()`: 비활성 미사일 재활용
+- `AEnemyDroneMissile`: 유도 호밍 미사일
+
+**비행 제한**: 최소 `150` ~ 최대 `1000`, 중력 비활성화 (`DroneGravityScale = 0.0`)
 
 </details>
 
 <details>
-<summary><b>EnemyShooter AI (원거리)</b></summary>
+<summary><b>EnemyShooter AI (원거리) — AEnemyShooter + AEnemyShooterAIController</b></summary>
 
-- 5가지 상태: `Idle`, `Detecting`, `Moving`, `Shooting`, `Retreating`
-- 반지름 600 원형 진형 유지, 아군 최소 180 단위 이격
-- `LineTrace` 사선 확보 시스템: 아군에 의해 막히면 자리 변경, `EnemyGuardian`에 의해 막히면 수류탄 투척
+**기본 스탯**
+| 항목 | 값 |
+|------|-----|
+| 체력 | `200` |
+| 사격 사거리 | `350` ~ `700` |
+| 사격 쿨다운 | `2.0초` |
+| 감지 반경 | `3000` |
+| 수류탄 쿨다운 | `3.0초` |
+
+**상태 머신 (`EEnemyShooterAIState`)**
+```
+Idle → Detecting → Moving → Shooting ↔ Retreating
+```
+
+**진형 시스템**
+- 플레이어 중심 반지름 `600` 원형 진형 유지 (`FormationRadius`)
+- 아군 최소 `180` 단위 이격 (`MinAllyDistance`)
+- `PositionUpdateInterval: 1.0초` 간격 재계산
+
+**사선 확보 시스템**
+- `LineTrace` 기반 장애물 감지
+- 아군에 의해 사선 차단 시 → 자리 변경
+- `EnemyGuardian`에 의해 차단 시 → 수류탄 투척
 
 **지능형 무기 (`AEnemyShooterGun`)**
-- 2단계 발사: `AimWarningTime` 지연 후 `ExecuteDelayedShot()` 실행
-- 플레이어 예측 시스템: 현재 속도 기반 미래 위치 계산 조준
+- 2단계 발사: `AimWarningTime` 지연 → `ExecuteDelayedShot()` 실행
+- 예측 조준: 플레이어 현재 속도 기반 미래 위치 계산
 - `AimingLaserMesh` 기반 시각적 조준 경고선
 - `Accuracy` 값(0.0~1.0)에 따른 확률적 명중/탄퍼짐
 
-**수류탄 (`AEnemyGrenade`)**
-- `SuggestProjectileVelocity` 포물선 궤도 계산
-- 물리 기반 투사체 (중력, 탄성, 마찰), 3초 시간차 폭발
+**수류탄 (`AEnemyShooterGrenade`)**
+- `SuggestProjectileVelocity` 포물선 궤도 계산 (`GrenadeLaunchSpeed: 700`)
+- 물리 기반 투사체 (중력, 탄성, 마찰), 시간차 폭발
+- 타겟 오프셋: `250` (플레이어 약간 전방 조준)
 
 **성능 최적화**
-- 캐싱: 아군 목록 1초, 사선 확인 0.3초, 진형 위치 1초 주기 갱신
-- 틱 주기 0.2초 제한
+| 캐싱 항목 | 주기 |
+|----------|------|
+| 아군 목록 | `1.0초` |
+| 사선 확인 | `0.3초` |
+| 진형 위치 | `1.0초` |
+| AI 로직 | `0.1초` |
 
 </details>
 
 <details>
-<summary><b>EnemyGuardian AI (방패병)</b></summary>
+<summary><b>EnemyGuardian AI (방패병) — AEnemyGuardian + AEnemyGuardianAIController</b></summary>
+
+**기본 스탯**
+| 항목 | 값 |
+|------|-----|
+| 체력 | `600` |
+| 방패 체력 | `500` |
+| 방패 공격 범위 | `150` |
+| 진압봉 공격 범위 | `200` |
 
 **이중 역할 시스템**
-- 방패 건재 시: 가장 가까운 `EnemyShooter` 정면에서 방패 역할 수행, 다수 가디언 좌우 대칭 방어선 구축
-- 방패 파괴 시: 포위 모드 전환, `EnemyDog`처럼 플레이어 직접 공격
+| 단계 | 조건 | 행동 |
+|------|------|------|
+| 수호자 모드 | 방패 건재 | 가장 가까운 `EnemyShooter` 정면에서 방패 역할 (`ProtectionDistance: 150`) |
+| 포위 모드 | 방패 파괴 | 플레이어 직접 공격 (`SurroundRadius: 150`) |
 
-**전투**
-- 방패 공격: 150 단위 내 접근 시 `LineTrace` 판정
-- 진압봉 공격: 방패 파괴 후 200 단위 내 접근 시 `Sweep` 판정
-- 방패 파괴 시 `Stun()` 상태 돌입
+**방패 시스템 (`AEnemyGuardianShield`)**
+- 방패 체력: `500` — 독립 데미지 처리
+- 방패 공격: `LineTrace` 판정 + 넉백 `1000` (`KnockbackStrength`)
+- 5단계 구체 스윕 (`NumSteps: 5`, `SweepRadius: 50`, `TotalDistance: 60`)
+- 파괴 시 → `Stun()` 상태 → 전투 모드 전환
+
+**공격 무기**
+| 무기 | 범위 | 데미지 | 판정 |
+|------|------|--------|------|
+| 방패 | `150` | `10` | `LineTrace` |
+| 진압봉 | `200` | — | `Sweep` |
 
 **성능 최적화**
 - `TWeakObjectPtr` 기반 안전한 캐시 참조
-- `AllyCacheUpdateInterval` (2초) 주기 아군 목록 갱신
+- `AllyCacheUpdateInterval: 2.0초` 주기 아군 목록 갱신
+- 다수 가디언 시 좌우 대칭 방어선 자동 구축
 
 </details>
 
 <details>
-<summary><b>Enemy AI 포위 / 상태 관리 공통</b></summary>
+<summary><b>AI 공통 시스템</b></summary>
 
-- `FVector::DistSquared()` 사용으로 제곱근 계산 최적화
-- `ProjectPointToNavigation()` 네비게이션 보정
-- `CachedTargetLocation` 캐싱으로 불필요한 재계산 방지
-- `bIsAttacking` 플래그로 공격 중 닷지 방지
-- 전투 종료 시 공격 카운트 초기화
+**IHealthInterface (UInterface)**
+- `GetHealthPercent()`: 현재 체력 비율 (0.0~1.0) 반환
+- `IsEnemyDead()`: 사망 여부 반환
+- 6종 적 클래스 공통 구현 → 체력바/UI 표준화
+
+**체력바 (`UHealthBarComponent`)**
+- `UWidgetComponent` 상속, 빌보드 방식 월드 위젯
+- `OnTakeAnyDamage` 이벤트 바인딩으로 피격 시 자동 표시
+- 표시 지속: `3.0초`, 페이드아웃: `0.5초`
+
+**공통 행동**
 - 스폰 즉시 인트로 몽타주 실행 (재생 중 피해 면역)
+- 사망 후 일정 시간 뒤 `HideEnemy()` → 메모리 정리
+- `FVector::DistSquared()` 거리 비교 최적화 (제곱근 생략)
+- `ProjectPointToNavigation()` NavMesh 보정
+- 공중 스턴 (`EnterInAirStunState`), 중력장 (`EnableGravityPull`) 공통 지원
 
 </details>
 
@@ -294,49 +539,97 @@
 ## 스킬 시스템
 
 <details>
-<summary><b>근접 모드 스킬</b></summary>
+<summary><b>근접 모드 스킬 (USkillComponent)</b></summary>
 
-**스킬1 - 공중 스턴**
-- 주변 모든 적을 일정 시간 동안 공중에 띄움 (행동 불가, 스턴 애니메이션)
-- `EnterInAirStunState()` 호출, 사격/추가 스킬과 연계 가능
+**스킬1 — 공중 스턴**
+| 항목 | 값 |
+|------|-----|
+| 쿨타임 | `7.0초` |
+| 범위 | `400` |
+| 스턴 지속시간 | `5.0초` |
+| 몽타주 배속 | `1.3배` |
+| 효과 지연 | `0.5초` |
 
-**스킬2 - 도약 광역 타격**
+- 주변 모든 적을 공중에 띄우고 행동 불가 상태로 만듦
+- `EnterInAirStunState()` 호출, 사격/추가 스킬 연계 가능
+
+**스킬2 — 도약 광역 타격**
+| 항목 | 값 |
+|------|-----|
+| 쿨타임 | `5.0초` |
+| 데미지 | `50` |
+| 범위 | `200` |
+| 도약 거리 | `300` |
+| 효과 지연 | `0.5초` |
+| 몽타주 배속 | `1.5배` |
+
 - 도약 후 `SphereTrace`로 범위 내 적 감지 및 광역 데미지
-- 스킬1과의 연계를 고려한 설계
+- 스킬1과 연계하여 띄운 적에게 추가 타격
 
-**스킬3 - 투사체 발사**
-- `Skill3Projectile` 클래스: 전방 투사체 발사, 적/벽 충돌 시 폭발
+**스킬3 — 투사체 발사**
+| 항목 | 값 |
+|------|-----|
+| 쿨타임 | `6.0초` |
+| 데미지 | `60` |
+| 스폰 전방 오프셋 | `200` |
+| 스폰 수직 오프셋 | `30` |
+
+- `ASkill3Projectile`: 전방 투사체 발사, 적/벽 충돌 시 폭발
 - `TSet<AActor*>` 중복 타격 방지, 나이아가라 폭발 이펙트
 
 </details>
 
 <details>
-<summary><b>에임 모드 스킬</b></summary>
+<summary><b>에임 모드 스킬 (USkillComponent)</b></summary>
 
-**에임스킬1 - 기관총 연사**
-- `MachineGun` 클래스: `FireRate` 간격 자동 연사, `GetFireDirectionWithSpread()` 무작위 탄퍼짐
+**에임스킬1 — 기관총 연사**
+| 항목 | 값 |
+|------|-----|
+| 쿨타임 | `7.0초` |
+| 연사 지속시간 | `5.0초` |
+| 몽타주 반복 간격 | `0.85초` |
+
+- `AMachineGun` 클래스: `GetFireDirectionWithSpread()` 무작위 탄퍼짐
 - ABP 연동 상체 `AimPitch` 회전, Start→Loop 무한반복
 - 스킬 사용 시 자동 무기 수납, 이동/점프/다른 스킬 차단
+- 대쉬로 강제 취소 가능 (`CancelAimSkill1ByDash()`)
 
-**에임스킬2 - 캐논 투사체**
-- `Cannon` 클래스 + `AimSkill2Projectile` 클래스
-- 고각발사: 지정 고도 도달 후 `FindClosetEnemy()`로 유도
-- 저각발사: 비유도 폭발형 투사체
-- 폭발 후 지속 영역 효과: `ApplyPersistentEffects()` (0.1초마다 끌어당기기), `ApplyPeriodicDamage()` (지속 데미지)
+**에임스킬2 — 캐논 투사체**
+| 항목 | 값 |
+|------|-----|
+| 쿨타임 | `6.0초` |
+| 지속시간 | `5.0초` |
+| 시작 몽타주 배속 | `0.5배` |
+| 전환 임계값 | `0.9` |
+
+- `ACannon` + `AAimSkill2Projectile` 클래스
+- 고각 발사: 지정 고도 도달 후 `FindClosestEnemy()`로 유도
+- 저각 발사: 비유도 폭발형 투사체
+- 폭발 후 지속 영역: `ApplyPersistentEffects()` (0.1초마다 끌어당기기) + `ApplyPeriodicDamage()` (지속 데미지)
 - `EndPlay()`에서 모든 타이머/오디오 정리로 메모리 누수 방지
 
-**에임스킬3 - 공중 폭격**
-- `AAimSkill3Projectile`: 5개 투사체를 일정 간격 배치, 3초 후 하늘(+2000)에서 낙하
-- 하늘색 원으로 6초간 낙하 예정 지점 표시 (반지름 300)
-- 지면 높이 자동 보정, 충돌 지점 반지름 150 내 광역 피해 (기본 60 데미지)
+**에임스킬3 — 공중 폭격**
+| 항목 | 값 |
+|------|-----|
+| 쿨타임 | `10.0초` |
+| 투사체 수 | `5개` |
+| 낙하 지연 | `3.0초` |
+| 최대 사거리 | `1500` |
+| 폭격 반경 | `300` |
+| 스폰 높이 | `2000` |
+
+- `AAimSkill3Projectile`: 5개 투사체를 일정 간격 배치
+- `3.0초` 후 고도 `2000`에서 하강
+- 하늘색 원으로 낙하 예정 지점 표시 (`AimSkill3Radius: 300`)
+- 지면 높이 자동 보정 (`AimSKill3TraceHeight: 500`)
 
 </details>
 
 <details>
-<summary><b>스킬 관련 무기 관리</b></summary>
+<summary><b>스킬 무기 관리</b></summary>
 
-- `MachineGun` / `Cannon`은 1회 생성 후 월드에 유지
-- `SetActorHiddenInGame(true/false)`로 표시/숨김 전환 (Spawn/Destroy 반복 회피)
+- `AMachineGun`, `ACannon`: 게임 시작 시 1회 생성 후 월드에 유지
+- `SetActorHiddenInGame(true/false)`: 표시/숨김 전환 (Spawn/Destroy 반복 회피)
 - GC 부하 최소화, 스킬 사용 시 지연 없는 즉시 재활용
 
 </details>
@@ -346,40 +639,70 @@
 ## UI / UX / 사운드 / VFX
 
 <details>
-<summary><b>시스템 UI 및 환경 설정</b></summary>
+<summary><b>시스템 UI 및 환경 설정 (USettingsGameInstance)</b></summary>
 
-- `USettingsGameInstance` 기반 전역 설정 (그래픽, 사운드, 마우스 감도)
-- `UGameUserSettings` 활용 Scalability 제어 (그래픽 품질, AA, V-Sync, 창 모드, 해상도)
-- 모니터 지원 해상도 동적 목록 표시
-- `USoundMix` / `USoundClass` 기반 마스터 볼륨 실시간 제어 및 파일 저장
+**아키텍처**
+- `UGameInstance` 상속: 게임 시작~종료까지 전역 설정 유지
+- `USettingsSaveGame`: 설정 데이터 영속화 (로컬 파일)
+- `LoadOrCreate()` 패턴: 저장 데이터 존재 시 로드, 없으면 기본값 생성
+
+**그래픽 설정**
+- `UGameUserSettings` 활용 Scalability 제어
+- 그래픽 품질, 안티앨리어싱, V-Sync, 창 모드, 해상도 C++ 직접 제어
+- `GetSupportedResolutions()`: 모니터 지원 해상도 동적 목록 표시
+- `SetScreenResolutionFromString()`: 문자열 기반 해상도 설정
+
+**사운드 설정**
+- `USoundMix` + `USoundClass` 기반 마스터 볼륨 실시간 제어
+- 설정 변경 즉시 적용 + 파일 저장
+
+**마우스 감도**
+- `ApplyMouseSensitivityOnly()`: 감도 배율 실시간 적용
 
 </details>
 
 <details>
-<summary><b>메인 메뉴 및 UX 연출</b></summary>
+<summary><b>메인 메뉴 및 UX 연출 (UMainMenuWidget)</b></summary>
 
-- `BindWidget` 매크로로 WBP 버튼과 C++ 로직 안전 연결
-- 레벨 전환 시 `LoadingScreenWidget` 동적 생성, `FInputModeUIOnly`로 입력 차단
-- ESC 일시정지 메뉴 (RESUME, RESTART, OPTIONS)
-- 이벤트 디스패처 연동: 옵션 → 메인 메뉴 복귀 시 자동 설정 저장 및 UI 갱신
+- `BindWidget` 매크로: WBP 버튼(`PlayButton`, `OptionButton`, `ExitButton`)과 C++ 로직 안전 연결
+- 레벨 전환 시 `LoadingScreenWidget` 동적 생성 (`LoadingDisplayTime: 2.0초`)
+- `FInputModeUIOnly`로 로딩 중 입력 차단
+- ESC 일시정지 메뉴: RESUME, RESTART, OPTIONS
+- 이벤트 디스패처 연동: 옵션에서 메인 메뉴 복귀 시 자동 설정 저장 및 UI 갱신
 
 </details>
 
 <details>
-<summary><b>포스트 프로세싱 사망 연출</b></summary>
+<summary><b>HUD 시스템</b></summary>
 
-- `UPostProcessComponent` 직접 제어
-- `ColorSaturation` = `FVector(0, 0, 1)` → 흑백 전환
-- `VignetteIntensity` = 0.5f → 화면 가장자리 어둡게 처리
+**크로스헤어 (`UCrossHairComponent` + `UCrossHairWidget`)**
+- C++ 컴포넌트 + UMG 위젯 분리 설계
+- `GetBulletSpreadAngle()`: 현재 크로스헤어 상태를 라이플 탄퍼짐에 반영
+- 상/하/좌/우 라인 위치 실시간 계산
+- 에임 스킬 사용 시 강제 표시/숨김 제어
+
+**체력바 (`UHealthBarComponent`)**
+- `UWidgetComponent` 상속 빌보드 위젯
+- `IHealthInterface` 캐싱으로 체력 퍼센트 실시간 갱신
+- 피격 시 `3.0초` 동안 표시 → `0.5초` 페이드아웃
+- `OnTakeAnyDamage` 델리게이트 바인딩
+
+**플레이어 HUD**
+- 체력 비율: `GetHealthPercent()`
+- 탄약 정보: `GetRifleCurrentAmmo()`, `GetRifleMaxAmmo()`, `GetRifleTotalAmmo()`
+- 스킬 쿨타임: 6개 스킬 + 텔레포트 쿨타임 진행률 BP 바인딩
 
 </details>
 
 <details>
 <summary><b>사운드 시스템</b></summary>
 
-- 모든 인게임 사운드를 Sound Cue → Sound Class로 체계화
-- 마스터 볼륨 옵션 연동 (실시간 반영)
-- 거리 기반 사운드 감쇄(Attenuation) 적용
+- 모든 인게임 사운드를 `Sound Cue` → `Sound Class`로 체계화
+- 마스터 볼륨 옵션 실시간 연동
+- 거리 기반 사운드 감쇄(`Attenuation`) 적용
+- 스킬 쿨타임 완료 알림 사운드 (`Skill1~3ReadySound`, `AimSkill1~3ReadySound`)
+- 쿨타임 미충족 사운드 (`SkillCooldownSound`) — `UAudioComponent` 기반 중복 재생 방지
+- 드론 비행 루프 사운드 (`FlightLoopAudio`)
 
 </details>
 
@@ -387,13 +710,25 @@
 <summary><b>VFX (시각 효과)</b></summary>
 
 **라이플 VFX**
-- 총구 섬광: `MuzzleSocket` 위치에 나이아가라 시스템 부착, `MuzzleFlashDuration` 후 제거
-- 히트 임팩트: `HitResult.ImpactPoint`에 나이아가라 시스템 스폰, 타이머 기반 정리
+| 이펙트 | 위치 | 지속시간 |
+|--------|------|----------|
+| 총구 섬광 | `MuzzleSocket` | `0.15초` |
+| 히트 임팩트 | `HitResult.ImpactPoint` | `0.2초` |
+
+- 나이아가라 시스템, 타이머 기반 정리
+- `MuzzleFlashScale: 0.1`, `MuzzleFlashPlayRate: 3.0`
 
 **근접공격 이펙트**
 - Blender로 원형 → 반원 메쉬 재모델링 (전방 180도 범위 일치)
 - 나이아가라 시스템에 `User_ForwardVector`, `User_RightVector` 파라미터 바인딩
-- 오브젝트 풀링(`ENCPoolMethod::AutoRelease`) 성능 최적화
+- `ENCPoolMethod::AutoRelease` 오브젝트 풀링 성능 최적화
+- 킥/나이프 이펙트 전방 오프셋: `80` / `120`
+
+**적 이펙트**
+- 무기 히트 나이아가라 이펙트 (`WeaponHitNiagaraEffect`) — 모든 적 공통
+- EnemyDog 자폭 폭발 이펙트
+- EnemyDrone 사망 이펙트
+- Boss 스텔스 피니시 이펙트 + 사운드
 
 </details>
 
@@ -404,20 +739,25 @@
 <details>
 <summary><b>런타임 퍼포먼스 개선</b></summary>
 
-- **캐싱 시스템**: 빈번한 `Cast<T>` 연산 오버헤드를 방지하기 위해 멤버 변수로 캐싱, `BeginPlay` 시점 초기화
+- **캐싱 시스템**: 빈번한 `Cast<T>` 연산 오버헤드 방지 → 멤버 변수 캐싱, `BeginPlay` 시점 초기화
+  - 예: `AEnemyAIController`, `UAnimInstance`, `UCharacterMovementComponent` 등 모든 적 클래스에 적용
 - **Tick 최적화**: `PrimaryActorTick.bCanEverTick = false` 설정으로 불필요한 프레임 소모 최소화
+  - AI 틱 주기 제한: Dog `0.05초`, Shooter `0.1초`
 - **가상 함수 호출 최적화**: `GetWorld()` 반복호출 → 지역 변수(`UWorld* World`) 활용
 - **물리 쿼리 최적화**: 레이캐스트 호출 빈도를 로직에 맞게 조절
+- **FORCEINLINE**: 빈번히 호출되는 Getter 함수에 인라인 적용 — 호출 오버헤드 제거
 
 </details>
 
 <details>
 <summary><b>코드 안정성 및 컴파일 구조 개선</b></summary>
 
-- **Early Return 패턴**: 불필요한 else 구문과 if 중첩 제거, 코드 가독성 극대화
+- **Early Return 패턴**: 54개 클래스 전체에 도입, 불필요한 else/if 중첩 제거
 - **의존성 관리**: 불필요한 `#include` 제거 + 전방 선언 적용 → 컴파일 속도 개선, 순환 참조 방지
-- **SafeTimer**: `this` 직접 캡처 타이머 람다를 약참조 방식으로 전환 → 객체 소멸 후 크래시 방지
+- **SafeTimer**: 모든 타이머 람다에서 `TWeakObjectPtr` 약참조 캡처 통일 → 객체 소멸 후 크래시 방지
+- **AsyncTask 완전 제거**: NavMesh 쿼리 스레드 안전성 확보를 위해 게임스레드 타이머 기반 분할 실행으로 전환
 - **리플렉션 시스템 재정비**: `UPROPERTY` / `UFUNCTION` 지정자 전수 조사, 블루프린트 노출 범위 최적화
+- **TObjectPtr 마이그레이션**: `AEnemyShooter` 등 로우 포인터 → `TObjectPtr` 순차 전환 (GC 안정성, 디버그 용이성)
 
 </details>
 
@@ -433,18 +773,34 @@
 | MemStack Large Block | 2.50 MB | 1.25 MB | **메모리 점유 50% 감소** |
 | Used Streaming Pool | 187.68 MB (100%) | 159.49 MB (100%) | **텍스처 요구량 15% 감소** |
 
-- **프록시 부하 절감**: 빈번한 `Cast<T>` 제거 + 멤버 변수 캐싱 + 약참조(`WeakPtr`) 적용 → 평균 부하 95% 절감, GPU 드라이버 크래시 원인 제거
-- **함수 실행 구조 효율화**: 54개 클래스 전체에 Early Return 패턴 도입 → 스택 메모리 점유 50% 절감
+- **프록시 부하 절감**: 빈번한 `Cast<T>` 제거 + 멤버 변수 캐싱 + 약참조(`WeakPtr`) 적용 → 평균 부하 95% 절감
+- **함수 실행 구조 효율화**: Early Return 패턴 도입 → 스택 메모리 점유 50% 절감
 - **리소스 스트리밍 효율 향상**: C++ 로직 최적화로 GC 효율 증가 → 약 28MB 추가 스트리밍 풀 확보
 
 </details>
 
 <details>
-<summary><b>고도화 및 OOP 설계 연구 (진행중)</b></summary>
+<summary><b>아키텍처 설계</b></summary>
 
-- **TObjectPtr 마이그레이션**: 로우 포인터 → `TObjectPtr` 순차 전환 (GC 안정성, 디버그 용이성)
-- **데이터 주도 설계**: 하드코딩 수치 변수화, `UDataAsset` 분리 연구중
-- **인터페이스 기반 설계**: `UInterface` 활용으로 클래스 간 결합도 최소화, SRP 준수 연구중
+**SRP 기반 컴포넌트 분리**
+
+기존 `AMainCharacter` 클래스가 2천 줄에 달하던 구조를 단일 책임 원칙에 따라 분리:
+
+| 클래스 | 역할 |
+| --- | --- |
+| `AMainCharacter` | 이동/점프/대쉬/에임, 입력 바인딩, 무기 관리, 상태 관리, 카메라 반동 |
+| `USkillComponent` | 6종 스킬(근접 3, 에임 3) 사용 조건, 쿨타임, 효과, 무기 연동 |
+| `UMeleeCombatComponent` | 5단 콤보, 히트박스 제어, 데미지 적용, 자동 조준, 텔레포트 돌진 |
+| `UCrossHairComponent` | 다이나믹 크로스헤어, 탄퍼짐 연동, 연속 사격 감지 |
+
+**인터페이스 기반 설계**
+- `IHealthInterface` (`UInterface`): 6종 적 클래스 공통 체력 인터페이스
+- `GetHealthPercent()`, `IsEnemyDead()` 표준화 → 체력바/UI 결합도 최소화
+
+**스레드 안전성 확보**
+- `AsyncTask(BackgroundThread)` → 게임스레드 `SetTimer` 기반 분할 실행으로 전환
+- NavMesh 쿼리(`GetRandomPointInNavigableRadius`)의 게임스레드 전용 제약 준수
+- 모든 타이머 람다에서 `TWeakObjectPtr` 캡처 컨벤션 통일
 
 </details>
 
@@ -452,23 +808,10 @@
 <summary><b>저사양 PC 대응</b></summary>
 
 - 그래픽 기본값 Epic → Medium 조정, 창모드 설정
-- VRAM 부족 환경에서의 GPU 드라이버 크래시 방지
-- 크래시 발생 시 `GameUserSettings.ini` 삭제로 기본값 복원 가능
-
-</details>
-
-<details>
-<summary><b>메인캐릭터 클래스 리펙토링 (SRP)</b></summary>
-
-기존 `AMainCharacter` 클래스가 2천 줄에 달하며 모든 로직을 담당하던 구조를 단일 책임 원칙(SRP)에 따라 분리:
-
-| 클래스 | 역할 |
-| --- | --- |
-| `AMainCharacter` | 이동/점프/대쉬/에임 등 기본 조작, 입력 바인딩, 무기 관리, 상태 관리 |
-| `USkillComponent` | 모든 스킬(액티브/에임) 사용 조건, 쿨타임, 효과, 애니메이션, 무기 연동 |
-| `UMeleeCombatComponent` | 콤보 공격, 히트박스 제어, 데미지 적용, 공격 방향 보정, 텔레포트 돌진 |
-
-- 각 컴포넌트가 독립적 책임 → 유지보수성, 확장성, 테스트 용이성 향상
+- "GPU Crashed or D3D Device Removed"
+- 일부 저사양 PC에서 그래픽 설정을 과도하게 높게 설정 할 시 크래시 발생 확인
+- 게임 강제 종료 후 `GameUserSettings.ini` 삭제로 기본값 복원 가능
+- 복합적인 원인이 존재 (그래픽 드라이버문제, PC의 사양문제 등)
 
 </details>
 
@@ -800,5 +1143,142 @@
 
 ### 6. 저사양 PC 대응
 - 그래픽 기본값 Epic → Medium 조정, VRAM 부족 환경 GPU 크래시 방지
+
+</details>
+
+<details>
+<summary><b>AsyncTask 스레드 안전성 이슈 수정</b></summary>
+
+`MainGameModeBase`에서 `AsyncTask`를 사용하던 두 함수에서 스레드 안전성 문제를 발견하고, 모든 비동기 작업을 게임스레드 기반 타이머 방식으로 전환했습니다.
+
+### 1. NavMesh 쿼리의 스레드 안전성 문제
+
+**문제 코드 (`RefillSpawnLocationsAsync`)**
+```cpp
+// Before — 백그라운드 스레드에서 NavMesh 쿼리 호출 (위험)
+AsyncTask(ENamedThreads::BackgroundThreadPriority, [this, CachedCenter, Radius]()
+    {
+        for (int32 i = 0; i < 50; i++)
+        {
+            FindRandomLocationOnNavMesh(CachedCenter, Radius, SpawnLocation);
+            // ↑ 내부에서 GetWorld(), UNavigationSystemV1, GetRandomPointInNavigableRadius 호출
+            // 모두 게임스레드 전용 API
+        }
+        AsyncTask(ENamedThreads::GameThread, [...] { /* 결과 적용 */ });
+    });
+```
+
+**문제 사항 3가지**
+
+| # | 문제 | 설명 |
+|---|------|------|
+| 1 | `GetWorld()` | UObject 접근 — 게임스레드 전용 |
+| 2 | `UNavigationSystemV1::GetCurrent()` | 엔진 서브시스템 접근 — 게임스레드 전용 |
+| 3 | `GetRandomPointInNavigableRadius()` | NavMesh 데이터 읽기 — 리빌드 중 동시 접근 시 레이스 컨디션 → 크래시 |
+
+**크래시 없이 동작했던 이유**
+- NavMesh가 정적 레벨이라 런타임 리빌드가 발생하지 않아 읽기 충돌 타이밍이 없었습니다.
+- 읽기 전용 연산이고 빠르게 완료되어 충돌 윈도우가 짧았습니다.
+- 레이스 컨디션은 확률적이므로 항상 발생하지는 않습니다.
+
+**수정 코드 (`RefillSpawnLocationsPerFrame` + `RefillOneSpawnLocation`)**
+```cpp
+// After — 게임스레드에서 프레임당 1개씩 분할 실행 
+void AMainGameModeBase::RefillSpawnLocationsPerFrame()
+{
+    RefillCenter = bSpawnAroundPlayer ? GetPlayerLocation() : SpawnCenterLocation;
+    RefillRadius = DefaultSpawnRadius;
+    RefillCount = 0;
+
+    TWeakObjectPtr<AMainGameModeBase> WeakThis(this);
+    GetWorldTimerManager().SetTimer(RefillTimer, [WeakThis]()
+        {
+            if (WeakThis.IsValid())
+                WeakThis->RefillOneSpawnLocation(); // 게임스레드에서 실행 → 안전
+        }, 0.0f, true); // 매 프레임 1개씩, 50프레임(약 0.8초)에 완료
+}
+
+void AMainGameModeBase::RefillOneSpawnLocation()
+{
+    if (RefillCount >= RefillTargetCount) { ClearTimer(RefillTimer); return; }
+    FindRandomLocationOnNavMesh(RefillCenter, RefillRadius, SpawnLocation);
+    RefillCount++;
+}
+```
+
+**해결 원리:** `SetTimer` 콜백은 게임스레드에서 실행되므로 NavMesh 쿼리가 게임스레드에서 호출되어 레이스 컨디션을 방지합니다. 50개를 한번에 처리하던 것을 프레임당 1개씩 분할하여 성능 영향도 무시 할 수 있습니다.
+
+---
+
+### 2. `[this]` 직접 캡처
+
+**문제:** 프로젝트 전체에서 타이머 람다에 `TWeakObjectPtr`를 쓰는 컨벤션을 정했으나, `RefillSpawnLocationsAsync`의 외부 람다만 `[this]`를 직접 캡처하고 있었다. 같은 함수의 내부 람다는 `TWeakObjectPtr`를 사용하여 한 함수 안에서도 불일치가 발생했습니다.
+
+**수정:** 모든 타이머 람다에서 `TWeakObjectPtr` 사용으로 통일했습니다.
+
+---
+
+### 3. 불필요한 AsyncTask 사용 제거
+
+**문제 코드 (`PerformAsyncCleanup`)**
+```cpp
+// Before — 0.1초 대기를 위해 불필요하게 백그라운드 스레드 사용
+AsyncTask(BackgroundThread, [WeakThis]()
+    {
+        FPlatformProcess::Sleep(0.1f);  // 백그라운드에서 대기만 함
+        AsyncTask(GameThread, [WeakThis]()
+            {
+                StrongThis->SpawnedEnemies.RemoveAll(...);
+                StrongThis->SpawnedEnemies.Shrink();
+            });
+    });
+```
+
+스레드 안전성 위반은 아니었으나 실제 UObject 작업은 게임스레드에서 수행하며, 0.1초 대기를 위해 불필요하게 백그라운드 스레드를 사용하고 있었습니다.
+
+**수정 코드 (`PerformDeferredCleanup`)**
+```cpp
+// After — 타이머 한 줄로 동일한 동작
+TWeakObjectPtr<AMainGameModeBase> WeakThis(this);
+GetWorldTimerManager().SetTimer(CleanupTimer, [WeakThis]()
+    {
+        if (WeakThis.IsValid())
+        {
+            WeakThis->SpawnedEnemies.RemoveAll([](const TWeakObjectPtr<APawn>& EnemyPtr)
+                { return !EnemyPtr.IsValid(); });
+            WeakThis->SpawnedEnemies.Shrink();
+        }
+    }, 0.1f, false); // 0.1초 후 게임스레드에서 1회 실행
+```
+
+---
+
+### 4. 전체 변경 요약
+
+| 항목 | Before | After |
+|------|--------|-------|
+| 함수명 | `RefillSpawnLocationsAsync()` | `RefillSpawnLocationsPerFrame()` |
+| 함수명 | `PerformAsyncCleanup()` | `PerformDeferredCleanup()` |
+| 변수명 | `bEnableAsyncCleanup` | `bEnableDeferredCleanup` |
+| include | `#include "Async/Async.h"` | 제거 |
+| NavMesh 쿼리 스레드 | BackgroundThread | GameThread |
+| `this` 캡처 방식 | `[this]` 직접 캡처 | `TWeakObjectPtr` 통일 |
+| 메모리 정리 방식 | AsyncTask 이중 호출 | 타이머 0.1초 지연 |
+| `StopAllSystems()` | RefillTimer 미포함 | RefillTimer 정리 추가 |
+
+**동작 결과:** 기존과 동일하게 동작하며. 5분마다 스폰 위치 50개를 갱신하고, 웨이브 클리어 후 0.1초 뒤 무효 참조를 정리합니다.
+
+---
+
+### 5. 참고 자료
+
+| 내용 | 출처 |
+|------|------|
+| 레이스 컨디션은 일반 버그의 10배 수정 비용 발생 | [Threaded Rendering in Unreal Engine (공식)](https://dev.epicgames.com/documentation/en-us/unreal-engine/threaded-rendering-in-unreal-engine) |
+| UObject는 게임스레드 소유, 다른 스레드에서 직접 참조 금지 | [Threaded Rendering in Unreal Engine (공식)](https://dev.epicgames.com/documentation/en-us/unreal-engine/threaded-rendering-in-unreal-engine) |
+| NavMesh 클린업 시 워커 스레드 접근 레이스 컨디션  발생 | [NavMesh Race Condition (UE-229415)](https://issues.unrealengine.com/issue/UE-229415) |
+| 백그라운드에서 UObject 전달 시 GC가 조용히 삭제할 위험 | [How to properly work with UObjects in background threads](https://georgy.dev/posts/avoid-gc-async/) |
+| AsyncTask 사용법 및 스레드 지정 방법 | [How to use AsyncTask in Unreal Engine](https://georgy.dev/posts/async-task/) |
+| UE5 Task Graph 시스템 공식 레퍼런스 | [Tasks Systems in Unreal Engine (공식)](https://dev.epicgames.com/documentation/en-us/unreal-engine/tasks-systems-in-unreal-engine) |
 
 </details>
